@@ -34,6 +34,7 @@ import '../settings/shortcut_editor_screen.dart';
 import '../settings/settings_screen.dart';
 import '../sync/sync_queue_screen.dart';
 import '../voice/voice_record_screen.dart';
+import 'memos_list_desktop_presentation.dart';
 import 'note_input_sheet.dart';
 import 'widgets/memos_list_title_menu.dart';
 import '../../i18n/strings.g.dart';
@@ -58,6 +59,8 @@ typedef MemosListRouteVoiceRecordOverlayPresenter =
       VoiceRecordMode mode,
     });
 typedef MemosListRouteDesktopUtilityOpener = bool Function();
+typedef MemosListRouteDesktopPresentationResolver =
+    MemosListDesktopPresentation Function(BuildContext context);
 
 abstract interface class MemosListRouteDesktopAdapter {
   bool get desktopShortcutsEnabled;
@@ -159,9 +162,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
     required bool Function() shouldUseInlineComposeForCurrentWindow,
     required bool Function() enableCompose,
     required bool Function() searching,
-    required bool Function() windowsHeaderSearchExpanded,
+    required bool Function() desktopHeaderSearchExpanded,
     required VoidCallback closeSearch,
-    required VoidCallback closeWindowsHeaderSearch,
+    required VoidCallback closeDesktopHeaderSearch,
     required Future<void> Function() maybeScanLocalLibrary,
     required bool Function() isAllMemos,
     required bool Function() showDrawer,
@@ -173,8 +176,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
     MemosListRouteDesktopAdapter? desktopAdapter,
     MemosListRouteToastPresenter? showToast,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
+    MemosListRouteDesktopPresentationResolver? desktopPresentationResolver,
     MemosListRouteNoteInputPresenter? showNoteInputSheet,
-    MemosListRouteNoteInputPresenter? showWindowsDesktopNoteInput,
+    MemosListRouteNoteInputPresenter? showDesktopComposeSurface,
     MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
     MemosListRouteDesktopUtilityOpener? openDesktopSyncQueue,
     MemosListRouteDesktopUtilityOpener? openDesktopNotifications,
@@ -190,9 +194,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
            shouldUseInlineComposeForCurrentWindow,
        _enableCompose = enableCompose,
        _searching = searching,
-       _windowsHeaderSearchExpanded = windowsHeaderSearchExpanded,
+       _desktopHeaderSearchExpanded = desktopHeaderSearchExpanded,
        _closeSearch = closeSearch,
-       _closeWindowsHeaderSearch = closeWindowsHeaderSearch,
+       _closeDesktopHeaderSearch = closeDesktopHeaderSearch,
        _maybeScanLocalLibrary = maybeScanLocalLibrary,
        _isAllMemos = isAllMemos,
        _showDrawer = showDrawer,
@@ -206,8 +210,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
        _showToast = showToast ?? _defaultShowToast,
        _openSettingsFallback =
            openSettingsFallback ?? _defaultOpenSettingsFallback,
+       _desktopPresentationResolver = desktopPresentationResolver,
        _showNoteInputSheet = showNoteInputSheet ?? _defaultShowNoteInputSheet,
-       _showWindowsDesktopNoteInput = showWindowsDesktopNoteInput,
+       _showDesktopComposeSurface = showDesktopComposeSurface,
        _showVoiceRecordOverlay =
            showVoiceRecordOverlay ?? _defaultShowVoiceRecordOverlay,
        _openDesktopSyncQueue = openDesktopSyncQueue,
@@ -224,9 +229,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final bool Function() _shouldUseInlineComposeForCurrentWindow;
   final bool Function() _enableCompose;
   final bool Function() _searching;
-  final bool Function() _windowsHeaderSearchExpanded;
+  final bool Function() _desktopHeaderSearchExpanded;
   final VoidCallback _closeSearch;
-  final VoidCallback _closeWindowsHeaderSearch;
+  final VoidCallback _closeDesktopHeaderSearch;
   final Future<void> Function() _maybeScanLocalLibrary;
   final bool Function() _isAllMemos;
   final bool Function() _showDrawer;
@@ -238,8 +243,9 @@ class MemosListRouteDelegate extends ChangeNotifier {
   final MemosListRouteDesktopAdapter _desktopAdapter;
   final MemosListRouteToastPresenter _showToast;
   final MemosListRouteSettingsFallbackOpener _openSettingsFallback;
+  final MemosListRouteDesktopPresentationResolver? _desktopPresentationResolver;
   final MemosListRouteNoteInputPresenter _showNoteInputSheet;
-  final MemosListRouteNoteInputPresenter? _showWindowsDesktopNoteInput;
+  final MemosListRouteNoteInputPresenter? _showDesktopComposeSurface;
   final MemosListRouteVoiceRecordOverlayPresenter _showVoiceRecordOverlay;
   final MemosListRouteDesktopUtilityOpener? _openDesktopSyncQueue;
   final MemosListRouteDesktopUtilityOpener? _openDesktopNotifications;
@@ -258,6 +264,18 @@ class MemosListRouteDelegate extends ChangeNotifier {
     return buildPlatformPageRoute<T>(context: _context, builder: builder);
   }
 
+  MemosListDesktopPresentation _resolveDesktopPresentation(
+    BuildContext context,
+  ) {
+    final injected = _desktopPresentationResolver;
+    if (injected != null) return injected(context);
+    return resolveMemosListDesktopPresentation(
+      screenWidth: MediaQuery.maybeOf(context)?.size.width ?? 0,
+      showDrawer: _showDrawer(),
+      platform: Theme.of(context).platform,
+    );
+  }
+
   void backToAllMemos() {
     final embeddedNavigationHost = _embeddedNavigationHost;
     if (embeddedNavigationHost != null) {
@@ -272,8 +290,8 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<bool> handleWillPop() async {
     final context = _context;
-    if (_windowsHeaderSearchExpanded()) {
-      _closeWindowsHeaderSearch();
+    if (_desktopHeaderSearchExpanded()) {
+      _closeDesktopHeaderSearch();
       return false;
     }
     if (_searching()) {
@@ -387,10 +405,10 @@ class MemosListRouteDelegate extends ChangeNotifier {
   Future<void> openNoteInput() async {
     if (!_enableCompose()) return;
     final context = _context;
-    final windowsDesktopNoteInput = _showWindowsDesktopNoteInput;
-    if (Theme.of(context).platform == TargetPlatform.windows &&
-        windowsDesktopNoteInput != null) {
-      await windowsDesktopNoteInput(context);
+    final desktopComposeSurface = _showDesktopComposeSurface;
+    if (_resolveDesktopPresentation(context).usesDesktopComposeSurface &&
+        desktopComposeSurface != null) {
+      await desktopComposeSurface(context);
       return;
     }
     await _showNoteInputSheet(context);
@@ -408,10 +426,10 @@ class MemosListRouteDelegate extends ChangeNotifier {
       mode: VoiceRecordMode.quickFabCompose,
     );
     if (!context.mounted || result == null) return;
-    final windowsDesktopNoteInput = _showWindowsDesktopNoteInput;
-    if (Theme.of(context).platform == TargetPlatform.windows &&
-        windowsDesktopNoteInput != null) {
-      await windowsDesktopNoteInput(
+    final desktopComposeSurface = _showDesktopComposeSurface;
+    if (_resolveDesktopPresentation(context).usesDesktopComposeSurface &&
+        desktopComposeSurface != null) {
+      await desktopComposeSurface(
         context,
         initialAttachmentPaths: [result.filePath],
         ignoreDraft: true,
@@ -664,8 +682,8 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> openQuickInputFromShortcut() async {
     if (!_enableCompose()) return;
-    if (_windowsHeaderSearchExpanded()) {
-      _closeWindowsHeaderSearch();
+    if (_desktopHeaderSearchExpanded()) {
+      _closeDesktopHeaderSearch();
     }
     if (_searching()) {
       _closeSearch();

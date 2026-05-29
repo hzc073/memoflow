@@ -5,6 +5,7 @@ import '../../core/tags.dart';
 import '../../data/models/local_memo.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/memos/memos_providers.dart';
+import 'memos_list_desktop_presentation.dart';
 
 enum MemosListSortOption { createAsc, createDesc, updateAsc, updateDesc }
 
@@ -41,7 +42,7 @@ class MemosListHeaderController extends ChangeNotifier {
         AdvancedSearchFilters.empty,
     MemosListSortOption initialSortOption = MemosListSortOption.createDesc,
     bool initialSearching = false,
-    bool initialWindowsHeaderSearchExpanded = false,
+    bool initialDesktopHeaderSearchExpanded = false,
   }) : _searchController = searchController ?? TextEditingController(),
        _ownsSearchController = searchController == null,
        _searchFocusNode = searchFocusNode ?? FocusNode(),
@@ -53,7 +54,7 @@ class MemosListHeaderController extends ChangeNotifier {
        _advancedSearchFilters = initialAdvancedSearchFilters.normalized(),
        _activeTagFilter = normalizeTag(initialTag),
        _sortOption = initialSortOption,
-       _windowsHeaderSearchExpanded = initialWindowsHeaderSearchExpanded {
+       _desktopHeaderSearchExpanded = initialDesktopHeaderSearchExpanded {
     _searchController.addListener(_handleSearchTextChanged);
   }
 
@@ -69,7 +70,7 @@ class MemosListHeaderController extends ChangeNotifier {
   AdvancedSearchFilters _advancedSearchFilters;
   String? _activeTagFilter;
   MemosListSortOption _sortOption;
-  bool _windowsHeaderSearchExpanded;
+  bool _desktopHeaderSearchExpanded;
 
   TextEditingController get searchController => _searchController;
   FocusNode get searchFocusNode => _searchFocusNode;
@@ -80,7 +81,7 @@ class MemosListHeaderController extends ChangeNotifier {
   AdvancedSearchFilters get advancedSearchFilters => _advancedSearchFilters;
   String? get activeTagFilter => _activeTagFilter;
   MemosListSortOption get sortOption => _sortOption;
-  bool get windowsHeaderSearchExpanded => _windowsHeaderSearchExpanded;
+  bool get desktopHeaderSearchExpanded => _desktopHeaderSearchExpanded;
   bool get hasAdvancedSearchFilters => !_advancedSearchFilters.isEmpty;
 
   static String? normalizeTag(String? raw) {
@@ -162,23 +163,23 @@ class MemosListHeaderController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void openWindowsHeaderSearch() {
-    if (_windowsHeaderSearchExpanded) {
+  void openDesktopHeaderSearch() {
+    if (_desktopHeaderSearchExpanded) {
       _searchFocusNode.requestFocus();
       return;
     }
-    _windowsHeaderSearchExpanded = true;
+    _desktopHeaderSearchExpanded = true;
     notifyListeners();
     _searchFocusNode.requestFocus();
   }
 
-  void closeWindowsHeaderSearch({bool clearQuery = true}) {
-    if (!_windowsHeaderSearchExpanded) return;
+  void closeDesktopHeaderSearch({bool clearQuery = true}) {
+    if (!_desktopHeaderSearchExpanded) return;
     _searchFocusNode.unfocus();
     if (clearQuery) {
       _searchController.clear();
     }
-    _windowsHeaderSearchExpanded = false;
+    _desktopHeaderSearchExpanded = false;
     _selectedQuickSearchKind = null;
     _aiSearchActive = false;
     if (clearQuery) {
@@ -187,12 +188,12 @@ class MemosListHeaderController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleWindowsHeaderSearch() {
-    if (_windowsHeaderSearchExpanded) {
-      closeWindowsHeaderSearch();
+  void toggleDesktopHeaderSearch() {
+    if (_desktopHeaderSearchExpanded) {
+      closeDesktopHeaderSearch();
       return;
     }
-    openWindowsHeaderSearch();
+    openDesktopHeaderSearch();
   }
 
   void closeSearch({required VoidCallback clearGlobalFocus}) {
@@ -200,7 +201,7 @@ class MemosListHeaderController extends ChangeNotifier {
     _searchController.clear();
     clearGlobalFocus();
     _searching = false;
-    _windowsHeaderSearchExpanded = false;
+    _desktopHeaderSearchExpanded = false;
     _selectedQuickSearchKind = null;
     _aiSearchActive = false;
     _advancedSearchFilters = AdvancedSearchFilters.empty;
@@ -259,11 +260,12 @@ class MemosListHeaderController extends ChangeNotifier {
   }
 
   void focusSearchFromShortcut({
-    required bool isWindowsDesktop,
+    required MemosListDesktopSearchPresentation searchPresentation,
     required VoidCallback onOpenSearch,
   }) {
-    if (isWindowsDesktop && !_searching) {
-      openWindowsHeaderSearch();
+    if (searchPresentation == MemosListDesktopSearchPresentation.header &&
+        !_searching) {
+      openDesktopHeaderSearch();
       return;
     }
     onOpenSearch();

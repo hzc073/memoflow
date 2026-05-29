@@ -19,6 +19,7 @@ import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
 import 'package:memos_flutter_app/features/memos/home_quick_actions.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_desktop_presentation.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_floating_collapse_controller.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen_view_state.dart';
 import 'package:memos_flutter_app/features/memos/widgets/floating_collapse_button.dart';
@@ -925,7 +926,7 @@ Widget _buildBodyScreen({
     onOpenSearch: () {},
     onStartAiSearch: onStartAiSearch ?? () {},
     onStopAiSearch: onStopAiSearch ?? () {},
-    onToggleWindowsHeaderSearch: () {},
+    onToggleDesktopHeaderSearch: () {},
     onToggleQuickSearchKind: (_) {},
     onDismissGuide: () {},
     onViewportLayoutChanged: () {},
@@ -1022,7 +1023,7 @@ MemosListScreenBodyData _buildBodyData({
     enableSearch: false,
     enableTitleMenu: false,
     screenshotModeEnabled: false,
-    windowsHeaderSearchExpanded: false,
+    desktopHeaderSearchExpanded: false,
     desktopWindowMaximized: false,
     debugApiVersionText: '',
     activeListGuideId: null,
@@ -1057,13 +1058,62 @@ MemosListScreenLayoutState _buildLayout({
     supportsDesktopPreviewPane: supportsDesktopPreviewPane,
     useDesktopPreviewPane: supportsDesktopPreviewPane,
     useInlineCompose: false,
-    useWindowsDesktopHeader: useWindowsDesktopHeader,
-    useMacosDesktopTitleBar: useMacosDesktopTitleBar,
+    desktopPresentation: _buildDesktopPresentation(
+      useWindowsDesktopHeader: useWindowsDesktopHeader,
+      useMacosDesktopTitleBar: useMacosDesktopTitleBar,
+      supportsSidePane: useDesktopSidePane,
+      supportsPreviewPane: supportsDesktopPreviewPane,
+    ),
     headerToolbarHeight: kToolbarHeight,
     headerBottomHeight: 0,
     floatingCollapseTopPadding: 0,
     showComposeFab: false,
     backToTopBaseOffset: 0,
+  );
+}
+
+MemosListDesktopPresentation _buildDesktopPresentation({
+  bool useWindowsDesktopHeader = false,
+  bool useMacosDesktopTitleBar = false,
+  bool supportsSidePane = false,
+  bool supportsPreviewPane = false,
+}) {
+  final platform = useWindowsDesktopHeader
+      ? TargetPlatform.windows
+      : useMacosDesktopTitleBar
+      ? TargetPlatform.macOS
+      : TargetPlatform.android;
+  final titlebarStrategy = useWindowsDesktopHeader
+      ? MemosListDesktopTitlebarStrategy.windowsCommandBar
+      : useMacosDesktopTitleBar
+      ? MemosListDesktopTitlebarStrategy.macosToolbar
+      : MemosListDesktopTitlebarStrategy.none;
+  return MemosListDesktopPresentation(
+    platform: platform,
+    layoutTier: supportsPreviewPane
+        ? DesktopLayoutTier.wide
+        : (supportsSidePane
+              ? DesktopLayoutTier.expanded
+              : DesktopLayoutTier.narrow),
+    navigationMode: supportsSidePane
+        ? DesktopNavigationMode.expanded
+        : DesktopNavigationMode.overlay,
+    supportsSidePane: supportsSidePane,
+    titlebarStrategy: titlebarStrategy,
+    previewPanePolicy: supportsPreviewPane
+        ? const MemosListDesktopPreviewPanePolicy(
+            activation: MemosListDesktopPreviewPaneActivation.automatic,
+            supportsPane: true,
+          )
+        : const MemosListDesktopPreviewPanePolicy.unsupported(),
+    searchPresentation: useWindowsDesktopHeader
+        ? MemosListDesktopSearchPresentation.header
+        : MemosListDesktopSearchPresentation.standard,
+    composePresentation: useWindowsDesktopHeader
+        ? MemosListDesktopComposePresentation.desktopSurface
+        : MemosListDesktopComposePresentation.sheet,
+    inlineComposeCapability:
+        const MemosListInlineComposeCapability.unsupported(),
   );
 }
 

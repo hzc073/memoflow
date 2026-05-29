@@ -100,6 +100,7 @@ import 'memos_list_inline_compose_ui_controller.dart';
 import 'memos_list_local_library_coordinator.dart';
 import 'memos_list_memo_action_delegate.dart';
 import 'memos_list_mutation_coordinator.dart';
+import 'memos_list_desktop_presentation.dart';
 import 'memos_list_route_delegate.dart';
 import 'memos_list_screen_view_state.dart';
 import 'memos_list_viewport_coordinator.dart';
@@ -293,6 +294,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
     return buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: _resolveCurrentMemosListDesktopPresentation(
+        screenWidth: mediaQuery.size.width,
+      ),
       state: widget.state,
       showDrawer: widget.showDrawer,
       showPillActions: widget.showPillActions,
@@ -300,9 +304,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       enableCompose: widget.enableCompose,
       hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
       searching: _searching,
-      screenWidth: mediaQuery.size.width,
-      isWindowsDesktop: _isWindowsDesktopTarget,
-      isMacosDesktop: _isMacosDesktopTarget,
     );
   }
 
@@ -319,8 +320,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   String? get _activeTagFilter => _headerController.activeTagFilter;
   bool get _hasAdvancedSearchFilters =>
       _headerController.hasAdvancedSearchFilters;
-  bool get _windowsHeaderSearchExpanded =>
-      _headerController.windowsHeaderSearchExpanded;
+  bool get _desktopHeaderSearchExpanded =>
+      _headerController.desktopHeaderSearchExpanded;
   MemosListSortOption get _sortOption => _headerController.sortOption;
   bool get _inlineComposeBusy => _mutationCoordinator.inlineComposeSubmitting;
   int get _pageSize => _viewportCoordinator.pageSize;
@@ -365,12 +366,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         tag: widget.tag,
         dayFilter: widget.dayFilter,
       );
-
-  bool get _isWindowsDesktopTarget =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-
-  bool get _isMacosDesktopTarget =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
 
   bool get _isDesktopContextMenuTarget =>
       !kIsWeb &&
@@ -417,9 +412,20 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
-  WindowsDesktopLayoutSpec _resolveCurrentWindowsDesktopLayout() {
+  MemosListDesktopPresentation _resolveCurrentMemosListDesktopPresentation({
+    double? screenWidth,
+  }) {
+    final width = screenWidth ?? MediaQuery.maybeOf(context)?.size.width ?? 0;
+    return resolveMemosListDesktopPresentation(
+      screenWidth: width,
+      showDrawer: widget.showDrawer,
+      platform: defaultTargetPlatform,
+    );
+  }
+
+  DesktopLayoutSpec _resolveCurrentDesktopLayout() {
     final width = MediaQuery.maybeOf(context)?.size.width ?? 0;
-    return resolveWindowsDesktopLayout(width, platform: defaultTargetPlatform);
+    return resolveDesktopLayoutPolicy(width, platform: defaultTargetPlatform);
   }
 
   void _resetDesktopComposeSeed() {
@@ -753,14 +759,14 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
-  Future<void> _showWindowsDesktopComposeSurface(
+  Future<void> _showDesktopComposeSurface(
     BuildContext _, {
     String? initialText,
     List<String> initialAttachmentPaths = const <String>[],
     bool ignoreDraft = false,
   }) async {
-    final layoutSpec = _resolveCurrentWindowsDesktopLayout();
-    if (layoutSpec.tier != WindowsDesktopLayoutTier.narrow) {
+    final layoutSpec = _resolveCurrentDesktopLayout();
+    if (layoutSpec.tier != DesktopLayoutTier.narrow) {
       _openDesktopComposeNew(
         initialText: initialText,
         initialAttachmentPaths: initialAttachmentPaths,
@@ -772,7 +778,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       initialText: initialText,
       initialAttachmentPaths: initialAttachmentPaths,
       ignoreDraft: ignoreDraft,
-      fullscreen: layoutSpec.tier == WindowsDesktopLayoutTier.narrow,
+      fullscreen: layoutSpec.tier == DesktopLayoutTier.narrow,
     );
   }
 
@@ -787,7 +793,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   void _toggleDesktopSecondaryPane() {
-    final layoutSpec = _resolveCurrentWindowsDesktopLayout();
+    final layoutSpec = _resolveCurrentDesktopLayout();
     if (!layoutSpec.supportsSecondaryPane) return;
     final paneState = ref.read(desktopHomePaneStateProvider);
     if (paneState.previewVisible) {
@@ -863,11 +869,12 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           initialMemo: memo,
           heroTag: heroTag,
           onRequestEditExisting: (detailMemo) async {
-            final isWideWindowsLayout =
-                _resolveCurrentWindowsDesktopLayout().tier ==
-                WindowsDesktopLayoutTier.wide;
+            final shouldReturnToPreviewAfterEdit =
+                _resolveCurrentMemosListDesktopPresentation()
+                    .previewPanePolicy
+                    .defaultMemoClickOpensPreview;
             await _openMemoEditor(detailMemo);
-            if (isWideWindowsLayout && mounted) {
+            if (shouldReturnToPreviewAfterEdit && mounted) {
               Navigator.of(context).pop();
             }
           },
@@ -1301,9 +1308,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           _shouldUseInlineComposeForCurrentWindow,
       enableCompose: () => widget.enableCompose,
       searching: () => _searching,
-      windowsHeaderSearchExpanded: () => _windowsHeaderSearchExpanded,
+      desktopHeaderSearchExpanded: () => _desktopHeaderSearchExpanded,
       closeSearch: _closeSearch,
-      closeWindowsHeaderSearch: _closeWindowsHeaderSearch,
+      closeDesktopHeaderSearch: _closeDesktopHeaderSearch,
       maybeScanLocalLibrary: _maybeScanLocalLibrary,
       isAllMemos: () => _isAllMemos,
       showDrawer: () => widget.showDrawer,
@@ -1313,8 +1320,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           _headerController.selectShortcut(shortcutId),
       markSceneGuideSeen: _markSceneGuideSeen,
       embeddedNavigationHost: widget.embeddedNavigationHost,
+      desktopPresentationResolver: (_) =>
+          _resolveCurrentMemosListDesktopPresentation(),
       showNoteInputSheet: widget.showNoteInputSheet,
-      showWindowsDesktopNoteInput: _showWindowsDesktopComposeSurface,
+      showDesktopComposeSurface: _showDesktopComposeSurface,
       showVoiceRecordOverlay: widget.showVoiceRecordOverlay,
       openDesktopSyncQueue: () =>
           _showDesktopHomeUtilityView(DesktopHomeUtilityView.syncQueue),
@@ -2278,7 +2287,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   void _focusSearchFromShortcut() {
     _markSceneGuideSeen(SceneMicroGuideId.memoListSearchAndShortcuts);
     _headerController.focusSearchFromShortcut(
-      isWindowsDesktop: _isWindowsDesktopTarget,
+      searchPresentation:
+          _resolveCurrentMemosListDesktopPresentation().searchPresentation,
       onOpenSearch: _openSearch,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2350,14 +2360,11 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _animatedMemos,
       paneState.selectedMemoUid,
     );
-    final isWideWindowsLayout =
+    final usesDefaultDesktopPreviewLayout =
         !kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.windows &&
-        resolveWindowsDesktopLayout(
-              MediaQuery.sizeOf(context).width,
-              platform: TargetPlatform.windows,
-            ).tier ==
-            WindowsDesktopLayoutTier.wide;
+        _resolveCurrentMemosListDesktopPresentation()
+            .previewPanePolicy
+            .defaultMemoClickOpensPreview;
     final primaryPressed = isPrimaryShortcutModifierPressed(pressed);
     final shiftPressed = isShiftModifierPressed(pressed);
     final altPressed = isAltModifierPressed(pressed);
@@ -2374,7 +2381,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           !shiftPressed &&
           !altPressed &&
           event.logicalKey == LogicalKeyboardKey.enter &&
-          isWideWindowsLayout) {
+          usesDefaultDesktopPreviewLayout) {
         _openMemoDetailRoute(
           selectedMemo,
           heroTag: memoHeroTagForMemo(selectedMemo),
@@ -2384,7 +2391,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
       if (primaryPressed && !shiftPressed && !altPressed) {
         if (event.logicalKey == LogicalKeyboardKey.keyE &&
-            isWideWindowsLayout) {
+            usesDefaultDesktopPreviewLayout) {
           unawaited(
             _memoActionDelegate.handleMemoAction(
               selectedMemo,
@@ -2464,23 +2471,27 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     });
   }
 
-  void _openWindowsHeaderSearch() {
-    if (!_isWindowsDesktopTarget || !widget.enableSearch) return;
-    _markSceneGuideSeen(SceneMicroGuideId.memoListSearchAndShortcuts);
-    _headerController.openWindowsHeaderSearch();
-  }
-
-  void _closeWindowsHeaderSearch({bool clearQuery = true}) {
-    if (!_isWindowsDesktopTarget || !_windowsHeaderSearchExpanded) return;
-    _headerController.closeWindowsHeaderSearch(clearQuery: clearQuery);
-  }
-
-  void _toggleWindowsHeaderSearch() {
-    if (_windowsHeaderSearchExpanded) {
-      _closeWindowsHeaderSearch();
+  void _openDesktopHeaderSearch() {
+    if (!_resolveCurrentMemosListDesktopPresentation()
+            .usesDesktopHeaderSearch ||
+        !widget.enableSearch) {
       return;
     }
-    _openWindowsHeaderSearch();
+    _markSceneGuideSeen(SceneMicroGuideId.memoListSearchAndShortcuts);
+    _headerController.openDesktopHeaderSearch();
+  }
+
+  void _closeDesktopHeaderSearch({bool clearQuery = true}) {
+    if (!_desktopHeaderSearchExpanded) return;
+    _headerController.closeDesktopHeaderSearch(clearQuery: clearQuery);
+  }
+
+  void _toggleDesktopHeaderSearch() {
+    if (_desktopHeaderSearchExpanded) {
+      _closeDesktopHeaderSearch();
+      return;
+    }
+    _openDesktopHeaderSearch();
   }
 
   void _closeSearch() {
@@ -2727,15 +2738,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   Future<void> _openMemoEditor(LocalMemo memo) async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-      final layoutSpec = _resolveCurrentWindowsDesktopLayout();
-      if (layoutSpec.tier != WindowsDesktopLayoutTier.narrow) {
+    final desktopPresentation = _resolveCurrentMemosListDesktopPresentation();
+    if (!kIsWeb && desktopPresentation.usesDesktopComposeSurface) {
+      final layoutSpec = _resolveCurrentDesktopLayout();
+      if (layoutSpec.tier != DesktopLayoutTier.narrow) {
         _openDesktopComposeEdit(memo);
         return;
       }
       await _showDesktopComposeDialog(
         existing: memo,
-        fullscreen: layoutSpec.tier == WindowsDesktopLayoutTier.narrow,
+        fullscreen: layoutSpec.tier == DesktopLayoutTier.narrow,
       );
       ref.invalidate(memoRelationsProvider(memo.uid));
       return;
@@ -3076,7 +3088,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
                 .length,
             'isWindows': Platform.isWindows,
             'searching': _searching,
-            'windowsHeaderSearchExpanded': _windowsHeaderSearchExpanded,
+            'desktopHeaderSearchExpanded': _desktopHeaderSearchExpanded,
           },
         );
     _animatedListController.removeMemoWithAnimation(
@@ -3095,7 +3107,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         removing: true,
         tagColors: tagColors,
         searching: _searching,
-        windowsHeaderSearchExpanded: _windowsHeaderSearchExpanded,
+        windowsHeaderSearchExpanded: _desktopHeaderSearchExpanded,
         selectedQuickSearchKind: _selectedQuickSearchKind,
         searchQuery: _searchController.text,
         playingMemoUid: _audioPlaybackCoordinator.playingMemoUid,
@@ -3167,6 +3179,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
     final layoutState = buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: _resolveCurrentMemosListDesktopPresentation(
+        screenWidth: screenWidth,
+      ),
       state: widget.state,
       showDrawer: widget.showDrawer,
       showPillActions: widget.showPillActions,
@@ -3174,9 +3189,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       enableCompose: widget.enableCompose,
       hidePrimaryComposeFab: widget.hidePrimaryComposeFab,
       searching: _searching,
-      screenWidth: screenWidth,
-      isWindowsDesktop: _isWindowsDesktopTarget,
-      isMacosDesktop: _isMacosDesktopTarget,
     );
     final resolvedTag = queryState.resolvedTag;
     final useShortcutFilter = queryState.useShortcutFilter;
@@ -3625,14 +3637,16 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       controller: _searchController,
       focusNode: _searchFocusNode,
       isDark: isDark,
-      autofocus: _searching && !_isWindowsDesktopTarget,
+      autofocus:
+          _searching &&
+          !viewState.layout.desktopPresentation.usesDesktopHeaderSearch,
       hasAdvancedFilters: _hasAdvancedSearchFilters,
       onOpenAdvancedFilters: () => unawaited(_openAdvancedSearchSheet()),
       onSubmitted: (value) => _headerController.submitSearch(
         value,
         addHistory: ref.read(searchHistoryProvider.notifier).add,
       ),
-      hintText: _windowsHeaderSearchExpanded
+      hintText: _desktopHeaderSearchExpanded
           ? context.t.strings.legacy.msg_quick_search
           : null,
     );
@@ -3681,7 +3695,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         : null;
     final devicePreferencesLoaded = ref.watch(devicePreferencesLoadedProvider);
     final shouldEnableResizableHomeInlineCompose =
-        _enableResizableHomeInlineCompose && viewState.layout.useInlineCompose;
+        _enableResizableHomeInlineCompose &&
+        viewState.layout.useInlineCompose &&
+        viewState
+            .layout
+            .desktopPresentation
+            .inlineComposeCapability
+            .supportsResize;
     final supportsDesktopSecondaryPane =
         viewState.layout.supportsDesktopPreviewPane;
     final enableDesktopPreviewInteraction =
@@ -3974,7 +3994,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         onDesktopEmbeddedBack: _clearDesktopHomeUtilityView,
       ),
     };
-    final windowsDesktopTrailingActions = <Widget>[
+    final desktopTrailingActions = <Widget>[
       if (!desktopUtilityActive && sortButton != null) sortButton,
       if (!desktopUtilityActive && supportsDesktopSecondaryPane)
         IconButton(
@@ -4042,7 +4062,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           enableSearch: widget.enableSearch,
           enableTitleMenu: widget.enableTitleMenu,
           screenshotModeEnabled: screenshotModeEnabled,
-          windowsHeaderSearchExpanded: _windowsHeaderSearchExpanded,
+          desktopHeaderSearchExpanded: _desktopHeaderSearchExpanded,
           desktopWindowMaximized: _desktopWindowMaximized,
           debugApiVersionText: debugApiVersionText,
           activeListGuideId: activeListGuideId,
@@ -4096,7 +4116,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         floatingCollapseListenable: _floatingCollapseController,
         onCloseSearch: _closeSearch,
         onOpenSearch: _openSearch,
-        onToggleWindowsHeaderSearch: _toggleWindowsHeaderSearch,
+        onToggleDesktopHeaderSearch: _toggleDesktopHeaderSearch,
         onToggleQuickSearchKind: _headerController.toggleQuickSearchKind,
         onStartAiSearch: _startAiSearch,
         onStopAiSearch: _stopAiSearch,
@@ -4109,7 +4129,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         onScrollToTop: () => unawaited(_handleScrollToTop()),
         quickActions: quickActions,
         desktopDrawerPanelBuilder: desktopDrawerPanelBuilder,
-        windowsDesktopTrailingActions: windowsDesktopTrailingActions,
+        desktopTrailingActions: desktopTrailingActions,
         onMinimize: () => unawaited(_routeDelegate.minimizeDesktopWindow()),
         onToggleMaximize: () =>
             unawaited(_routeDelegate.toggleDesktopWindowMaximize()),
@@ -4135,7 +4155,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             removing: false,
             tagColors: tagColorLookup,
             searching: _searching,
-            windowsHeaderSearchExpanded: _windowsHeaderSearchExpanded,
+            windowsHeaderSearchExpanded: _desktopHeaderSearchExpanded,
             selectedQuickSearchKind: _selectedQuickSearchKind,
             searchQuery: _searchController.text,
             playingMemoUid: _audioPlaybackCoordinator.playingMemoUid,

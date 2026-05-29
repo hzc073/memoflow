@@ -109,7 +109,7 @@ class MemosListScreenBodyData {
     required this.enableSearch,
     required this.enableTitleMenu,
     required this.screenshotModeEnabled,
-    required this.windowsHeaderSearchExpanded,
+    required this.desktopHeaderSearchExpanded,
     required this.desktopWindowMaximized,
     required this.debugApiVersionText,
     required this.activeListGuideId,
@@ -133,7 +133,7 @@ class MemosListScreenBodyData {
   final bool enableSearch;
   final bool enableTitleMenu;
   final bool screenshotModeEnabled;
-  final bool windowsHeaderSearchExpanded;
+  final bool desktopHeaderSearchExpanded;
   final bool desktopWindowMaximized;
   final String debugApiVersionText;
   final SceneMicroGuideId? activeListGuideId;
@@ -477,7 +477,7 @@ class MemosListScreenBody extends StatelessWidget {
     required this.floatingCollapseListenable,
     required this.onCloseSearch,
     required this.onOpenSearch,
-    required this.onToggleWindowsHeaderSearch,
+    required this.onToggleDesktopHeaderSearch,
     required this.onToggleQuickSearchKind,
     required this.onStartAiSearch,
     required this.onStopAiSearch,
@@ -487,7 +487,7 @@ class MemosListScreenBody extends StatelessWidget {
     required this.onScrollToTop,
     required this.quickActions,
     this.desktopDrawerPanelBuilder,
-    this.windowsDesktopTrailingActions = const <Widget>[],
+    this.desktopTrailingActions = const <Widget>[],
     required this.onMinimize,
     required this.onToggleMaximize,
     required this.onClose,
@@ -527,7 +527,7 @@ class MemosListScreenBody extends StatelessWidget {
   floatingCollapseListenable;
   final VoidCallback onCloseSearch;
   final VoidCallback onOpenSearch;
-  final VoidCallback onToggleWindowsHeaderSearch;
+  final VoidCallback onToggleDesktopHeaderSearch;
   final ValueChanged<QuickSearchKind> onToggleQuickSearchKind;
   final VoidCallback onStartAiSearch;
   final VoidCallback onStopAiSearch;
@@ -537,7 +537,7 @@ class MemosListScreenBody extends StatelessWidget {
   final VoidCallback onScrollToTop;
   final List<HomeQuickActionChipData> quickActions;
   final DesktopDrawerPanelBuilder? desktopDrawerPanelBuilder;
-  final List<Widget> windowsDesktopTrailingActions;
+  final List<Widget> desktopTrailingActions;
   final VoidCallback onMinimize;
   final VoidCallback onToggleMaximize;
   final VoidCallback onClose;
@@ -994,9 +994,9 @@ class MemosListScreenBody extends StatelessWidget {
           },
         );
 
-    final platform = Theme.of(context).platform;
-    final isWindowsDesktop = platform == TargetPlatform.windows;
-    final isMacosDesktop = platform == TargetPlatform.macOS;
+    final desktopPresentation = data.viewState.layout.desktopPresentation;
+    final isWindowsDesktop = desktopPresentation.usesWindowsDesktopHeader;
+    final isMacosDesktop = desktopPresentation.usesMacosDesktopTitleBar;
     final showDesktopPreview =
         !desktopPrimaryContentOverridden &&
         data.viewState.layout.supportsDesktopPreviewPane &&
@@ -1095,7 +1095,7 @@ class MemosListScreenBody extends StatelessWidget {
             ? null
             : Row(
                 mainAxisSize: MainAxisSize.min,
-                children: windowsDesktopTrailingActions,
+                children: desktopTrailingActions,
               ),
         body: desktopBodyContent,
         secondaryPane: desktopPreviewPane,
@@ -1120,7 +1120,7 @@ class MemosListScreenBody extends StatelessWidget {
                 showPillActions:
                     data.viewState.layout.showHeaderPillActions &&
                     !desktopPrimaryContentOverridden,
-                windowsHeaderSearchExpanded: data.windowsHeaderSearchExpanded,
+                windowsHeaderSearchExpanded: data.desktopHeaderSearchExpanded,
                 enableHomeSort:
                     data.viewState.query.enableHomeSort &&
                     !desktopPrimaryContentOverridden,
@@ -1136,7 +1136,7 @@ class MemosListScreenBody extends StatelessWidget {
                     ? const SizedBox.shrink()
                     : searchFieldChild,
                 sortButton: desktopPrimaryContentOverridden ? null : sortButton,
-                onToggleSearch: onToggleWindowsHeaderSearch,
+                onToggleSearch: onToggleDesktopHeaderSearch,
                 quickActions: desktopPrimaryContentOverridden
                     ? const <HomeQuickActionChipData>[]
                     : quickActions,

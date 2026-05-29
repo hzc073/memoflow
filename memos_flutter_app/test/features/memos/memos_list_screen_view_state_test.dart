@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/platform_layout.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
 import 'package:memos_flutter_app/data/models/shortcut.dart';
 import 'package:memos_flutter_app/data/repositories/scene_micro_guide_repository.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_desktop_presentation.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_screen_view_state.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/system/scene_micro_guide_provider.dart';
@@ -305,6 +307,11 @@ void main() {
     );
     final layoutState = buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: resolveMemosListDesktopPresentation(
+        screenWidth: 1280,
+        showDrawer: true,
+        platform: TargetPlatform.windows,
+      ),
       state: 'NORMAL',
       showDrawer: true,
       showPillActions: true,
@@ -312,8 +319,6 @@ void main() {
       enableCompose: true,
       hidePrimaryComposeFab: false,
       searching: false,
-      screenWidth: 1280,
-      isWindowsDesktop: true,
     );
 
     expect(layoutState.supportsDesktopSidePane, isTrue);
@@ -324,6 +329,56 @@ void main() {
     expect(layoutState.headerToolbarHeight, 0);
     expect(layoutState.headerBottomHeight, 0);
   });
+
+  test(
+    'desktop presentation model resolves platform-neutral memo semantics',
+    () {
+      final windows = resolveMemosListDesktopPresentation(
+        screenWidth: 1360,
+        showDrawer: true,
+        platform: TargetPlatform.windows,
+      );
+      final macos = resolveMemosListDesktopPresentation(
+        screenWidth: 1280,
+        showDrawer: true,
+        platform: TargetPlatform.macOS,
+      );
+
+      expect(windows.layoutTier, DesktopLayoutTier.wide);
+      expect(windows.navigationMode, DesktopNavigationMode.expanded);
+      expect(
+        windows.titlebarStrategy,
+        MemosListDesktopTitlebarStrategy.windowsCommandBar,
+      );
+      expect(
+        windows.searchPresentation,
+        MemosListDesktopSearchPresentation.header,
+      );
+      expect(
+        windows.composePresentation,
+        MemosListDesktopComposePresentation.desktopSurface,
+      );
+      expect(windows.previewPanePolicy.defaultMemoClickOpensPreview, isTrue);
+      expect(windows.inlineComposeCapability.supported, isTrue);
+
+      expect(macos.layoutTier, DesktopLayoutTier.expanded);
+      expect(macos.navigationMode, DesktopNavigationMode.expanded);
+      expect(
+        macos.titlebarStrategy,
+        MemosListDesktopTitlebarStrategy.macosToolbar,
+      );
+      expect(
+        macos.searchPresentation,
+        MemosListDesktopSearchPresentation.standard,
+      );
+      expect(
+        macos.composePresentation,
+        MemosListDesktopComposePresentation.sheet,
+      );
+      expect(macos.previewPanePolicy.supportsPane, isTrue);
+      expect(macos.previewPanePolicy.defaultMemoClickOpensPreview, isFalse);
+    },
+  );
 
   test('macOS layout moves home pills into titlebar chrome', () {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -342,6 +397,11 @@ void main() {
     );
     final layoutState = buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: resolveMemosListDesktopPresentation(
+        screenWidth: 1280,
+        showDrawer: true,
+        platform: TargetPlatform.macOS,
+      ),
       state: 'NORMAL',
       showDrawer: true,
       showPillActions: true,
@@ -349,9 +409,6 @@ void main() {
       enableCompose: true,
       hidePrimaryComposeFab: false,
       searching: false,
-      screenWidth: 1280,
-      isWindowsDesktop: false,
-      isMacosDesktop: true,
     );
 
     expect(layoutState.useMacosDesktopTitleBar, isTrue);
@@ -384,6 +441,11 @@ void main() {
       MemosListScreenLayoutState layoutFor(double width) {
         return buildMemosListScreenLayoutState(
           query: queryState,
+          desktopPresentation: resolveMemosListDesktopPresentation(
+            screenWidth: width,
+            showDrawer: true,
+            platform: TargetPlatform.macOS,
+          ),
           state: 'NORMAL',
           showDrawer: true,
           showPillActions: true,
@@ -391,9 +453,6 @@ void main() {
           enableCompose: true,
           hidePrimaryComposeFab: false,
           searching: false,
-          screenWidth: width,
-          isWindowsDesktop: false,
-          isMacosDesktop: true,
         );
       }
 
@@ -434,6 +493,11 @@ void main() {
     );
     final layoutState = buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: resolveMemosListDesktopPresentation(
+        screenWidth: 1360,
+        showDrawer: true,
+        platform: TargetPlatform.windows,
+      ),
       state: 'NORMAL',
       showDrawer: true,
       showPillActions: true,
@@ -441,8 +505,6 @@ void main() {
       enableCompose: true,
       hidePrimaryComposeFab: false,
       searching: false,
-      screenWidth: 1360,
-      isWindowsDesktop: true,
     );
 
     expect(layoutState.supportsDesktopPreviewPane, isTrue);
@@ -467,6 +529,11 @@ void main() {
       );
       final layoutState = buildMemosListScreenLayoutState(
         query: queryState,
+        desktopPresentation: resolveMemosListDesktopPresentation(
+          screenWidth: 1280,
+          showDrawer: true,
+          platform: TargetPlatform.windows,
+        ),
         state: 'NORMAL',
         showDrawer: true,
         showPillActions: true,
@@ -474,8 +541,6 @@ void main() {
         enableCompose: true,
         hidePrimaryComposeFab: false,
         searching: false,
-        screenWidth: 1280,
-        isWindowsDesktop: true,
       );
 
       expect(layoutState.supportsDesktopPreviewPane, isTrue);
@@ -523,6 +588,11 @@ void main() {
     );
     final layoutState = buildMemosListScreenLayoutState(
       query: queryState,
+      desktopPresentation: resolveMemosListDesktopPresentation(
+        screenWidth: 720,
+        showDrawer: true,
+        platform: TargetPlatform.android,
+      ),
       state: 'NORMAL',
       showDrawer: true,
       showPillActions: false,
@@ -530,8 +600,6 @@ void main() {
       enableCompose: true,
       hidePrimaryComposeFab: false,
       searching: false,
-      screenWidth: 720,
-      isWindowsDesktop: false,
     );
     final guideState = buildMemosListScreenGuideState(
       isAllMemos: true,

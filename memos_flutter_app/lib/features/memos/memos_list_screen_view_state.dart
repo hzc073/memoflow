@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/memo_search_matcher.dart';
-import '../../core/platform_layout.dart';
 import '../../core/tag_colors.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../data/models/shortcut.dart';
@@ -9,6 +8,7 @@ import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/system/scene_micro_guide_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
+import 'memos_list_desktop_presentation.dart';
 
 enum MemosListMemoSourceKind {
   stream,
@@ -75,6 +75,7 @@ class MemosListScreenQueryState {
 @immutable
 class MemosListScreenLayoutState {
   const MemosListScreenLayoutState({
+    required this.desktopPresentation,
     required this.showHeaderPillActions,
     required this.listTopPadding,
     required this.listVisualOffset,
@@ -83,8 +84,6 @@ class MemosListScreenLayoutState {
     required this.supportsDesktopPreviewPane,
     required this.useDesktopPreviewPane,
     required this.useInlineCompose,
-    required this.useWindowsDesktopHeader,
-    required this.useMacosDesktopTitleBar,
     required this.headerToolbarHeight,
     required this.headerBottomHeight,
     required this.floatingCollapseTopPadding,
@@ -92,6 +91,7 @@ class MemosListScreenLayoutState {
     required this.backToTopBaseOffset,
   });
 
+  final MemosListDesktopPresentation desktopPresentation;
   final bool showHeaderPillActions;
   final double listTopPadding;
   final double listVisualOffset;
@@ -100,13 +100,17 @@ class MemosListScreenLayoutState {
   final bool supportsDesktopPreviewPane;
   final bool useDesktopPreviewPane;
   final bool useInlineCompose;
-  final bool useWindowsDesktopHeader;
-  final bool useMacosDesktopTitleBar;
   final double headerToolbarHeight;
   final double headerBottomHeight;
   final double floatingCollapseTopPadding;
   final bool showComposeFab;
   final double backToTopBaseOffset;
+
+  bool get useWindowsDesktopHeader =>
+      desktopPresentation.usesWindowsDesktopHeader;
+
+  bool get useMacosDesktopTitleBar =>
+      desktopPresentation.usesMacosDesktopTitleBar;
 }
 
 @immutable
@@ -270,6 +274,7 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
 
 MemosListScreenLayoutState buildMemosListScreenLayoutState({
   required MemosListScreenQueryState query,
+  required MemosListDesktopPresentation desktopPresentation,
   required String state,
   required bool showDrawer,
   required bool showPillActions,
@@ -277,42 +282,29 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
   required bool enableCompose,
   required bool hidePrimaryComposeFab,
   required bool searching,
-  required double screenWidth,
-  required bool isWindowsDesktop,
-  bool isMacosDesktop = false,
 }) {
   final showHeaderPillActions = showPillActions && state == 'NORMAL';
-  final useMacosDesktopTitleBar = isMacosDesktop && showDrawer;
+  final useMacosDesktopTitleBar = desktopPresentation.usesMacosDesktopTitleBar;
   final showHeaderPillActionsInScroll =
       showHeaderPillActions && !useMacosDesktopTitleBar;
   final listTopPadding = showHeaderPillActionsInScroll ? 0.0 : 16.0;
   final listVisualOffset = showHeaderPillActionsInScroll ? 6.0 : 0.0;
   final supportsDesktopSidePane =
-      showDrawer && shouldUseDesktopSidePaneLayout(screenWidth);
+      showDrawer && desktopPresentation.supportsSidePane;
   final useDesktopSidePane = supportsDesktopSidePane;
-  final desktopMemoListLayout = resolveDesktopMemoListLayout(
-    screenWidth,
-    platform: isWindowsDesktop
-        ? TargetPlatform.windows
-        : (isMacosDesktop ? TargetPlatform.macOS : null),
-  );
-  final useAlignedDesktopPreviewPolicy = isWindowsDesktop || isMacosDesktop;
   final supportsDesktopPreviewPane =
       showDrawer &&
       supportsDesktopSidePane &&
-      (useAlignedDesktopPreviewPolicy
-          ? desktopMemoListLayout.supportsPreviewPane
-          : shouldUseDesktopPreviewPaneLayout(screenWidth));
-  final useDesktopPreviewPane = useAlignedDesktopPreviewPolicy
-      ? supportsDesktopPreviewPane &&
-            desktopMemoListLayout.defaultMemoClickOpensPreview
-      : supportsDesktopPreviewPane;
+      desktopPresentation.previewPanePolicy.supportsPane;
+  final useDesktopPreviewPane =
+      supportsDesktopPreviewPane &&
+      desktopPresentation.previewPanePolicy.defaultMemoClickOpensPreview;
   final useInlineCompose =
       enableCompose &&
       !hidePrimaryComposeFab &&
       !searching &&
-      shouldUseInlineComposeLayout(screenWidth);
-  final useWindowsDesktopHeader = isWindowsDesktop;
+      desktopPresentation.inlineComposeCapability.supported;
+  final useWindowsDesktopHeader = desktopPresentation.usesWindowsDesktopHeader;
   final headerToolbarHeight =
       (useWindowsDesktopHeader && !searching) || useMacosDesktopTitleBar
       ? 0.0
@@ -341,6 +333,7 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
   final backToTopBaseOffset = showComposeFab ? 104.0 : 24.0;
 
   return MemosListScreenLayoutState(
+    desktopPresentation: desktopPresentation,
     showHeaderPillActions: showHeaderPillActions,
     listTopPadding: listTopPadding,
     listVisualOffset: listVisualOffset,
@@ -349,8 +342,6 @@ MemosListScreenLayoutState buildMemosListScreenLayoutState({
     supportsDesktopPreviewPane: supportsDesktopPreviewPane,
     useDesktopPreviewPane: useDesktopPreviewPane,
     useInlineCompose: useInlineCompose,
-    useWindowsDesktopHeader: useWindowsDesktopHeader,
-    useMacosDesktopTitleBar: useMacosDesktopTitleBar,
     headerToolbarHeight: headerToolbarHeight,
     headerBottomHeight: headerBottomHeight,
     floatingCollapseTopPadding: floatingCollapseTopPadding,

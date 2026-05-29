@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_desktop_presentation.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_header_controller.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 
@@ -49,23 +50,45 @@ void main() {
     expect(controller.aiSearchActive, isFalse);
   });
 
-  test('closeWindowsHeaderSearch clears query quick search and filters', () {
+  test('closeDesktopHeaderSearch clears query quick search and filters', () {
     final controller = MemosListHeaderController(
       initialAdvancedSearchFilters: const AdvancedSearchFilters(
         locationContains: 'Paris',
       ),
       initialQuickSearchKind: QuickSearchKind.voice,
-      initialWindowsHeaderSearchExpanded: true,
+      initialDesktopHeaderSearchExpanded: true,
     );
     addTearDown(controller.dispose);
     controller.searchController.text = 'memo';
 
-    controller.closeWindowsHeaderSearch();
+    controller.closeDesktopHeaderSearch();
 
-    expect(controller.windowsHeaderSearchExpanded, isFalse);
+    expect(controller.desktopHeaderSearchExpanded, isFalse);
     expect(controller.searchController.text, isEmpty);
     expect(controller.selectedQuickSearchKind, isNull);
     expect(controller.advancedSearchFilters, AdvancedSearchFilters.empty);
+  });
+
+  test('focusSearchFromShortcut uses semantic desktop header presentation', () {
+    final controller = MemosListHeaderController();
+    addTearDown(controller.dispose);
+    var openSearchCount = 0;
+
+    controller.focusSearchFromShortcut(
+      searchPresentation: MemosListDesktopSearchPresentation.header,
+      onOpenSearch: () => openSearchCount++,
+    );
+
+    expect(controller.desktopHeaderSearchExpanded, isTrue);
+    expect(openSearchCount, 0);
+
+    controller.closeDesktopHeaderSearch();
+    controller.focusSearchFromShortcut(
+      searchPresentation: MemosListDesktopSearchPresentation.standard,
+      onOpenSearch: () => openSearchCount++,
+    );
+
+    expect(openSearchCount, 1);
   });
 
   test('applySearchQuery trims text and records search history', () {

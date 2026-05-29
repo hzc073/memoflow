@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/application/desktop/desktop_settings_window.dart';
+import 'package:memos_flutter_app/core/platform_layout.dart';
+import 'package:memos_flutter_app/features/memos/memos_list_desktop_presentation.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_route_delegate.dart';
 import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
 
@@ -164,7 +166,7 @@ void main() {
     expect(notifyCount, 1);
   });
 
-  testWidgets('openNoteInput uses desktop presenter on Windows platform', (
+  testWidgets('openNoteInput uses desktop presenter from desktop policy', (
     tester,
   ) async {
     final harness = await _pumpRouteDelegateHarness(
@@ -183,7 +185,47 @@ void main() {
           }) async {
             sheetOpenCount++;
           },
-      showWindowsDesktopNoteInput:
+      showDesktopComposeSurface:
+          (
+            context, {
+            String? initialText,
+            List<String> initialAttachmentPaths = const <String>[],
+            bool ignoreDraft = false,
+          }) async {
+            desktopOpenCount++;
+          },
+    );
+
+    await delegate.openNoteInput();
+
+    expect(desktopOpenCount, 1);
+    expect(sheetOpenCount, 0);
+  });
+
+  testWidgets('openNoteInput follows desktop compose policy, not platform', (
+    tester,
+  ) async {
+    final harness = await _pumpRouteDelegateHarness(
+      tester,
+      platform: TargetPlatform.macOS,
+    );
+    var sheetOpenCount = 0;
+    var desktopOpenCount = 0;
+    final delegate = harness.buildDelegate(
+      desktopPresentationResolver: (_) => _desktopPresentation(
+        composePresentation: MemosListDesktopComposePresentation.desktopSurface,
+        platform: TargetPlatform.macOS,
+      ),
+      showNoteInputSheet:
+          (
+            context, {
+            String? initialText,
+            List<String> initialAttachmentPaths = const <String>[],
+            bool ignoreDraft = false,
+          }) async {
+            sheetOpenCount++;
+          },
+      showDesktopComposeSurface:
           (
             context, {
             String? initialText,
@@ -238,7 +280,7 @@ void main() {
           }) async {
             sheetOpenCount++;
           },
-      showWindowsDesktopNoteInput:
+      showDesktopComposeSurface:
           (
             context, {
             String? initialText,
@@ -356,8 +398,9 @@ class _RouteDelegateHarness {
   MemosListRouteDelegate buildDelegate({
     MemosListRouteDesktopAdapter? desktopAdapter,
     MemosListRouteSettingsFallbackOpener? openSettingsFallback,
+    MemosListRouteDesktopPresentationResolver? desktopPresentationResolver,
     MemosListRouteNoteInputPresenter? showNoteInputSheet,
-    MemosListRouteNoteInputPresenter? showWindowsDesktopNoteInput,
+    MemosListRouteNoteInputPresenter? showDesktopComposeSurface,
     MemosListRouteVoiceRecordOverlayPresenter? showVoiceRecordOverlay,
   }) {
     return MemosListRouteDelegate(
@@ -372,9 +415,9 @@ class _RouteDelegateHarness {
       shouldUseInlineComposeForCurrentWindow: () => false,
       enableCompose: () => true,
       searching: () => false,
-      windowsHeaderSearchExpanded: () => false,
+      desktopHeaderSearchExpanded: () => false,
       closeSearch: () {},
-      closeWindowsHeaderSearch: () {},
+      closeDesktopHeaderSearch: () {},
       maybeScanLocalLibrary: () async {},
       isAllMemos: () => true,
       showDrawer: () => false,
@@ -384,11 +427,39 @@ class _RouteDelegateHarness {
       markSceneGuideSeen: (_) {},
       desktopAdapter: desktopAdapter,
       openSettingsFallback: openSettingsFallback,
+      desktopPresentationResolver: desktopPresentationResolver,
       showNoteInputSheet: showNoteInputSheet,
-      showWindowsDesktopNoteInput: showWindowsDesktopNoteInput,
+      showDesktopComposeSurface: showDesktopComposeSurface,
       showVoiceRecordOverlay: showVoiceRecordOverlay,
     );
   }
+}
+
+MemosListDesktopPresentation _desktopPresentation({
+  required MemosListDesktopComposePresentation composePresentation,
+  TargetPlatform platform = TargetPlatform.windows,
+}) {
+  return MemosListDesktopPresentation(
+    platform: platform,
+    layoutTier: DesktopLayoutTier.wide,
+    navigationMode: DesktopNavigationMode.expanded,
+    supportsSidePane: true,
+    titlebarStrategy: platform == TargetPlatform.windows
+        ? MemosListDesktopTitlebarStrategy.windowsCommandBar
+        : MemosListDesktopTitlebarStrategy.macosToolbar,
+    previewPanePolicy: const MemosListDesktopPreviewPanePolicy(
+      activation: MemosListDesktopPreviewPaneActivation.automatic,
+      supportsPane: true,
+    ),
+    searchPresentation: platform == TargetPlatform.windows
+        ? MemosListDesktopSearchPresentation.header
+        : MemosListDesktopSearchPresentation.standard,
+    composePresentation: composePresentation,
+    inlineComposeCapability: const MemosListInlineComposeCapability(
+      supported: true,
+      supportsResize: true,
+    ),
+  );
 }
 
 T _unusedRead<T>(ProviderListenable<T> provider) {
