@@ -2,6 +2,8 @@ schema: spec-driven
 
 context: |
   Tech stack: Flutter, Dart, Riverpod, SQLite, WebDAV sync, Windows desktop support
+  OpenSpec output language: default generated artifact prose and AI-facing OpenSpec summaries to Simplified Chinese, unless the user explicitly requests another language or an existing artifact language must be preserved for consistency.
+  Preserve English for OpenSpec structural words, template headings, normative requirement keywords, code identifiers, API names, file paths, class/function/package names, database/protocol terms, and server route terms.
   Architecture phase: evolve_modularity
   Current modularity score: 4/10
   Preserve-phase gate: score >= 8/10 and all critical items satisfied.
@@ -32,17 +34,21 @@ context: |
 
 rules:
   proposal:
+    - Write proposal prose in Simplified Chinese by default; preserve English for template headings, capability IDs, code identifiers, file paths, APIs, and established existing-language content.
     - State the active architecture phase and identify which modularity checklist items the change touches.
     - If the phase is `evolve_modularity` and the change touches a coupling hotspot, include at least one scoped modularity improvement in the proposed work.
     - If the phase is `preserve_modularity`, explain how the change preserves boundaries and avoids new reverse dependencies.
   design:
+    - Write design prose in Simplified Chinese by default; preserve English for template headings, code identifiers, file paths, APIs, and established existing-language content.
     - Describe the dependency direction before and after the change for every touched hotspot.
     - Identify any seam extraction, registry contribution, provider boundary, repository owner, or guardrail added to improve or preserve modularity.
     - If no modularity improvement is planned during `evolve_modularity`, justify why the touched area is not a relevant coupling hotspot.
   specs:
+    - Write requirement descriptions and scenario explanations in Simplified Chinese by default; preserve OpenSpec operation headers, `Requirement`/`Scenario` headings, normative keywords, and code/API identifiers in English.
     - Update `modularity-governance` requirements whenever the checklist semantics, critical items, preserve-phase gate, or allowed boundary exceptions change.
     - State architecture requirements in normative language that prevent new reverse dependencies and shared-logic leaks.
   tasks:
+    - Write task group names and task descriptions in Simplified Chinese by default; preserve checkbox syntax, numbering, code/module names, file paths, and commands in English.
     - Include at least one task for touched-area modularity improvement or guardrail coverage when a change touches a coupling hotspot during `evolve_modularity`.
     - Include verification tasks for any architecture guardrails, phase transitions, or boundary exceptions changed by the work.
 

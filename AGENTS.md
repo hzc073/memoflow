@@ -37,6 +37,7 @@
 ## AI collaboration workflow
 - For non-trivial or ambiguous work, use the local `openspec/` workflow before implementation.
 - Load context from `openspec/project.md` before proposing architecture or touching multiple files.
+- OpenSpec proposals, designs, tasks, delta specs, implementation notes, and archive summaries default to Simplified Chinese unless the user explicitly requests another language or preserving an existing artifact's language is necessary for consistency. Preserve OpenSpec structural keywords, normative requirement words, code identifiers, paths, API names, and commands in English.
 - Start or update a change folder under `openspec/changes/<change-id>/` with `proposal.md`, `design.md`, `tasks.md`, and at least one delta spec before making broad code changes, unless the user explicitly asks to skip the workflow.
 - Use `openspec/checklists/requirements.md` to clarify scope and `openspec/checklists/ai-review.md` to review AI-generated plans or patches.
 - Prefer one approved task at a time. After each implementation step, report what changed, what was verified, and any remaining risks or assumptions.
