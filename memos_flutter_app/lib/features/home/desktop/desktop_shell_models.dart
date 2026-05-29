@@ -1,8 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/app_motion.dart';
+import '../../../core/desktop/desktop_surface_policy.dart';
 
 enum DesktopShellSecondaryPanePresentation { inline, overlay }
+
+extension DesktopShellSecondaryPanePresentationPolicy
+    on DesktopShellSecondaryPanePresentation {
+  DesktopPanePresentation get policyPresentation {
+    return switch (this) {
+      DesktopShellSecondaryPanePresentation.inline =>
+        DesktopPanePresentation.inline,
+      DesktopShellSecondaryPanePresentation.overlay =>
+        DesktopPanePresentation.overlay,
+    };
+  }
+}
 
 @immutable
 class DesktopShellSecondaryPaneMotionSpec {

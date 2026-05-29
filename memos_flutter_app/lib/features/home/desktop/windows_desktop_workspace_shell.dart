@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../core/app_motion.dart';
+import '../../../core/desktop/desktop_surface_policy.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
 import 'desktop_shell_models.dart';
@@ -88,18 +89,26 @@ class _WindowsDesktopWorkspaceShellState
     final background = isDark
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
-    final resolvedPaneWidth = widget.secondaryPaneWidth
-        .clamp(
-          kWindowsDesktopSecondaryPaneMinWidth,
-          kWindowsDesktopSecondaryPaneMaxWidth,
-        )
-        .toDouble();
+    final surfacePolicy = resolveDesktopSurfacePolicy(
+      platform: TargetPlatform.windows,
+      layoutSpec: widget.layoutSpec,
+      secondaryPaneAvailable: widget.secondaryPane != null,
+      secondaryPaneVisible: widget.secondaryPaneVisible,
+      secondaryPaneWidth: widget.secondaryPaneWidth,
+      requestedSecondaryPanePresentation:
+          widget.secondaryPanePresentation.policyPresentation,
+      secondaryPaneResizeRequested: widget.onSecondaryPaneWidthChanged != null,
+      modalSurfaceAvailable: widget.modalSurface != null,
+      modalSurfaceVisible: widget.modalSurfaceVisible,
+      modalBarrierColor: widget.modalBarrierColor,
+      modalBarrierBlurSigma: widget.modalBarrierBlurSigma,
+    );
+    final secondaryPanePolicy = surfacePolicy.secondaryPane;
+    final modalSurfacePolicy = surfacePolicy.modalSurface;
+    final resolvedPaneWidth = secondaryPanePolicy.width;
     final showPinnedNavigation =
         widget.layoutSpec.navMode != WindowsDesktopNavMode.overlay;
-    final showSecondaryPane =
-        widget.layoutSpec.supportsSecondaryPane &&
-        widget.secondaryPaneVisible &&
-        widget.secondaryPane != null;
+    final showSecondaryPane = secondaryPanePolicy.visible;
     final motionSpec =
         widget.secondaryPaneMotionSpec ??
         DesktopShellSecondaryPaneMotionSpec.standard;
@@ -122,23 +131,21 @@ class _WindowsDesktopWorkspaceShellState
     final surfaceCurve = showSecondaryPane
         ? motionSpec.surfaceEnterCurve
         : motionSpec.surfaceExitCurve;
-    final showSecondaryPaneResizer =
-        showSecondaryPane && widget.onSecondaryPaneWidthChanged != null;
+    final showSecondaryPaneResizer = secondaryPanePolicy.resizable;
     final useOverlaySecondaryPane =
-        widget.secondaryPanePresentation ==
-        DesktopShellSecondaryPanePresentation.overlay;
+        secondaryPanePolicy.presentation == DesktopPanePresentation.overlay;
     final modalMotionSpec =
         widget.modalSurfaceMotionSpec ??
         DesktopShellModalSurfaceMotionSpec.standard;
     final modalBackdropDuration = AppMotion.effectiveDuration(
       context,
-      widget.modalSurfaceVisible
+      modalSurfacePolicy.visible
           ? modalMotionSpec.backdropEnterDuration
           : modalMotionSpec.backdropExitDuration,
     );
     final modalSurfaceDuration = AppMotion.effectiveDuration(
       context,
-      widget.modalSurfaceVisible
+      modalSurfacePolicy.visible
           ? modalMotionSpec.surfaceEnterDuration
           : modalMotionSpec.surfaceExitDuration,
     );
@@ -298,20 +305,20 @@ class _WindowsDesktopWorkspaceShellState
         children: [
           Positioned.fill(
             child: IgnorePointer(
-              ignoring: widget.modalSurfaceVisible,
+              ignoring: modalSurfacePolicy.visible,
               child: workspaceContent,
             ),
           ),
           Positioned.fill(
             child: IgnorePointer(
-              ignoring: !widget.modalSurfaceVisible,
+              ignoring: !modalSurfacePolicy.visible,
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: TweenAnimationBuilder<double>(
                       tween: Tween<double>(
-                        end: widget.modalSurfaceVisible
-                            ? widget.modalBarrierBlurSigma
+                        end: modalSurfacePolicy.visible
+                            ? modalSurfacePolicy.barrierBlurSigma
                             : 0,
                       ),
                       duration: modalBackdropDuration,
@@ -331,8 +338,10 @@ class _WindowsDesktopWorkspaceShellState
                         ),
                         duration: modalBackdropDuration,
                         curve: modalMotionSpec.backdropCurve,
-                        opacity: widget.modalSurfaceVisible ? 1 : 0,
-                        child: ColoredBox(color: widget.modalBarrierColor),
+                        opacity: modalSurfacePolicy.visible ? 1 : 0,
+                        child: ColoredBox(
+                          color: modalSurfacePolicy.barrierColor,
+                        ),
                       ),
                     ),
                   ),

@@ -10,7 +10,8 @@ export 'windows_desktop_workspace_shell.dart'
         WindowsDesktopSecondaryPaneMotionSpec,
         WindowsDesktopSecondaryPanePresentation;
 
-import '../../../core/platform_layout.dart';
+import '../../../application/desktop/desktop_exit_coordinator.dart';
+import '../../../core/desktop/desktop_layout_policy.dart';
 import '../app_drawer.dart';
 import '../app_drawer_menu_button.dart';
 import '../../../i18n/strings.g.dart';
@@ -20,6 +21,7 @@ import 'windows_desktop_workspace_shell.dart';
 
 typedef WindowsDesktopNavigationBuilder =
     Widget Function(AppDrawerViewMode viewMode, bool embedded);
+typedef WindowsDesktopCloseCommand = FutureOr<void> Function();
 
 class WindowsDesktopPageShell extends StatefulWidget {
   const WindowsDesktopPageShell({
@@ -44,6 +46,7 @@ class WindowsDesktopPageShell extends StatefulWidget {
     this.modalSurfaceMotionSpec,
     this.backgroundColor,
     this.showWindowControls = true,
+    this.onRequestCloseWindow,
   });
 
   final WindowsDesktopNavigationBuilder navigationBuilder;
@@ -65,6 +68,7 @@ class WindowsDesktopPageShell extends StatefulWidget {
   final DesktopShellModalSurfaceMotionSpec? modalSurfaceMotionSpec;
   final Color? backgroundColor;
   final bool showWindowControls;
+  final WindowsDesktopCloseCommand? onRequestCloseWindow;
 
   @override
   State<WindowsDesktopPageShell> createState() =>
@@ -125,7 +129,12 @@ class _WindowsDesktopPageShellState extends State<WindowsDesktopPageShell> {
     if (kIsWeb || !widget.showWindowControls) {
       return;
     }
-    await windowManager.close();
+    final closeCommand = widget.onRequestCloseWindow;
+    if (closeCommand != null) {
+      await closeCommand();
+      return;
+    }
+    await DesktopExitCoordinator.requestClose(source: 'window_button');
   }
 
   void _toggleOverlayNavigation() {
@@ -140,7 +149,7 @@ class _WindowsDesktopPageShellState extends State<WindowsDesktopPageShell> {
   @override
   Widget build(BuildContext context) {
     final platform = Theme.of(context).platform;
-    final layoutSpec = resolveWindowsDesktopLayout(
+    final layoutSpec = resolveDesktopLayoutPolicy(
       MediaQuery.sizeOf(context).width,
       platform: platform,
     );
@@ -149,19 +158,19 @@ class _WindowsDesktopPageShellState extends State<WindowsDesktopPageShell> {
         widget.backgroundColor ?? Theme.of(context).scaffoldBackgroundColor;
 
     final navigation = switch (layoutSpec.navMode) {
-      WindowsDesktopNavMode.overlay => const SizedBox.shrink(),
-      WindowsDesktopNavMode.rail => widget.navigationBuilder(
+      DesktopNavigationMode.overlay => const SizedBox.shrink(),
+      DesktopNavigationMode.rail => widget.navigationBuilder(
         AppDrawerViewMode.rail,
         true,
       ),
-      WindowsDesktopNavMode.expanded => widget.navigationBuilder(
+      DesktopNavigationMode.expanded => widget.navigationBuilder(
         AppDrawerViewMode.expandedSidebar,
         true,
       ),
     };
 
     final overlayNavigation =
-        layoutSpec.navMode == WindowsDesktopNavMode.overlay &&
+        layoutSpec.navMode == DesktopNavigationMode.overlay &&
             _overlayNavigationVisible
         ? Stack(
             children: [
@@ -191,7 +200,7 @@ class _WindowsDesktopPageShellState extends State<WindowsDesktopPageShell> {
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (layoutSpec.navMode == WindowsDesktopNavMode.overlay) ...[
+              if (layoutSpec.navMode == DesktopNavigationMode.overlay) ...[
                 AppDrawerMenuButton(
                   tooltip: context.t.strings.legacy.msg_toggle_sidebar,
                   iconColor: textColor,

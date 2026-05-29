@@ -2,15 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../../core/desktop/desktop_layout_policy.dart';
+import '../../../core/desktop/desktop_surface_policy.dart';
 import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../../core/desktop/window_chrome_safe_area.dart';
 import '../../../core/memoflow_palette.dart';
-import '../../../core/platform_layout.dart'
-    show
-        kMemoFlowDesktopDrawerWidth,
-        kMemoFlowDesktopSidePaneBreakpoint,
-        kWindowsDesktopRailWidth,
-        kWindowsDesktopSecondaryPaneDefaultWidth;
 import '../app_drawer.dart';
 import 'desktop_shell_models.dart';
 
@@ -66,7 +62,26 @@ class AppleMacosPageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final useExpandedSidebar = width >= kMemoFlowDesktopSidePaneBreakpoint;
+    final layoutSpec = resolveDesktopLayoutPolicy(
+      width,
+      platform: TargetPlatform.macOS,
+    );
+    final useExpandedSidebar =
+        layoutSpec.navMode == DesktopNavigationMode.expanded;
+    final surfacePolicy = resolveDesktopSurfacePolicy(
+      platform: TargetPlatform.macOS,
+      layoutSpec: layoutSpec,
+      secondaryPaneAvailable: secondaryPane != null,
+      secondaryPaneVisible: secondaryPaneVisible,
+      secondaryPaneWidth: secondaryPaneWidth,
+      requestedSecondaryPanePresentation:
+          secondaryPanePresentation.policyPresentation,
+      secondaryPaneResizeRequested: onSecondaryPaneWidthChanged != null,
+      modalSurfaceAvailable: modalSurface != null,
+      modalSurfaceVisible: modalSurfaceVisible,
+      modalBarrierColor: modalBarrierColor,
+      modalBarrierBlurSigma: modalBarrierBlurSigma,
+    );
     final navigationWidth = useExpandedSidebar
         ? kMemoFlowDesktopDrawerWidth
         : kWindowsDesktopRailWidth;
@@ -148,9 +163,7 @@ class AppleMacosPageShell extends StatelessWidget {
                         child: _AppleMacosContentArea(
                           body: body,
                           secondaryPane: secondaryPane,
-                          secondaryPaneVisible: secondaryPaneVisible,
-                          secondaryPaneWidth: secondaryPaneWidth,
-                          secondaryPanePresentation: secondaryPanePresentation,
+                          secondaryPanePolicy: surfacePolicy.secondaryPane,
                         ),
                       ),
                     ],
@@ -158,10 +171,10 @@ class AppleMacosPageShell extends StatelessWidget {
                 ),
               ],
             ),
-            if (modalSurfaceVisible && modalSurface != null)
+            if (surfacePolicy.modalSurface.visible && modalSurface != null)
               Positioned.fill(
                 child: _AppleMacosModalSurface(
-                  barrierColor: modalBarrierColor,
+                  barrierColor: surfacePolicy.modalSurface.barrierColor,
                   child: modalSurface!,
                 ),
               ),
@@ -272,24 +285,19 @@ class _AppleMacosContentArea extends StatelessWidget {
   const _AppleMacosContentArea({
     required this.body,
     required this.secondaryPane,
-    required this.secondaryPaneVisible,
-    required this.secondaryPaneWidth,
-    required this.secondaryPanePresentation,
+    required this.secondaryPanePolicy,
   });
 
   final Widget body;
   final Widget? secondaryPane;
-  final bool secondaryPaneVisible;
-  final double secondaryPaneWidth;
-  final DesktopShellSecondaryPanePresentation secondaryPanePresentation;
+  final DesktopSecondaryPanePolicy secondaryPanePolicy;
 
   @override
   Widget build(BuildContext context) {
     final inlineSecondaryPane =
-        secondaryPaneVisible &&
+        secondaryPanePolicy.visible &&
         secondaryPane != null &&
-        secondaryPanePresentation ==
-            DesktopShellSecondaryPanePresentation.inline;
+        secondaryPanePolicy.presentation == DesktopPanePresentation.inline;
     return Row(
       children: [
         Expanded(
@@ -297,7 +305,7 @@ class _AppleMacosContentArea extends StatelessWidget {
         ),
         if (inlineSecondaryPane)
           SizedBox(
-            width: secondaryPaneWidth,
+            width: secondaryPanePolicy.width,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 border: Border(
