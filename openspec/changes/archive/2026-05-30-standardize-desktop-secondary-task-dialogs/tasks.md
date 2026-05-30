@@ -37,4 +37,4 @@
 - [x] 5.3 从 `memos_flutter_app` 运行相关 architecture guardrails，包括 desktop window chrome safe-area、platform UI、modularity dependency 和新增/更新的 task surface guardrails。
 - [x] 5.4 运行 `openspec validate standardize-desktop-secondary-task-dialogs --strict`。
 - [x] 5.5 运行 `git diff --check`。
-- [ ] 5.6 手动验证 Windows、macOS、Linux 桌面端创建/编辑合集：任务表面居中或按平台规则呈现，标题和关闭/取消清晰可见，保存/取消/未保存确认都符合预期；移动端创建/编辑合集仍保持原有可用导航。
+- [x] 5.6 手动验证 Windows、macOS、Linux 桌面端创建/编辑合集：任务表面居中或按平台规则呈现，标题和关闭/取消清晰可见，保存/取消/未保存确认都符合预期；移动端创建/编辑合集仍保持原有可用导航。

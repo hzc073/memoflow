@@ -39,4 +39,4 @@
 - [x] 6.2 增加 guardrail 或 focused test，确认 layout policy 不引入 `state -> features`、`application -> features` 或 `core -> features` 新反向依赖。
 - [x] 6.3 运行 focused tests：`flutter test test/features/collections/...` 中的 reader layout、page engine、paged view、overlay 相关测试。
 - [x] 6.4 运行 `flutter analyze`、相关 architecture guardrail tests、`openspec validate improve-desktop-collection-reader-layout --strict` 和 `git diff --check`。
-- [ ] 6.5 进行桌面手动验证：macOS、Windows、Linux 宽屏窗口下分别检查纵向阅读、分页阅读、内容宽度切换、菜单唤醒、提示栏和底部控制布局。
+- [x] 6.5 进行桌面手动验证：macOS、Windows、Linux 宽屏窗口下分别检查纵向阅读、分页阅读、内容宽度切换、菜单唤醒、提示栏和底部控制布局。
