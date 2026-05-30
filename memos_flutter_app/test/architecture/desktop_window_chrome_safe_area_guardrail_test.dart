@@ -391,6 +391,92 @@ void main() {
     );
   });
 
+  test('migrated settings task flows use shared task surface helpers', () async {
+    final shortcutEditor = await File(
+      'lib/features/settings/shortcut_editor_screen.dart',
+    ).readAsString();
+    final aiWizard = await File(
+      'lib/features/settings/ai_service_wizard_screen.dart',
+    ).readAsString();
+
+    expect(shortcutEditor.contains('openShortcutEditor'), isTrue);
+    expect(shortcutEditor.contains('PlatformSecondaryTaskFrame'), isTrue);
+    expect(shortcutEditor.contains('showPlatformSecondaryTaskSurface'), isTrue);
+    expect(shortcutEditor.contains('kMacosTrafficLightReservedWidth'), isFalse);
+
+    expect(aiWizard.contains('openAiServiceWizard'), isTrue);
+    expect(aiWizard.contains('PlatformSecondaryTaskFrame'), isTrue);
+    expect(aiWizard.contains('showPlatformSecondaryTaskSurface'), isTrue);
+    expect(aiWizard.contains('kMacosTrafficLightReservedWidth'), isFalse);
+    expect(
+      aiWizard.contains('AiProxySettingsScreen'),
+      isTrue,
+      reason:
+          'The wizard proxy settings route is intentionally outside this migration.',
+    );
+
+    final migratedEntries =
+        <String, ({String path, String helper, String direct})>{
+          'shortcuts settings': (
+            path: 'lib/features/settings/shortcuts_settings_screen.dart',
+            helper: 'openShortcutEditor',
+            direct: 'ShortcutEditorScreen(',
+          ),
+          'memos route delegate': (
+            path: 'lib/features/memos/memos_list_route_delegate.dart',
+            helper: 'openShortcutEditor',
+            direct: 'ShortcutEditorScreen(',
+          ),
+          'AI settings': (
+            path: 'lib/features/settings/ai_settings_screen.dart',
+            helper: 'openAiServiceWizard',
+            direct: 'AiServiceWizardScreen(',
+          ),
+        };
+
+    for (final entry in migratedEntries.entries) {
+      final source = await File(entry.value.path).readAsString();
+      expect(
+        source.contains(entry.value.helper),
+        isTrue,
+        reason: '${entry.key} should use the shared task presenter.',
+      );
+      expect(
+        source.contains(entry.value.direct),
+        isFalse,
+        reason:
+            '${entry.key} must not directly push the task page as a page-local AppBar flow.',
+      );
+    }
+
+    final lowerLayerViolations = <String>[];
+    for (final root in <String>['lib/state', 'lib/application', 'lib/core']) {
+      final directory = Directory(root);
+      if (!directory.existsSync()) continue;
+      for (final entity in directory.listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        final source = await entity.readAsString();
+        if (source.contains('features/settings/shortcut_editor_screen.dart') ||
+            source.contains(
+              'features/settings/ai_service_wizard_screen.dart',
+            ) ||
+            source.contains('openShortcutEditor(') ||
+            source.contains('openAiServiceWizard(')) {
+          lowerLayerViolations.add(entity.path);
+        }
+      }
+    }
+
+    expect(
+      lowerLayerViolations,
+      isEmpty,
+      reason: lowerLayerViolations.isEmpty
+          ? null
+          : 'state/application/core must not import settings task presenters:\n'
+                '${lowerLayerViolations.join('\n')}',
+    );
+  });
+
   test('desktop settings app-owned close stays platform gated', () async {
     final settingsWindow = await File(
       'lib/features/settings/desktop_settings_window_app.dart',

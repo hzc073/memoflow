@@ -10,16 +10,36 @@ import '../../data/logs/log_manager.dart';
 import '../../core/uid.dart';
 import '../../data/repositories/ai_settings_repository.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_secondary_task_surface.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
 import 'ai_proxy_settings_screen.dart';
 
 class AiServiceWizardScreen extends ConsumerStatefulWidget {
-  const AiServiceWizardScreen({super.key});
+  const AiServiceWizardScreen({super.key, this.embeddedTaskSurface = false});
+
+  final bool embeddedTaskSurface;
 
   @override
   ConsumerState<AiServiceWizardScreen> createState() =>
       _AiServiceWizardScreenState();
+}
+
+Future<void> openAiServiceWizard(BuildContext context) {
+  final useTaskSurface = shouldUsePlatformSecondaryTaskSurface(context);
+  final wizard = AiServiceWizardScreen(embeddedTaskSurface: useTaskSurface);
+  if (useTaskSurface) {
+    return showPlatformSecondaryTaskSurface<void>(
+      context: context,
+      size: PlatformSecondaryTaskSurfaceSize.large,
+      maxWidth: 960,
+      builder: (_) => wizard,
+    );
+  }
+  return Navigator.of(context).push<void>(
+    buildPlatformPageRoute<void>(context: context, builder: (_) => wizard),
+  );
 }
 
 class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
@@ -79,20 +99,24 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
         ? MemoFlowPalette.backgroundDark
         : MemoFlowPalette.backgroundLight;
     final proxyConfigured = settings.proxySettings.isConfigured;
+    final titleText = isZh ? '\u6dfb\u52a0\u670d\u52a1' : 'Add Service';
 
-    return Scaffold(
+    final content = Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
-          context: context,
-          automaticallyImplyLeading: true,
-        ),
-        title: Text(isZh ? '添加服务' : 'Add Service'),
-      ),
+      appBar: widget.embeddedTaskSurface
+          ? null
+          : AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
+              title: Text(isZh ? '添加服务' : 'Add Service'),
+            ),
       body: Stepper(
         currentStep: _step,
         onStepTapped: _handleStepTapped,
@@ -356,6 +380,18 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
         ],
       ),
     );
+
+    if (widget.embeddedTaskSurface) {
+      return PlatformSecondaryTaskFrame(
+        title: Text(titleText),
+        closeTooltip: context.t.strings.legacy.msg_cancel_2,
+        onClose: () => Navigator.of(context).maybePop(),
+        backgroundColor: bg,
+        body: content,
+      );
+    }
+
+    return content;
   }
 
   void _handleTemplateSearchChanged() {

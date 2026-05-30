@@ -41,9 +41,7 @@ class AiSettingsScreen extends ConsumerWidget {
             defaultTargetPlatform == TargetPlatform.macOS);
 
     void openAddService() {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const AiServiceWizardScreen()),
-      );
+      openAiServiceWizard(context);
     }
 
     return Scaffold(

@@ -28,11 +28,7 @@ class _ShortcutsSettingsScreenState
   var _saving = false;
 
   Future<void> _openEditor({Shortcut? shortcut}) async {
-    final result = await Navigator.of(context).push<ShortcutEditorResult>(
-      MaterialPageRoute<ShortcutEditorResult>(
-        builder: (_) => ShortcutEditorScreen(shortcut: shortcut),
-      ),
-    );
+    final result = await openShortcutEditor(context, shortcut: shortcut);
     if (result == null) return;
     await _saveShortcut(
       shortcut: shortcut,

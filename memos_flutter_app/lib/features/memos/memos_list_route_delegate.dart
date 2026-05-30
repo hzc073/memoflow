@@ -557,12 +557,7 @@ class MemosListRouteDelegate extends ChangeNotifier {
 
   Future<void> createShortcutFromMenu() async {
     final context = _context;
-    final result = await Navigator.of(context).push<ShortcutEditorResult>(
-      buildPlatformPageRoute<ShortcutEditorResult>(
-        context: context,
-        builder: (_) => const ShortcutEditorScreen(),
-      ),
-    );
+    final result = await openShortcutEditor(context);
     if (result == null) return;
 
     final account = _read(appSessionProvider).valueOrNull?.currentAccount;

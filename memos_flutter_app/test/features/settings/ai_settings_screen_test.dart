@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
 import 'package:memos_flutter_app/features/settings/ai_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/ai_service_wizard_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 
@@ -72,6 +74,15 @@ class _TestAppPreferencesController extends AppPreferencesController {
 }
 
 void main() {
+  setUp(() {
+    LocaleSettings.setLocale(AppLocale.en);
+    debugPlatformTargetOverride = null;
+  });
+
+  tearDown(() {
+    debugPlatformTargetOverride = null;
+  });
+
   testWidgets('AiSettingsScreen renders service overview and route entry', (
     tester,
   ) async {
@@ -221,5 +232,98 @@ void main() {
     expect(find.text('Add Service'), findsOneWidget);
     expect(find.text('Proxy Settings'), findsOneWidget);
     expect(find.text('Not configured'), findsOneWidget);
+  });
+
+  testWidgets('desktop add service opens wizard in task surface', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.windows;
+    addTearDown(() => debugPlatformTargetOverride = null);
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+        ],
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const AiSettingsScreen(showBackButton: false),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add Service').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey<String>('platform-secondary-task-surface-dialog'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(AiServiceWizardScreen), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    expect(find.text('Add Service'), findsWidgets);
+  });
+
+  testWidgets('mobile add service keeps route presentation', (tester) async {
+    debugPlatformTargetOverride = TargetPlatform.android;
+    addTearDown(() => debugPlatformTargetOverride = null);
+
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+        ],
+        child: TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: const AiSettingsScreen(showBackButton: false),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add Service').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(AiServiceWizardScreen), findsOneWidget);
+    expect(find.text('Add Service'), findsWidgets);
   });
 }

@@ -9,6 +9,8 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/shortcut.dart';
+import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_secondary_task_surface.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../i18n/strings.g.dart';
@@ -20,10 +22,39 @@ class ShortcutEditorResult {
   final String filter;
 }
 
+Future<ShortcutEditorResult?> openShortcutEditor(
+  BuildContext context, {
+  Shortcut? shortcut,
+}) {
+  final useTaskSurface = shouldUsePlatformSecondaryTaskSurface(context);
+  final editor = ShortcutEditorScreen(
+    shortcut: shortcut,
+    embeddedTaskSurface: useTaskSurface,
+  );
+  if (useTaskSurface) {
+    return showPlatformSecondaryTaskSurface<ShortcutEditorResult>(
+      context: context,
+      size: PlatformSecondaryTaskSurfaceSize.standard,
+      builder: (_) => editor,
+    );
+  }
+  return Navigator.of(context).push<ShortcutEditorResult>(
+    buildPlatformPageRoute<ShortcutEditorResult>(
+      context: context,
+      builder: (_) => editor,
+    ),
+  );
+}
+
 class ShortcutEditorScreen extends ConsumerStatefulWidget {
-  const ShortcutEditorScreen({super.key, this.shortcut});
+  const ShortcutEditorScreen({
+    super.key,
+    this.shortcut,
+    this.embeddedTaskSurface = false,
+  });
 
   final Shortcut? shortcut;
+  final bool embeddedTaskSurface;
 
   @override
   ConsumerState<ShortcutEditorScreen> createState() =>
@@ -169,51 +200,55 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
     final tags = ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
     final tagColors = ref.watch(tagColorLookupProvider);
     final dateFormat = DateFormat('yyyy/MM/dd');
+    final titleText = widget.shortcut == null
+        ? context.t.strings.legacy.msg_shortcut_2
+        : context.t.strings.legacy.msg_edit_shortcut;
 
-    return Scaffold(
+    final content = Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
-          context: context,
-          automaticallyImplyLeading: true,
-        ),
-        leading: resolveDesktopRouteDismissalLeading(
-          context: context,
-          leading: TextButton(
-            onPressed: () => context.safePop(),
-            child: Text(
-              context.t.strings.legacy.msg_cancel_2,
-              style: TextStyle(
-                color: MemoFlowPalette.primary,
-                fontWeight: FontWeight.w600,
+      appBar: widget.embeddedTaskSurface
+          ? null
+          : AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              automaticallyImplyLeading:
+                  resolveDesktopRouteAutomaticallyImplyLeading(
+                    context: context,
+                    automaticallyImplyLeading: true,
+                  ),
+              leading: resolveDesktopRouteDismissalLeading(
+                context: context,
+                leading: TextButton(
+                  onPressed: () => context.safePop(),
+                  child: Text(
+                    context.t.strings.legacy.msg_cancel_2,
+                    style: TextStyle(
+                      color: MemoFlowPalette.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-        title: Text(
-          widget.shortcut == null
-              ? context.t.strings.legacy.msg_shortcut_2
-              : context.t.strings.legacy.msg_edit_shortcut,
-          style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
-        ),
-        centerTitle: true,
-        actions: [
-          TextButton(
-            onPressed: canSubmit ? _submit : null,
-            child: Text(
-              context.t.strings.legacy.msg_done,
-              style: TextStyle(
-                color: canSubmit ? MemoFlowPalette.primary : textMuted,
-                fontWeight: FontWeight.w600,
+              title: Text(
+                titleText,
+                style: TextStyle(fontWeight: FontWeight.w700, color: textMain),
               ),
+              centerTitle: true,
+              actions: [
+                TextButton(
+                  onPressed: canSubmit ? _submit : null,
+                  child: Text(
+                    context.t.strings.legacy.msg_done,
+                    style: TextStyle(
+                      color: canSubmit ? MemoFlowPalette.primary : textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           if (isDark)
@@ -483,6 +518,30 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
         ],
       ),
     );
+
+    if (widget.embeddedTaskSurface) {
+      return PlatformSecondaryTaskFrame(
+        title: Text(titleText),
+        closeTooltip: context.t.strings.legacy.msg_cancel_2,
+        onClose: () => context.safePop(),
+        backgroundColor: bg,
+        actions: [
+          TextButton(
+            onPressed: canSubmit ? _submit : null,
+            child: Text(
+              context.t.strings.legacy.msg_done,
+              style: TextStyle(
+                color: canSubmit ? MemoFlowPalette.primary : textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+        body: content,
+      );
+    }
+
+    return content;
   }
 
   String _buildFilter() {
