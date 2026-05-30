@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/collection_reader.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/features/collections/collection_reader_layout_policy.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_page_engine.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_page_models.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_utils.dart';
@@ -66,6 +67,86 @@ void main() {
 
     expect(layout.pages.length, greaterThan(1));
     expect(layout.pages.every((page) => page.memoUid == memo.uid), isTrue);
+  });
+
+  test('desktop readable viewport width drives page count', () {
+    final engine = CollectionReaderPageEngine();
+    final content = List<String>.filled(
+      260,
+      'Readable width controls paged measurement.',
+    ).join(' ');
+    final memo = buildMemo(uid: 'memo-readable-width', content: content);
+    final standardLayout = resolveCollectionReaderLayout(
+      platform: TargetPlatform.windows,
+      viewportSize: const Size(1200, 700),
+      contentWidthMode: CollectionReaderContentWidthMode.standard,
+    );
+    final fullLayout = resolveCollectionReaderLayout(
+      platform: TargetPlatform.windows,
+      viewportSize: const Size(1200, 700),
+      contentWidthMode: CollectionReaderContentWidthMode.full,
+    );
+    final preferences = CollectionReaderPreferences.defaults.copyWith(
+      pagePadding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+    );
+
+    final standardPages = engine.layoutChapter(
+      memo: memo,
+      memoIndex: 0,
+      viewportSize: standardLayout.readableViewportSize,
+      preferences: preferences.copyWith(
+        displayConfig: preferences.displayConfig.copyWith(
+          contentWidthMode: CollectionReaderContentWidthMode.standard,
+        ),
+      ),
+    );
+    final fullPages = engine.layoutChapter(
+      memo: memo,
+      memoIndex: 0,
+      viewportSize: fullLayout.readableViewportSize,
+      preferences: preferences.copyWith(
+        displayConfig: preferences.displayConfig.copyWith(
+          contentWidthMode: CollectionReaderContentWidthMode.full,
+        ),
+      ),
+    );
+
+    expect(standardLayout.readableViewportSize.width, 820);
+    expect(fullLayout.readableViewportSize.width, 1200);
+    expect(standardPages.pages.length, greaterThan(fullPages.pages.length));
+  });
+
+  test('content width mode participates in page cache key', () {
+    final engine = CollectionReaderPageEngine();
+    final memo = buildMemo(
+      uid: 'memo-width-cache',
+      content: List<String>.filled(80, 'cache segment').join(' '),
+    );
+    final standardPreferences = CollectionReaderPreferences.defaults.copyWith(
+      displayConfig: CollectionReaderDisplayConfig.defaults.copyWith(
+        contentWidthMode: CollectionReaderContentWidthMode.standard,
+      ),
+    );
+    final widePreferences = CollectionReaderPreferences.defaults.copyWith(
+      displayConfig: CollectionReaderDisplayConfig.defaults.copyWith(
+        contentWidthMode: CollectionReaderContentWidthMode.wide,
+      ),
+    );
+
+    final standardLayout = engine.layoutChapter(
+      memo: memo,
+      memoIndex: 0,
+      viewportSize: const Size(820, 700),
+      preferences: standardPreferences,
+    );
+    final wideLayout = engine.layoutChapter(
+      memo: memo,
+      memoIndex: 0,
+      viewportSize: const Size(820, 700),
+      preferences: widePreferences,
+    );
+
+    expect(standardLayout.cacheKey, isNot(wideLayout.cacheKey));
   });
 
   test('offset resolves to later page for long chapter', () {

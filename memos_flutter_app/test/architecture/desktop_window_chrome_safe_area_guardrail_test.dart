@@ -193,6 +193,127 @@ void main() {
     );
   });
 
+  test(
+    'collection reader layout policy centralizes desktop chrome calculations',
+    () async {
+      final policy = await File(
+        'lib/features/collections/collection_reader_layout_policy.dart',
+      ).readAsString();
+      final shell = await File(
+        'lib/features/collections/collection_reader_shell.dart',
+      ).readAsString();
+
+      expect(policy.contains('window_chrome_safe_area.dart'), isTrue);
+      expect(policy.contains('resolveDesktopWindowChromeInsets'), isTrue);
+      expect(policy.contains('kMacosTrafficLightReservedWidth'), isFalse);
+      expect(shell.contains('collection_reader_layout_policy.dart'), isTrue);
+      expect(shell.contains('resolveCollectionReaderLayout'), isTrue);
+      expect(shell.contains('window_chrome_safe_area.dart'), isFalse);
+      expect(shell.contains('resolveDesktopWindowChromeInsets'), isFalse);
+      expect(shell.contains('kMacosTrafficLightReservedWidth'), isFalse);
+    },
+  );
+
+  test(
+    'collection reader files do not hardcode macOS traffic-light layout',
+    () async {
+      final readerFiles = Directory('lib/features/collections')
+          .listSync()
+          .whereType<File>()
+          .where((file) {
+            final name = file.uri.pathSegments.last;
+            return name.startsWith('collection_reader') &&
+                name.endsWith('.dart');
+          });
+      final violations = <String>[];
+
+      for (final file in readerFiles) {
+        final source = await file.readAsString();
+        if (source.contains('kMacosTrafficLightReservedWidth')) {
+          violations.add(file.path);
+        }
+        if (source.contains('resolveDesktopWindowChromeInsets') &&
+            !file.path.endsWith('collection_reader_layout_policy.dart')) {
+          violations.add('${file.path} bypasses reader layout policy');
+        }
+      }
+
+      expect(
+        violations,
+        isEmpty,
+        reason: violations.isEmpty
+            ? null
+            : 'reader layout must route chrome geometry through the shared seam '
+                  'and feature-local policy:\n${violations.join('\n')}',
+      );
+    },
+  );
+
+  test(
+    'collection reader layout policy has no lower-layer reverse imports',
+    () async {
+      final policy = await File(
+        'lib/features/collections/collection_reader_layout_policy.dart',
+      ).readAsString();
+      const forbiddenPolicyImports = <String>[
+        'package:memos_flutter_app/state/',
+        'package:memos_flutter_app/application/',
+        'package:memos_flutter_app/features/',
+        '../../state/',
+        '../../application/',
+        '../../features/',
+        '../state/',
+        '../application/',
+        '../features/',
+      ];
+      final policyImportViolations = <String>[];
+
+      for (final line in policy.split('\n')) {
+        final trimmed = line.trim();
+        if (!trimmed.startsWith('import ')) continue;
+        final match = RegExp(
+          r"""^import ['"]([^'"]+)['"];$""",
+        ).firstMatch(trimmed);
+        if (match == null) continue;
+        final importPath = match.group(1)!;
+        if (forbiddenPolicyImports.any(importPath.startsWith)) {
+          policyImportViolations.add(importPath);
+        }
+      }
+
+      expect(
+        policyImportViolations,
+        isEmpty,
+        reason: policyImportViolations.isEmpty
+            ? null
+            : 'layout policy must stay feature-local and pure:\n'
+                  '${policyImportViolations.join('\n')}',
+      );
+
+      final lowerLayerViolations = <String>[];
+      for (final root in <String>['lib/state', 'lib/application', 'lib/core']) {
+        final dir = Directory(root);
+        if (!dir.existsSync()) continue;
+        for (final entity in dir.listSync(recursive: true)) {
+          if (entity is! File || !entity.path.endsWith('.dart')) continue;
+          final source = await entity.readAsString();
+          if (source.contains('collection_reader_layout_policy.dart')) {
+            lowerLayerViolations.add(entity.path);
+          }
+        }
+      }
+
+      expect(
+        lowerLayerViolations,
+        isEmpty,
+        reason: lowerLayerViolations.isEmpty
+            ? null
+            : 'state/application/core must not import collection reader policy:\n'
+                  '${lowerLayerViolations.join('\n')}',
+      );
+    },
+  );
+
   test('desktop secondary routes keep app-level back controls visible', () {
     for (final platform in <TargetPlatform>[
       TargetPlatform.macOS,

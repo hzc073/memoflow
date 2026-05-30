@@ -21,8 +21,10 @@ import 'package:memos_flutter_app/data/models/rss_article.dart';
 import 'package:memos_flutter_app/data/models/rss_feed.dart';
 import 'package:memos_flutter_app/data/repositories/rss_repository.dart';
 import 'package:memos_flutter_app/features/collections/collection_detail_screen.dart';
+import 'package:memos_flutter_app/features/collections/collection_reader_layout_policy.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_overlay.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_page_engine.dart';
+import 'package:memos_flutter_app/features/collections/collection_reader_paged_view.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_shell.dart';
 import 'package:memos_flutter_app/features/collections/collection_reader_utils.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
@@ -441,6 +443,281 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('macOS paged reader tip bar avoids native traffic lights', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    final collection = MemoCollection.createSmart(
+      id: 'collection-macos-reader-tip',
+      title: 'Reading shelf',
+      description: 'Collected reading notes',
+      rules: const CollectionRuleSet(
+        tagPaths: <String>['reading'],
+        tagMatchMode: CollectionTagMatchMode.any,
+        includeDescendants: true,
+        visibility: CollectionVisibilityScope.all,
+        dateRule: CollectionDateRule.defaults,
+        attachmentRule: CollectionAttachmentRule.any,
+        pinnedOnly: false,
+      ),
+    );
+    final memos = <LocalMemo>[
+      _memo(
+        uid: 'memo-macos-reader-tip',
+        content: 'Paged tip content avoids macOS controls.',
+        tags: const <String>['reading'],
+        createTime: DateTime(2024, 2, 10, 8),
+      ),
+    ];
+    final readerPreferences = DevicePreferences.defaults.copyWith(
+      collectionReaderPreferences: DevicePreferences
+          .defaults
+          .collectionReaderPreferences
+          .copyWith(
+            mode: CollectionReaderMode.paged,
+            pageAnimation: CollectionReaderPageAnimation.none,
+            pagePadding: EdgeInsets.zero,
+            titleMode: CollectionReaderTitleMode.hidden,
+            headerPadding: EdgeInsets.zero,
+            tipLayout: const CollectionReaderTipLayout(
+              headerMode: CollectionReaderTipDisplayMode.reserved,
+              footerMode: CollectionReaderTipDisplayMode.hidden,
+              headerLeft: CollectionReaderTipSlot.collectionTitle,
+              headerCenter: CollectionReaderTipSlot.none,
+              headerRight: CollectionReaderTipSlot.pageAndTotal,
+              footerLeft: CollectionReaderTipSlot.none,
+              footerCenter: CollectionReaderTipSlot.none,
+              footerRight: CollectionReaderTipSlot.none,
+            ),
+          ),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        collection: collection,
+        memos: memos,
+        devicePreferences: readerPreferences,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tipFinder = find.descendant(
+      of: find.byType(CollectionReaderPagedView),
+      matching: find.text('Reading shelf'),
+    );
+    expect(tipFinder, findsOneWidget);
+    expect(
+      tester.getTopLeft(tipFinder).dy,
+      greaterThanOrEqualTo(kMacosTitleBarHeight),
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('desktop wide reader centers vertical content width', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    try {
+      final collection = MemoCollection.createSmart(
+        id: 'collection-desktop-reader-width',
+        title: 'Reading shelf',
+        description: 'Collected reading notes',
+        rules: const CollectionRuleSet(
+          tagPaths: <String>['reading'],
+          tagMatchMode: CollectionTagMatchMode.any,
+          includeDescendants: true,
+          visibility: CollectionVisibilityScope.all,
+          dateRule: CollectionDateRule.defaults,
+          attachmentRule: CollectionAttachmentRule.any,
+          pinnedOnly: false,
+        ),
+      );
+      final memos = <LocalMemo>[
+        _memo(
+          uid: 'memo-desktop-reader-width',
+          content: 'Desktop centered readable width.',
+          tags: const <String>['reading'],
+          createTime: DateTime(2024, 2, 10, 8),
+        ),
+      ];
+      final readerPreferences = DevicePreferences.defaults.copyWith(
+        collectionReaderPreferences: DevicePreferences
+            .defaults
+            .collectionReaderPreferences
+            .copyWith(pagePadding: EdgeInsets.zero),
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          collection: collection,
+          memos: memos,
+          devicePreferences: readerPreferences,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final contentFinder = _findBodyRichTextExactly(
+        'Desktop centered readable width.',
+      );
+      expect(contentFinder, findsOneWidget);
+      expect(
+        tester.getTopLeft(contentFinder).dx,
+        closeTo((1200 - kCollectionReaderStandardContentWidth) / 2, 1),
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('mobile reader keeps full available width behavior', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    try {
+      final collection = MemoCollection.createSmart(
+        id: 'collection-mobile-reader-width',
+        title: 'Reading shelf',
+        description: 'Collected reading notes',
+        rules: const CollectionRuleSet(
+          tagPaths: <String>['reading'],
+          tagMatchMode: CollectionTagMatchMode.any,
+          includeDescendants: true,
+          visibility: CollectionVisibilityScope.all,
+          dateRule: CollectionDateRule.defaults,
+          attachmentRule: CollectionAttachmentRule.any,
+          pinnedOnly: false,
+        ),
+      );
+      final memos = <LocalMemo>[
+        _memo(
+          uid: 'memo-mobile-reader-width',
+          content: 'Mobile keeps available width.',
+          tags: const <String>['reading'],
+          createTime: DateTime(2024, 2, 10, 8),
+        ),
+      ];
+      final readerPreferences = DevicePreferences.defaults.copyWith(
+        collectionReaderPreferences: DevicePreferences
+            .defaults
+            .collectionReaderPreferences
+            .copyWith(
+              pagePadding: EdgeInsets.zero,
+              displayConfig: CollectionReaderDisplayConfig.defaults.copyWith(
+                contentWidthMode: CollectionReaderContentWidthMode.narrow,
+              ),
+            ),
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          collection: collection,
+          memos: memos,
+          devicePreferences: readerPreferences,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final contentFinder = _findBodyRichTextExactly(
+        'Mobile keeps available width.',
+      );
+      expect(contentFinder, findsOneWidget);
+      expect(tester.getTopLeft(contentFinder).dx, closeTo(0, 1));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('content width setting immediately relayouts reader modes', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    try {
+      late DevicePreferencesController preferencesController;
+      final collection = MemoCollection.createSmart(
+        id: 'collection-reader-width-live',
+        title: 'Reading shelf',
+        description: 'Collected reading notes',
+        rules: const CollectionRuleSet(
+          tagPaths: <String>['reading'],
+          tagMatchMode: CollectionTagMatchMode.any,
+          includeDescendants: true,
+          visibility: CollectionVisibilityScope.all,
+          dateRule: CollectionDateRule.defaults,
+          attachmentRule: CollectionAttachmentRule.any,
+          pinnedOnly: false,
+        ),
+      );
+      final memos = <LocalMemo>[
+        _memo(
+          uid: 'memo-reader-width-live',
+          content: 'Width mode relayout sentence.',
+          tags: const <String>['reading'],
+          createTime: DateTime(2024, 2, 10, 8),
+        ),
+      ];
+      final readerPreferences = DevicePreferences.defaults.copyWith(
+        collectionReaderPreferences: DevicePreferences
+            .defaults
+            .collectionReaderPreferences
+            .copyWith(pagePadding: EdgeInsets.zero),
+      );
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          collection: collection,
+          memos: memos,
+          devicePreferences: readerPreferences,
+          onPreferencesControllerCreated: (controller) {
+            preferencesController = controller;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final contentFinder = _findBodyRichTextExactly(
+        'Width mode relayout sentence.',
+      );
+      expect(contentFinder, findsOneWidget);
+      expect(
+        tester.getTopLeft(contentFinder).dx,
+        closeTo((1200 - kCollectionReaderStandardContentWidth) / 2, 1),
+      );
+
+      preferencesController.setCollectionReaderContentWidthMode(
+        CollectionReaderContentWidthMode.full,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(contentFinder).dx, closeTo(0, 1));
+
+      preferencesController.setCollectionReaderMode(CollectionReaderMode.paged);
+      preferencesController.setCollectionReaderContentWidthMode(
+        CollectionReaderContentWidthMode.standard,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(contentFinder).dx,
+        closeTo((1200 - kCollectionReaderStandardContentWidth) / 2, 1),
+      );
+
+      preferencesController.setCollectionReaderContentWidthMode(
+        CollectionReaderContentWidthMode.full,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(contentFinder).dx, closeTo(0, 1));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
   testWidgets('empty collection shows simplified empty state', (tester) async {
     final collection = MemoCollection.createSmart(
       id: 'collection-3',
@@ -831,6 +1108,7 @@ Widget _buildTestApp({
   _TestRssActionLog? rssActionLog,
   DevicePreferences? devicePreferences,
   Size? viewportSize,
+  ValueChanged<DevicePreferencesController>? onPreferencesControllerCreated,
 }) {
   final repository =
       progressRepository ?? _MemoryCollectionReaderProgressRepository();
@@ -842,9 +1120,11 @@ Widget _buildTestApp({
   return ProviderScope(
     overrides: [
       appSessionProvider.overrideWith((ref) => _TestSessionController()),
-      devicePreferencesProvider.overrideWith(
-        (ref) => _TestDevicePreferencesController(ref, prefs),
-      ),
+      devicePreferencesProvider.overrideWith((ref) {
+        final controller = _TestDevicePreferencesController(ref, prefs);
+        onPreferencesControllerCreated?.call(controller);
+        return controller;
+      }),
       collectionReaderProgressRepositoryProvider.overrideWith(
         (ref) => repository,
       ),
@@ -1186,6 +1466,15 @@ Finder _findRichTextExactly(String text) {
   return find.byWidgetPredicate((widget) {
     if (widget is RichText) {
       return widget.text.toPlainText() == text;
+    }
+    return false;
+  });
+}
+
+Finder _findBodyRichTextExactly(String text) {
+  return find.byWidgetPredicate((widget) {
+    if (widget is RichText) {
+      return widget.text.toPlainText() == text && widget.maxLines == null;
     }
     return false;
   });

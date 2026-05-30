@@ -101,6 +101,7 @@ void main() {
         onBrightnessModeChanged: (_) {},
         onBrightnessChanged: (_) {},
         onPageAnimationChanged: (_) {},
+        onContentWidthModeChanged: (_) {},
         onTextScaleChanged: (_) {},
         onLineSpacingChanged: (_) {},
         onFontFamilyChanged: ({String? family, String? filePath}) {},
