@@ -229,14 +229,22 @@ class _OverviewRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
+            flex: 2,
             child: Text(
               action,
               style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            shortcut,
-            style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+          const SizedBox(width: 12),
+          Flexible(
+            flex: 3,
+            child: Text(
+              shortcut,
+              textAlign: TextAlign.end,
+              style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
+            ),
           ),
         ],
       ),

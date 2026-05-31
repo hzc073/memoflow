@@ -39,19 +39,34 @@ import '../../state/system/session_provider.dart';
 import '../../state/webdav/webdav_backup_provider.dart';
 import '../../data/models/local_library.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
+import '../review/ai_insight_prompt_editor_screen.dart';
 import '../stats/stats_screen.dart';
+import '../import/import_flow_screens.dart';
+import '../updates/release_notes_screen.dart';
 import 'about_us_screen.dart';
 import 'account_security_screen.dart';
+import 'ai_provider_settings_screen.dart';
 import 'ai_settings_screen.dart';
 import 'api_plugins_screen.dart';
 import 'components_settings_screen.dart';
+import 'desktop_shortcuts_settings_screen.dart';
+import 'export_logs_screen.dart';
+import 'export_memos_screen.dart';
 import 'feedback_screen.dart';
+import 'image_bed_settings_screen.dart';
+import 'image_compression_settings_screen.dart';
 import 'import_export_screen.dart';
 import 'laboratory_screen.dart';
+import 'location_settings_screen.dart';
+import 'local_network_migration_screen.dart';
+import 'memo_toolbar_settings_screen.dart';
 import 'password_lock_screen.dart';
 import 'preferences_settings_screen.dart';
 import 'desktop_shortcuts_overview_screen.dart';
+import 'self_repair_screen.dart';
+import 'template_settings_screen.dart';
 import 'user_guide_screen.dart';
+import 'webdav_sync_screen.dart';
 import 'widgets_screen.dart';
 import 'windows_related_settings_screen.dart';
 
@@ -922,6 +937,7 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
   var _pane = _DesktopSettingsPane.account;
   GlobalKey<NavigatorState> _paneNavigatorKey = GlobalKey<NavigatorState>();
   var _appliedTargetRequestToken = 0;
+  WidgetBuilder? _pendingTargetRouteBuilder;
 
   @override
   void initState() {
@@ -948,7 +964,97 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
       case DesktopSettingsWindowTarget.ai:
         _pane = _DesktopSettingsPane.ai;
         _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = null;
+      case DesktopSettingsWindowTarget.aiProvider:
+        _pane = _DesktopSettingsPane.ai;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const AiProviderSettingsScreen();
+      case DesktopSettingsWindowTarget.quickPrompts:
+        _pane = _DesktopSettingsPane.ai;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) =>
+            const AiInsightPromptEditorScreen.custom();
+      case DesktopSettingsWindowTarget.desktopShortcuts:
+        _pane = _DesktopSettingsPane.windowsRelated;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) =>
+            const DesktopShortcutsSettingsScreen();
+      case DesktopSettingsWindowTarget.templates:
+        _pane = _DesktopSettingsPane.components;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const TemplateSettingsScreen();
+      case DesktopSettingsWindowTarget.memoToolbar:
+        _pane = _DesktopSettingsPane.preferences;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const MemoToolbarSettingsScreen();
+      case DesktopSettingsWindowTarget.location:
+        _pane = _DesktopSettingsPane.components;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const LocationSettingsScreen();
+      case DesktopSettingsWindowTarget.imageBed:
+        _pane = _DesktopSettingsPane.components;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const ImageBedSettingsScreen();
+      case DesktopSettingsWindowTarget.imageCompression:
+        _pane = _DesktopSettingsPane.components;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) =>
+            const ImageCompressionSettingsScreen();
+      case DesktopSettingsWindowTarget.webDavBackup:
+        _pane = _DesktopSettingsPane.components;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const WebDavSyncScreen();
+      case DesktopSettingsWindowTarget.importData:
+        _pane = _DesktopSettingsPane.importExport;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const ImportSourceScreen();
+      case DesktopSettingsWindowTarget.exportMemos:
+        _pane = _DesktopSettingsPane.importExport;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const ExportMemosScreen();
+      case DesktopSettingsWindowTarget.localNetworkMigration:
+        _pane = _DesktopSettingsPane.importExport;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const LocalNetworkMigrationScreen();
+      case DesktopSettingsWindowTarget.desktopShortcutsOverview:
+        _pane = _DesktopSettingsPane.windowsRelated;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = _buildDesktopShortcutsOverviewTarget;
+      case DesktopSettingsWindowTarget.selfRepair:
+        _pane = _DesktopSettingsPane.feedback;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const SelfRepairScreen();
+      case DesktopSettingsWindowTarget.exportDiagnostics:
+        _pane = _DesktopSettingsPane.feedback;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const ExportLogsScreen();
+      case DesktopSettingsWindowTarget.feedback:
+        _pane = _DesktopSettingsPane.feedback;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = null;
+      case DesktopSettingsWindowTarget.releaseNotes:
+        _pane = _DesktopSettingsPane.about;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = (_) => const ReleaseNotesScreen();
     }
+  }
+
+  Widget _buildDesktopShortcutsOverviewTarget(BuildContext context) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final bindings = normalizeDesktopShortcutBindings(
+      container.read(devicePreferencesProvider).desktopShortcutBindings,
+    );
+    return DesktopShortcutsOverviewScreen(bindings: bindings);
+  }
+
+  void _pushPendingTargetRouteIfNeeded() {
+    final builder = _pendingTargetRouteBuilder;
+    if (builder == null) return;
+    _pendingTargetRouteBuilder = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_pushPaneRoute(MaterialPageRoute<void>(builder: builder)));
+    });
   }
 
   void _selectPane(_DesktopSettingsPane pane) {
@@ -959,6 +1065,7 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
     setState(() {
       _pane = pane;
       _paneNavigatorKey = GlobalKey<NavigatorState>();
+      _pendingTargetRouteBuilder = null;
     });
   }
 
@@ -1018,6 +1125,7 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
 
   @override
   Widget build(BuildContext context) {
+    _pushPendingTargetRouteIfNeeded();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textMain = isDark
         ? MemoFlowPalette.textDark

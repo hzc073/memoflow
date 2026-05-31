@@ -11,13 +11,49 @@ import '../../core/top_toast.dart';
 abstract interface class DesktopSettingsWindowRouteIntent {}
 
 enum DesktopSettingsWindowTarget {
-  ai;
+  ai,
+  aiProvider,
+  quickPrompts,
+  desktopShortcuts,
+  templates,
+  memoToolbar,
+  location,
+  imageBed,
+  imageCompression,
+  webDavBackup,
+  importData,
+  exportMemos,
+  localNetworkMigration,
+  desktopShortcutsOverview,
+  selfRepair,
+  exportDiagnostics,
+  feedback,
+  releaseNotes;
 
   static const String payloadKey = 'desktop_settings_target';
 
   String get payloadValue {
     return switch (this) {
       DesktopSettingsWindowTarget.ai => 'ai',
+      DesktopSettingsWindowTarget.aiProvider => 'aiProvider',
+      DesktopSettingsWindowTarget.quickPrompts => 'quickPrompts',
+      DesktopSettingsWindowTarget.desktopShortcuts => 'desktopShortcuts',
+      DesktopSettingsWindowTarget.templates => 'templates',
+      DesktopSettingsWindowTarget.memoToolbar => 'memoToolbar',
+      DesktopSettingsWindowTarget.location => 'location',
+      DesktopSettingsWindowTarget.imageBed => 'imageBed',
+      DesktopSettingsWindowTarget.imageCompression => 'imageCompression',
+      DesktopSettingsWindowTarget.webDavBackup => 'webDavBackup',
+      DesktopSettingsWindowTarget.importData => 'importData',
+      DesktopSettingsWindowTarget.exportMemos => 'exportMemos',
+      DesktopSettingsWindowTarget.localNetworkMigration =>
+        'localNetworkMigration',
+      DesktopSettingsWindowTarget.desktopShortcutsOverview =>
+        'desktopShortcutsOverview',
+      DesktopSettingsWindowTarget.selfRepair => 'selfRepair',
+      DesktopSettingsWindowTarget.exportDiagnostics => 'exportDiagnostics',
+      DesktopSettingsWindowTarget.feedback => 'feedback',
+      DesktopSettingsWindowTarget.releaseNotes => 'releaseNotes',
     };
   }
 
@@ -34,6 +70,25 @@ enum DesktopSettingsWindowTarget {
     if (value is! String) return null;
     return switch (value) {
       'ai' => DesktopSettingsWindowTarget.ai,
+      'aiProvider' => DesktopSettingsWindowTarget.aiProvider,
+      'quickPrompts' => DesktopSettingsWindowTarget.quickPrompts,
+      'desktopShortcuts' => DesktopSettingsWindowTarget.desktopShortcuts,
+      'templates' => DesktopSettingsWindowTarget.templates,
+      'memoToolbar' => DesktopSettingsWindowTarget.memoToolbar,
+      'location' => DesktopSettingsWindowTarget.location,
+      'imageBed' => DesktopSettingsWindowTarget.imageBed,
+      'imageCompression' => DesktopSettingsWindowTarget.imageCompression,
+      'webDavBackup' => DesktopSettingsWindowTarget.webDavBackup,
+      'importData' => DesktopSettingsWindowTarget.importData,
+      'exportMemos' => DesktopSettingsWindowTarget.exportMemos,
+      'localNetworkMigration' =>
+        DesktopSettingsWindowTarget.localNetworkMigration,
+      'desktopShortcutsOverview' =>
+        DesktopSettingsWindowTarget.desktopShortcutsOverview,
+      'selfRepair' => DesktopSettingsWindowTarget.selfRepair,
+      'exportDiagnostics' => DesktopSettingsWindowTarget.exportDiagnostics,
+      'feedback' => DesktopSettingsWindowTarget.feedback,
+      'releaseNotes' => DesktopSettingsWindowTarget.releaseNotes,
       _ => null,
     };
   }

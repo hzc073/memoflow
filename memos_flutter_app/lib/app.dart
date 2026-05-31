@@ -39,8 +39,8 @@ import 'features/memos/memo_editor_screen.dart';
 import 'features/memos/memos_list_screen.dart';
 import 'features/memos/recycle_bin_screen.dart';
 import 'features/review/ai_insight_history_screen.dart';
+import 'features/review/ai_insight_prompt_editor_screen.dart';
 import 'features/review/ai_summary_screen.dart';
-import 'features/review/quick_prompt_editor_screen.dart';
 import 'features/settings/ai_provider_settings_screen.dart';
 import 'features/settings/ai_settings_screen.dart';
 import 'features/settings/desktop_shortcuts_overview_screen.dart';
@@ -411,19 +411,31 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         await _pushMacosMenuRoute(const SyncQueueScreen());
         return;
       case macosMenuCommandWebDavBackup:
-        await _pushMacosMenuRoute(const WebDavSyncScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.webDavBackup,
+          fallback: const WebDavSyncScreen(),
+        );
         return;
       case macosMenuCommandImportFile:
       case macosMenuCommandImportMarkdown:
       case macosMenuCommandImportFlomo:
       case macosMenuCommandImportSwashbucklerDiary:
-        await _pushMacosMenuRoute(const ImportSourceScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.importData,
+          fallback: const ImportSourceScreen(),
+        );
         return;
       case macosMenuCommandExportMemos:
-        await _pushMacosMenuRoute(const ExportMemosScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.exportMemos,
+          fallback: const ExportMemosScreen(),
+        );
         return;
       case macosMenuCommandMigration:
-        await _pushMacosMenuRoute(const LocalNetworkMigrationScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.localNetworkMigration,
+          fallback: const LocalNetworkMigrationScreen(),
+        );
         return;
       case macosMenuCommandAiSummary:
         await _pushMacosMenuRoute(const AiSummaryScreen());
@@ -432,7 +444,10 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         await _pushMacosMenuRoute(const AiInsightHistoryScreen());
         return;
       case macosMenuCommandQuickPrompts:
-        await _pushMacosMenuRoute(const QuickPromptEditorScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.quickPrompts,
+          fallback: const AiInsightPromptEditorScreen.custom(),
+        );
         return;
       case macosMenuCommandAiSettings:
         await _openMacosSettingsWindow(
@@ -441,39 +456,67 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         );
         return;
       case macosMenuCommandAiProvider:
-        await _pushMacosMenuRoute(const AiProviderSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.aiProvider,
+          fallback: const AiProviderSettingsScreen(),
+        );
         return;
       case macosMenuCommandShortcutSettings:
-        await _pushMacosMenuRoute(const DesktopShortcutsSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.desktopShortcuts,
+          fallback: const DesktopShortcutsSettingsScreen(),
+        );
         return;
       case macosMenuCommandDesktopShortcutsOverview:
         final bindings = _bootstrapAdapter
             .readDevicePreferences(ref)
             .desktopShortcutBindings;
-        await _pushMacosMenuRoute(
-          DesktopShortcutsOverviewScreen(bindings: bindings),
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.desktopShortcutsOverview,
+          fallback: DesktopShortcutsOverviewScreen(bindings: bindings),
         );
         return;
       case macosMenuCommandTemplateSettings:
-        await _pushMacosMenuRoute(const TemplateSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.templates,
+          fallback: const TemplateSettingsScreen(),
+        );
         return;
       case macosMenuCommandMemoToolbarSettings:
-        await _pushMacosMenuRoute(const MemoToolbarSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.memoToolbar,
+          fallback: const MemoToolbarSettingsScreen(),
+        );
         return;
       case macosMenuCommandLocationSettings:
-        await _pushMacosMenuRoute(const LocationSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.location,
+          fallback: const LocationSettingsScreen(),
+        );
         return;
       case macosMenuCommandImageBedSettings:
-        await _pushMacosMenuRoute(const ImageBedSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.imageBed,
+          fallback: const ImageBedSettingsScreen(),
+        );
         return;
       case macosMenuCommandImageCompression:
-        await _pushMacosMenuRoute(const ImageCompressionSettingsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.imageCompression,
+          fallback: const ImageCompressionSettingsScreen(),
+        );
         return;
       case macosMenuCommandSelfRepair:
-        await _pushMacosMenuRoute(const SelfRepairScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.selfRepair,
+          fallback: const SelfRepairScreen(),
+        );
         return;
       case macosMenuCommandExportDiagnostics:
-        await _pushMacosMenuRoute(const ExportLogsScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.exportDiagnostics,
+          fallback: const ExportLogsScreen(),
+        );
         return;
       case macosMenuCommandOpenSettingsWindow:
         await _openMacosSettingsWindow(fallback: const SettingsScreen());
@@ -485,10 +528,16 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
         await _openExternalUrl('https://usememos.com/docs');
         return;
       case macosMenuCommandReleaseNotes:
-        await _pushMacosMenuRoute(const ReleaseNotesScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.releaseNotes,
+          fallback: const ReleaseNotesScreen(),
+        );
         return;
       case macosMenuCommandFeedback:
-        await _pushMacosMenuRoute(const FeedbackScreen());
+        await _openMacosSettingsWindow(
+          target: DesktopSettingsWindowTarget.feedback,
+          fallback: const FeedbackScreen(),
+        );
         return;
     }
   }

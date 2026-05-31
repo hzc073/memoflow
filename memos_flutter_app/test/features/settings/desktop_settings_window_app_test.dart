@@ -10,6 +10,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memos_flutter_app/core/desktop/window_chrome_safe_area.dart';
+import 'package:memos_flutter_app/core/desktop/shortcuts.dart';
 import 'package:memos_flutter_app/core/desktop_db_write_channel.dart';
 import 'package:memos_flutter_app/core/desktop_quick_input_channel.dart';
 import 'package:memos_flutter_app/core/desktop_runtime_role.dart';
@@ -26,6 +27,7 @@ import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/logs/webdav_backup_progress_tracker.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
+import 'package:memos_flutter_app/data/models/device_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
@@ -35,8 +37,14 @@ import 'package:memos_flutter_app/data/models/webdav_settings.dart';
 import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
 import 'package:memos_flutter_app/data/repositories/local_library_repository.dart';
+import 'package:memos_flutter_app/features/review/ai_insight_prompt_editor_screen.dart';
 import 'package:memos_flutter_app/features/settings/ai_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/desktop_shortcuts_overview_screen.dart';
 import 'package:memos_flutter_app/features/settings/desktop_settings_window_app.dart';
+import 'package:memos_flutter_app/features/settings/feedback_screen.dart';
+import 'package:memos_flutter_app/features/settings/location_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/memo_toolbar_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/self_repair_screen.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
@@ -571,6 +579,320 @@ void main() {
       expect(accepted, isTrue);
       expect(find.byType(AiSettingsScreen), findsOneWidget);
       expect(find.text('AI Settings'), findsWidgets);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('quick prompts target opens persistent custom template editor', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      final aiRepo = _MemoryAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en),
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+            aiSettingsRepositoryProvider.overrideWith((ref) => aiRepo),
+          ],
+          child: const DesktopSettingsWindowApp(
+            windowId: 7,
+            initialTarget: DesktopSettingsWindowTarget.quickPrompts,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      final screen = tester.widget<AiInsightPromptEditorScreen>(
+        find.byType(AiInsightPromptEditorScreen),
+      );
+      expect(screen.customTemplateMode, isTrue);
+      expect(screen.templateId, isNull);
+      expect(find.text('New Custom Template'), findsWidgets);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('initial nested target opens inside the owning settings pane', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(
+            windowId: 7,
+            initialTarget: DesktopSettingsWindowTarget.location,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(find.byType(LocationSettingsScreen), findsOneWidget);
+      expect(find.text('Components'), findsWidgets);
+      expect(tester.getTopLeft(find.text('Location').last).dy, greaterThan(46));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('runtime nested target resets unrelated pane navigation', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(windowId: 7),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.tap(find.text('Components').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Image Bed').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Image Bed'), findsWidgets);
+
+      final accepted = await _dispatchIncomingMultiWindowMethod(
+        desktopSettingsOpenTargetMethod,
+        arguments: DesktopSettingsWindowTarget.memoToolbar.toJson(),
+      );
+      await tester.pumpAndSettle();
+
+      expect(accepted, isTrue);
+      expect(find.byType(MemoToolbarSettingsScreen), findsOneWidget);
+      expect(find.text('Image Bed'), findsNothing);
+      expect(find.text('Preferences'), findsWidgets);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('owner-surface pane root target opens feedback pane', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(
+            windowId: 7,
+            initialTarget: DesktopSettingsWindowTarget.feedback,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(find.byType(FeedbackScreen), findsOneWidget);
+      expect(find.byType(SelfRepairScreen), findsNothing);
+      expect(find.text('Feedback'), findsWidgets);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('owner-surface nested target opens inside feedback pane', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(
+            windowId: 7,
+            initialTarget: DesktopSettingsWindowTarget.selfRepair,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(find.byType(SelfRepairScreen), findsOneWidget);
+      expect(find.text('Feedback'), findsWidgets);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('desktop shortcuts overview target uses current bindings', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(
+            windowId: 7,
+            initialTarget: DesktopSettingsWindowTarget.desktopShortcutsOverview,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      final screen = tester.widget<DesktopShortcutsOverviewScreen>(
+        find.byType(DesktopShortcutsOverviewScreen),
+      );
+      final expected = normalizeDesktopShortcutBindings(
+        DevicePreferences.defaults.desktopShortcutBindings,
+      );
+
+      expect(screen.bindings.keys, containsAll(expected.keys));
+      expect(
+        screen.bindings[DesktopShortcutAction.search]?.keyId,
+        expected[DesktopShortcutAction.search]?.keyId,
+      );
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

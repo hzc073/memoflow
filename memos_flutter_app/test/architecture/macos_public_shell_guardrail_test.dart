@@ -95,26 +95,84 @@ void main() {
       );
       expect(app.contains('macosMenuCommandChannelName'), isTrue);
       expect(app.contains('macosMenuCommandOpenSettingsWindow'), isTrue);
-      final aiSettingsCaseStart = app.indexOf(
-        'case macosMenuCommandAiSettings:',
-      );
-      final aiSettingsCaseEnd = app.indexOf(
-        'case macosMenuCommandAiProvider:',
-        aiSettingsCaseStart,
-      );
-      expect(aiSettingsCaseStart, isNonNegative);
-      expect(aiSettingsCaseEnd, greaterThan(aiSettingsCaseStart));
-      final aiSettingsCase = app.substring(
-        aiSettingsCaseStart,
-        aiSettingsCaseEnd,
-      );
-      expect(aiSettingsCase.contains('DesktopSettingsWindowTarget.ai'), isTrue);
-      expect(
-        aiSettingsCase.contains(
-          '_pushMacosMenuRoute(const AiSettingsScreen())',
-        ),
-        isFalse,
-      );
+      const migratedSettingsCases = <String, String>{
+        'macosMenuCommandAiSettings': 'DesktopSettingsWindowTarget.ai',
+        'macosMenuCommandAiProvider': 'DesktopSettingsWindowTarget.aiProvider',
+        'macosMenuCommandQuickPrompts':
+            'DesktopSettingsWindowTarget.quickPrompts',
+        'macosMenuCommandShortcutSettings':
+            'DesktopSettingsWindowTarget.desktopShortcuts',
+        'macosMenuCommandTemplateSettings':
+            'DesktopSettingsWindowTarget.templates',
+        'macosMenuCommandMemoToolbarSettings':
+            'DesktopSettingsWindowTarget.memoToolbar',
+        'macosMenuCommandLocationSettings':
+            'DesktopSettingsWindowTarget.location',
+        'macosMenuCommandImageBedSettings':
+            'DesktopSettingsWindowTarget.imageBed',
+        'macosMenuCommandImageCompression':
+            'DesktopSettingsWindowTarget.imageCompression',
+        'macosMenuCommandWebDavBackup':
+            'DesktopSettingsWindowTarget.webDavBackup',
+        'macosMenuCommandImportFile': 'DesktopSettingsWindowTarget.importData',
+        'macosMenuCommandImportMarkdown':
+            'DesktopSettingsWindowTarget.importData',
+        'macosMenuCommandImportFlomo': 'DesktopSettingsWindowTarget.importData',
+        'macosMenuCommandImportSwashbucklerDiary':
+            'DesktopSettingsWindowTarget.importData',
+        'macosMenuCommandExportMemos':
+            'DesktopSettingsWindowTarget.exportMemos',
+        'macosMenuCommandMigration':
+            'DesktopSettingsWindowTarget.localNetworkMigration',
+        'macosMenuCommandDesktopShortcutsOverview':
+            'DesktopSettingsWindowTarget.desktopShortcutsOverview',
+        'macosMenuCommandSelfRepair': 'DesktopSettingsWindowTarget.selfRepair',
+        'macosMenuCommandExportDiagnostics':
+            'DesktopSettingsWindowTarget.exportDiagnostics',
+        'macosMenuCommandReleaseNotes':
+            'DesktopSettingsWindowTarget.releaseNotes',
+        'macosMenuCommandFeedback': 'DesktopSettingsWindowTarget.feedback',
+      };
+      final caseMatches = RegExp(
+        r'case (macosMenuCommand\w+):([\s\S]*?)\n\s*return;',
+      ).allMatches(app);
+      final casesByCommand = <String, String>{};
+      for (final match in caseMatches) {
+        final block = match.group(0);
+        final body = match.group(2);
+        if (block == null || body == null) continue;
+        for (final labelMatch in RegExp(
+          r'case (macosMenuCommand\w+):',
+        ).allMatches(block)) {
+          final label = labelMatch.group(1);
+          if (label == null) continue;
+          casesByCommand[label] = body;
+        }
+      }
+      for (final entry in migratedSettingsCases.entries) {
+        final caseBody = casesByCommand[entry.key];
+        expect(caseBody, isNotNull, reason: '${entry.key} case is missing');
+        expect(
+          caseBody!.contains('_openMacosSettingsWindow('),
+          isTrue,
+          reason: '${entry.key} must use settings window routing',
+        );
+        expect(caseBody.contains(entry.value), isTrue);
+        expect(
+          caseBody.contains('_pushMacosMenuRoute('),
+          isFalse,
+          reason:
+              '${entry.key} must not directly push a standalone settings page',
+        );
+        if (entry.key == 'macosMenuCommandQuickPrompts') {
+          expect(
+            caseBody.contains('QuickPromptEditorScreen'),
+            isFalse,
+            reason:
+                'Quick Prompts must use the persistent custom template editor',
+          );
+        }
+      }
 
       expect(menuStrings.contains('"window.close" = "Close";'), isTrue);
       expect(
