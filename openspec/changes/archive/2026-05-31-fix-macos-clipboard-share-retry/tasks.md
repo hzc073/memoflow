@@ -40,9 +40,9 @@
 - [x] 6.3 Run `openspec validate fix-macos-clipboard-share-retry --strict`.
 - [x] 6.4 Run `git diff --check`.
 
-## 7. Manual Smoke
+## 7. 手动验证
 
-- [ ] 7.1 On macOS, copy supported URL A, confirm clipping, force or observe a clipping failure/cancellation, then copy supported URL B while the app remains foregrounded; confirm the app prompts for URL B.
-- [ ] 7.2 On macOS, repeat 7.1 without changing the clipboard after failure/cancellation; confirm the app does not repeatedly prompt for URL A.
-- [ ] 7.3 On macOS, leave an active share task window open and copy URL B; confirm the app does not interrupt the active share task with a second prompt.
-- [ ] 7.4 On macOS, complete or cancel the active share task window, then copy URL B; confirm a new prompt can appear after the task releases.
+- [x] 7.1 在 macOS 复制一个应用能识别的链接 A，看到应用弹出处理提示后，先复制另一个链接 B，再取消当前处理或让保存失败。通过标准：当前处理结束后，应用会继续弹出链接 B 的处理提示。
+- [x] 7.2 在 macOS 复制链接 A，看到应用弹出处理提示后取消或让保存失败，然后不要再复制任何新内容，等待至少 2 秒。通过标准：应用不会再次弹出链接 A 的处理提示；没有新弹窗就是通过。
+- [x] 7.3 在 macOS 打开分享处理小窗口后先不要完成它，然后复制另一个链接 B。通过标准：应用不会打断当前小窗口，也不会立刻弹出第二个处理提示。
+- [x] 7.4 接着 7.3 操作：链接 B 已经在当前小窗口打开期间复制好后，再完成或取消当前小窗口。通过标准：当前小窗口关闭后，应用会继续弹出链接 B 的处理提示。
