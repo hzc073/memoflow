@@ -12,8 +12,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../../application/desktop/desktop_tray_controller.dart';
 import '../../application/desktop/desktop_resizable_panel_shell.dart';
+import '../../application/desktop/desktop_quick_record_hotkey_state.dart';
 import '../../application/sync/sync_feedback_presenter.dart';
 import '../../application/sync/sync_request.dart';
 import '../../application/sync/sync_types.dart';
@@ -1439,7 +1439,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       ),
       routeActive: _isDesktopShortcutRouteActive,
       inlineEditorActive: () => _inlineComposeFocusNode.hasFocus,
-      traySupported: () => DesktopTrayController.instance.supported,
+      quickRecordSystemHotKeyActive: () => desktopQuickRecordHotKeyIsActive(
+        ref.read(desktopQuickRecordHotKeyRegistrationStatusProvider),
+      ),
       callbacks: MemosListDesktopShortcutCallbacks(
         onMarkDesktopShortcutGuideSeen: () =>
             _markSceneGuideSeen(SceneMicroGuideId.desktopGlobalShortcuts),

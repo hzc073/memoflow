@@ -44,11 +44,11 @@ void main() {
     expect(recorder.openShortcutOverviewCount, 1);
   });
 
-  test('quick record delegates when tray support is enabled', () {
+  test('quick record delegates when system hotkey is active', () {
     final recorder = _CallbackRecorder();
     final delegate = _buildDelegate(
       recorder: recorder,
-      traySupported: true,
+      quickRecordSystemHotKeyActive: true,
       bindings: <DesktopShortcutAction, DesktopShortcutBinding>{
         DesktopShortcutAction.quickRecord: _plainBinding(
           LogicalKeyboardKey.keyR,
@@ -71,11 +71,11 @@ void main() {
     expect(recorder.openQuickRecordCount, 0);
   });
 
-  test('quick record opens in-window dialog when tray support is disabled', () {
+  test('quick record falls back in-window when system hotkey is inactive', () {
     final recorder = _CallbackRecorder();
     final delegate = _buildDelegate(
       recorder: recorder,
-      traySupported: false,
+      quickRecordSystemHotKeyActive: false,
       bindings: <DesktopShortcutAction, DesktopShortcutBinding>{
         DesktopShortcutAction.quickRecord: _plainBinding(
           LogicalKeyboardKey.keyR,
@@ -93,9 +93,35 @@ void main() {
 
     expect(dispatch.stage, MemosListDesktopShortcutDispatchStage.matched);
     expect(dispatch.action, DesktopShortcutAction.quickRecord);
-    expect(dispatch.reason, 'in_window_dialog');
+    expect(dispatch.reason, 'system_hotkey_unavailable_fallback');
     expect(recorder.markGuideSeenCount, 1);
     expect(recorder.openQuickRecordCount, 1);
+  });
+
+  test('quick record does not fallback when route inactive', () {
+    final recorder = _CallbackRecorder();
+    final delegate = _buildDelegate(
+      recorder: recorder,
+      routeActive: false,
+      quickRecordSystemHotKeyActive: false,
+      bindings: <DesktopShortcutAction, DesktopShortcutBinding>{
+        DesktopShortcutAction.quickRecord: _plainBinding(
+          LogicalKeyboardKey.keyR,
+        ),
+      },
+    );
+
+    final dispatch = delegate.handle(
+      _keyDown(
+        logicalKey: LogicalKeyboardKey.keyR,
+        physicalKey: PhysicalKeyboardKey.keyR,
+      ),
+      <LogicalKeyboardKey>{LogicalKeyboardKey.keyR},
+    );
+
+    expect(dispatch.stage, MemosListDesktopShortcutDispatchStage.noMatch);
+    expect(dispatch.handled, isFalse);
+    expect(recorder.totalCalls, 0);
   });
 
   test('shift+enter fallback publishes memo in inline editor', () {
@@ -252,7 +278,7 @@ MemosListDesktopShortcutDelegate _buildDelegate({
   required _CallbackRecorder recorder,
   bool routeActive = true,
   bool inlineEditorActive = false,
-  bool traySupported = false,
+  bool quickRecordSystemHotKeyActive = false,
   Map<DesktopShortcutAction, DesktopShortcutBinding> bindings =
       const <DesktopShortcutAction, DesktopShortcutBinding>{},
 }) {
@@ -260,7 +286,7 @@ MemosListDesktopShortcutDelegate _buildDelegate({
     bindingsResolver: () => normalizeDesktopShortcutBindings(bindings),
     routeActive: () => routeActive,
     inlineEditorActive: () => inlineEditorActive,
-    traySupported: () => traySupported,
+    quickRecordSystemHotKeyActive: () => quickRecordSystemHotKeyActive,
     callbacks: MemosListDesktopShortcutCallbacks(
       onMarkDesktopShortcutGuideSeen: () => recorder.markGuideSeenCount++,
       onOpenShortcutOverview: () => recorder.openShortcutOverviewCount++,

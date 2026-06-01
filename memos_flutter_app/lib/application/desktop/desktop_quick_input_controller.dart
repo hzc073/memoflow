@@ -18,12 +18,27 @@ import '../../state/memos/app_bootstrap_adapter_provider.dart';
 import '../../features/memos/link_memo_sheet.dart';
 import '../../i18n/strings.g.dart';
 import '../quick_input/quick_input_service.dart';
+import 'desktop_quick_record_hotkey_state.dart';
 
 typedef DesktopSubWindowVisibilityUpdater =
     void Function({required int windowId, required bool visible});
 
 typedef DesktopQuickInputWindowIdListener = void Function(int? windowId);
 typedef DesktopQuickInputRequestedListener = void Function(String source);
+typedef DesktopHotKeyRegister =
+    Future<void> Function(HotKey hotKey, {HotKeyHandler? keyDownHandler});
+typedef DesktopHotKeyUnregister = Future<void> Function(HotKey hotKey);
+
+Future<void> _defaultRegisterDesktopHotKey(
+  HotKey hotKey, {
+  HotKeyHandler? keyDownHandler,
+}) {
+  return hotKeyManager.register(hotKey, keyDownHandler: keyDownHandler);
+}
+
+Future<void> _defaultUnregisterDesktopHotKey(HotKey hotKey) {
+  return hotKeyManager.unregister(hotKey);
+}
 
 class DesktopQuickInputController {
   DesktopQuickInputController({
@@ -36,6 +51,8 @@ class DesktopQuickInputController {
     required DesktopQuickInputWindowIdListener onWindowIdChanged,
     required DesktopQuickInputRequestedListener onQuickInputRequested,
     required bool Function() isMounted,
+    DesktopHotKeyRegister? registerDesktopHotKey,
+    DesktopHotKeyUnregister? unregisterDesktopHotKey,
   }) : _bootstrapAdapter = bootstrapAdapter,
        _quickInputService = quickInputService,
        _ref = ref,
@@ -44,7 +61,11 @@ class DesktopQuickInputController {
        _onSubWindowVisibilityChanged = onSubWindowVisibilityChanged,
        _onWindowIdChanged = onWindowIdChanged,
        _onQuickInputRequested = onQuickInputRequested,
-       _isMounted = isMounted;
+       _isMounted = isMounted,
+       _registerDesktopHotKey =
+           registerDesktopHotKey ?? _defaultRegisterDesktopHotKey,
+       _unregisterDesktopHotKey =
+           unregisterDesktopHotKey ?? _defaultUnregisterDesktopHotKey;
 
   final AppBootstrapAdapter _bootstrapAdapter;
   final QuickInputService _quickInputService;
@@ -55,6 +76,8 @@ class DesktopQuickInputController {
   final DesktopQuickInputWindowIdListener _onWindowIdChanged;
   final DesktopQuickInputRequestedListener _onQuickInputRequested;
   final bool Function() _isMounted;
+  final DesktopHotKeyRegister _registerDesktopHotKey;
+  final DesktopHotKeyUnregister _unregisterDesktopHotKey;
 
   HotKey? _desktopQuickInputHotKey;
   WindowController? _desktopQuickInputWindow;
@@ -62,7 +85,17 @@ class DesktopQuickInputController {
   bool _desktopQuickInputWindowOpening = false;
   Future<void>? _desktopQuickInputWindowPrepareTask;
 
+  DesktopQuickRecordHotKeyRegistrationStatus
+  get quickRecordHotKeyRegistrationStatus =>
+      _ref.read(desktopQuickRecordHotKeyRegistrationStatusProvider);
+
+  bool get quickRecordSystemHotKeyActive =>
+      desktopQuickRecordHotKeyIsActive(quickRecordHotKeyRegistrationStatus);
+
   Future<void> registerHotKey(DevicePreferences prefs) async {
+    _setQuickRecordHotKeyRegistrationStatus(
+      DesktopQuickRecordHotKeyRegistrationStatus.unavailable,
+    );
     if (!isDesktopShortcutEnabled()) return;
     final bindings = normalizeDesktopShortcutBindings(
       prefs.desktopShortcutBindings,
@@ -84,14 +117,15 @@ class DesktopQuickInputController {
     );
 
     final previous = _desktopQuickInputHotKey;
+    _desktopQuickInputHotKey = null;
     if (previous != null) {
       try {
-        await hotKeyManager.unregister(previous);
+        await _unregisterDesktopHotKey(previous);
       } catch (_) {}
     }
 
     try {
-      await hotKeyManager.register(
+      await _registerDesktopHotKey(
         nextHotKey,
         keyDownHandler: (_) {
           _bootstrapAdapter
@@ -107,7 +141,13 @@ class DesktopQuickInputController {
         },
       );
       _desktopQuickInputHotKey = nextHotKey;
+      _setQuickRecordHotKeyRegistrationStatus(
+        DesktopQuickRecordHotKeyRegistrationStatus.registered,
+      );
     } catch (error, stackTrace) {
+      _setQuickRecordHotKeyRegistrationStatus(
+        DesktopQuickRecordHotKeyRegistrationStatus.failed,
+      );
       _bootstrapAdapter
           .readLogManager(_ref)
           .error(
@@ -120,11 +160,17 @@ class DesktopQuickInputController {
 
   Future<void> unregisterHotKey() async {
     final hotKey = _desktopQuickInputHotKey;
-    if (hotKey == null) return;
     try {
-      await hotKeyManager.unregister(hotKey);
-    } catch (_) {}
-    _desktopQuickInputHotKey = null;
+      if (hotKey != null) {
+        await _unregisterDesktopHotKey(hotKey);
+      }
+    } catch (_) {
+    } finally {
+      _desktopQuickInputHotKey = null;
+      _setQuickRecordHotKeyRegistrationStatus(
+        DesktopQuickRecordHotKeyRegistrationStatus.unavailable,
+      );
+    }
   }
 
   Future<void> prewarm() async {
@@ -419,5 +465,14 @@ class DesktopQuickInputController {
   String _truncateDesktopQuickInputLabel(String text, {int maxLength = 24}) {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength - 3)}...';
+  }
+
+  void _setQuickRecordHotKeyRegistrationStatus(
+    DesktopQuickRecordHotKeyRegistrationStatus status,
+  ) {
+    _ref
+            .read(desktopQuickRecordHotKeyRegistrationStatusProvider.notifier)
+            .state =
+        status;
   }
 }

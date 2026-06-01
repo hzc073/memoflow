@@ -88,7 +88,7 @@ class MemosListDesktopShortcutDelegate {
     required this.bindingsResolver,
     required this.routeActive,
     required this.inlineEditorActive,
-    required this.traySupported,
+    required this.quickRecordSystemHotKeyActive,
     required this.callbacks,
   });
 
@@ -96,7 +96,7 @@ class MemosListDesktopShortcutDelegate {
   bindingsResolver;
   final bool Function() routeActive;
   final bool Function() inlineEditorActive;
-  final bool Function() traySupported;
+  final bool Function() quickRecordSystemHotKeyActive;
   final MemosListDesktopShortcutCallbacks callbacks;
 
   MemosListDesktopShortcutDispatch handle(
@@ -164,7 +164,7 @@ class MemosListDesktopShortcutDelegate {
 
     if (matches(DesktopShortcutAction.quickRecord)) {
       callbacks.onMarkDesktopShortcutGuideSeen();
-      if (traySupported()) {
+      if (quickRecordSystemHotKeyActive()) {
         return const MemosListDesktopShortcutDispatch(
           stage: MemosListDesktopShortcutDispatchStage.delegated,
           action: DesktopShortcutAction.quickRecord,
@@ -175,7 +175,7 @@ class MemosListDesktopShortcutDelegate {
       return const MemosListDesktopShortcutDispatch(
         stage: MemosListDesktopShortcutDispatchStage.matched,
         action: DesktopShortcutAction.quickRecord,
-        reason: 'in_window_dialog',
+        reason: 'system_hotkey_unavailable_fallback',
       );
     }
 
