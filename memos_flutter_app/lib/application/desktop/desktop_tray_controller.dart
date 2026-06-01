@@ -67,6 +67,10 @@ class DesktopTrayController with TrayListener {
   }
 
   Future<void> hideToTray() async {
+    await hideToStatusArea();
+  }
+
+  Future<void> hideToStatusArea() async {
     if (!supported) return;
     await ensureInitialized();
     if (Platform.isWindows || Platform.isLinux) {
@@ -76,6 +80,10 @@ class DesktopTrayController with TrayListener {
   }
 
   Future<void> showFromTray() async {
+    await showFromStatusArea();
+  }
+
+  Future<void> showFromStatusArea() async {
     if (!supported) return;
     await ensureInitialized();
     if (Platform.isWindows || Platform.isLinux) {
@@ -103,7 +111,7 @@ class DesktopTrayController with TrayListener {
   void onTrayMenuItemClick(MenuItem menuItem) {
     switch (menuItem.key) {
       case _trayActionShow:
-        unawaited(showFromTray());
+        unawaited(showFromStatusArea());
         return;
       case _trayActionOpenSettings:
         unawaited(_invokeWithForeground(_onOpenSettings));
@@ -124,22 +132,26 @@ class DesktopTrayController with TrayListener {
   }
 
   Future<void> _invokeWithForeground(TrayActionHandler? action) async {
-    await showFromTray();
+    await showFromStatusArea();
     await action?.call();
   }
 
   Future<void> _toggleByTrayIcon() async {
     final visible = await windowManager.isVisible();
     if (visible) {
-      await hideToTray();
+      await hideToStatusArea();
       return;
     }
-    await showFromTray();
+    await showFromStatusArea();
   }
 
   Future<void> _exitFromTray() async {
     if (Platform.isWindows || Platform.isLinux) {
       await windowManager.setSkipTaskbar(false);
+    }
+    if (Platform.isMacOS) {
+      await windowManager.destroy();
+      return;
     }
     await windowManager.close();
   }

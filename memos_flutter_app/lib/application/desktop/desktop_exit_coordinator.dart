@@ -19,6 +19,7 @@ typedef DesktopSecondaryRouteCloseCallback = FutureOr<bool> Function();
 enum DesktopCloseRequestAction {
   nativeClose,
   hideToTray,
+  hideToMenuBar,
   fullExit,
   popSecondaryRoute,
 }
@@ -122,10 +123,14 @@ class DesktopExitCoordinator with WindowListener {
   @visibleForTesting
   static String debugMacosCloseRequestAction({
     required bool hasSecondaryRoute,
+    required bool closeToMenuBar,
+    required bool statusIconSupported,
   }) {
-    return hasSecondaryRoute
-        ? DesktopCloseRequestAction.popSecondaryRoute.name
-        : DesktopCloseRequestAction.nativeClose.name;
+    return _resolveMacosCloseRequestAction(
+      hasSecondaryRoute: hasSecondaryRoute,
+      closeToMenuBar: closeToMenuBar,
+      statusIconSupported: statusIconSupported,
+    ).name;
   }
 
   @visibleForTesting
@@ -193,8 +198,21 @@ class DesktopExitCoordinator with WindowListener {
       if (await _maybeCloseSecondaryRoute()) {
         return;
       }
-      await windowManager.setPreventClose(false);
-      await windowManager.close();
+      final closeToMenuBar = _ref.read(
+        devicePreferencesProvider.select((p) => p.macosCloseToMenuBar),
+      );
+      final action = _resolveMacosCloseRequestAction(
+        hasSecondaryRoute: false,
+        closeToMenuBar: closeToMenuBar,
+        statusIconSupported: DesktopTrayController.instance.supported,
+      );
+      if (action == DesktopCloseRequestAction.hideToMenuBar) {
+        try {
+          await DesktopTrayController.instance.hideToStatusArea();
+          return;
+        } catch (_) {}
+      }
+      await _requestExit(reason: source ?? 'close', force: false);
       return;
     }
     if (!Platform.isWindows) {
@@ -317,6 +335,18 @@ class DesktopExitCoordinator with WindowListener {
     return DesktopCloseRequestAction.fullExit;
   }
 
+  static DesktopCloseRequestAction _resolveMacosCloseRequestAction({
+    required bool hasSecondaryRoute,
+    required bool closeToMenuBar,
+    required bool statusIconSupported,
+  }) {
+    if (hasSecondaryRoute) return DesktopCloseRequestAction.popSecondaryRoute;
+    if (closeToMenuBar && statusIconSupported) {
+      return DesktopCloseRequestAction.hideToMenuBar;
+    }
+    return DesktopCloseRequestAction.fullExit;
+  }
+
   Future<void> _prepareForFullExit() async {
     final prepareForExit = _prepareForExit;
     if (prepareForExit == null) return;
@@ -376,6 +406,10 @@ class DesktopExitCoordinator with WindowListener {
   }
 
   Future<void> _terminateMainWindowForExit() async {
+    if (!kIsWeb && Platform.isMacOS) {
+      await windowManager.destroy();
+      return;
+    }
     await windowManager.close();
   }
 

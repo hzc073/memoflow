@@ -144,6 +144,34 @@ void main() {
     },
   );
 
+  test('macOS close-to-menu-bar stays in desktop lifecycle seams', () async {
+    final coordinator = await File(
+      'lib/application/desktop/desktop_exit_coordinator.dart',
+    ).readAsString();
+    final trayController = await File(
+      'lib/application/desktop/desktop_tray_controller.dart',
+    ).readAsString();
+    final desktopSettings = await File(
+      'lib/features/settings/desktop_settings_screen.dart',
+    ).readAsString();
+
+    expect(coordinator, contains('macosCloseToMenuBar'));
+    expect(coordinator, contains('_resolveMacosCloseRequestAction('));
+    expect(coordinator, contains('DesktopCloseRequestAction.hideToMenuBar'));
+    expect(coordinator, contains('DesktopCloseRequestAction.fullExit'));
+    expect(
+      coordinator,
+      contains('DesktopTrayController.instance.hideToStatusArea()'),
+    );
+    expect(coordinator, contains('Platform.isMacOS'));
+    expect(coordinator, contains('windowManager.destroy()'));
+    expect(trayController, contains('Future<void> hideToStatusArea()'));
+    expect(trayController, contains('Future<void> showFromStatusArea()'));
+    expect(desktopSettings, contains('setMacosCloseToMenuBar'));
+    expect(desktopSettings, isNot(contains('windowManager.')));
+    expect(desktopSettings, isNot(contains('DesktopTrayController')));
+  });
+
   test(
     'main window minimum-size policy is applied in Dart and native runners',
     () async {

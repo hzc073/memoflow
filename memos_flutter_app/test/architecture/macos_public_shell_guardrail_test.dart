@@ -42,10 +42,23 @@ void main() {
         isTrue,
       );
       expect(
+        appDelegate.contains(
+          'applicationShouldTerminateAfterLastWindowClosed'
+          '(_ sender: NSApplication) -> Bool {\n    return false',
+        ),
+        isTrue,
+      );
+      expect(appDelegate.contains('applicationShouldHandleReopen'), isTrue);
+      expect(
         appDelegate.contains('applicationSupportsSecureRestorableState'),
         isTrue,
       );
       expect(appDelegate.contains('windowMenu()'), isTrue);
+      expect(
+        appDelegate.contains('action: #selector(NSApplication.terminate(_:))'),
+        isTrue,
+      );
+      expect(appDelegate.contains('keyEquivalent: "q"'), isTrue);
       expect(appDelegate.contains('performClose'), isTrue);
       expect(appDelegate.contains('performMiniaturize'), isTrue);
       expect(appDelegate.contains('performZoom'), isTrue);

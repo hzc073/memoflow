@@ -76,18 +76,38 @@ void main() {
     );
   });
 
-  test('macOS close request distinguishes route pop from native close', () {
+  test('macOS close request preserves route and menu-bar split', () {
     expect(
       DesktopExitCoordinator.debugMacosCloseRequestAction(
         hasSecondaryRoute: true,
+        closeToMenuBar: true,
+        statusIconSupported: true,
       ),
       'popSecondaryRoute',
     );
     expect(
       DesktopExitCoordinator.debugMacosCloseRequestAction(
         hasSecondaryRoute: false,
+        closeToMenuBar: true,
+        statusIconSupported: true,
       ),
-      'nativeClose',
+      'hideToMenuBar',
+    );
+    expect(
+      DesktopExitCoordinator.debugMacosCloseRequestAction(
+        hasSecondaryRoute: false,
+        closeToMenuBar: false,
+        statusIconSupported: true,
+      ),
+      'fullExit',
+    );
+    expect(
+      DesktopExitCoordinator.debugMacosCloseRequestAction(
+        hasSecondaryRoute: false,
+        closeToMenuBar: true,
+        statusIconSupported: false,
+      ),
+      'fullExit',
     );
   });
 
@@ -122,6 +142,24 @@ void main() {
     expect(body, isNot(contains('FlutterInappwebviewWindowsPlugin')));
     expect(body, isNot(contains('WebviewWindowsPlugin')));
   });
+
+  test(
+    'tray fallback exit destroys macOS app instead of closing main window',
+    () {
+      final controller = File(
+        'lib/application/desktop/desktop_tray_controller.dart',
+      ).readAsStringSync();
+      final fallbackExitMatch = RegExp(
+        r'Future<void> _exitFromTray\(\) async \{([\s\S]*?)\n  \}',
+      ).firstMatch(controller);
+
+      expect(fallbackExitMatch, isNotNull);
+      final body = fallbackExitMatch!.group(1)!;
+
+      expect(body, contains('Platform.isMacOS'));
+      expect(body, contains('windowManager.destroy()'));
+    },
+  );
 
   test('Windows quick input sub-window does not expose location picker', () {
     expect(
