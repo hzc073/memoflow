@@ -15,6 +15,7 @@ import 'package:memos_flutter_app/data/logs/sync_queue_progress_tracker.dart';
 import 'package:memos_flutter_app/data/logs/sync_status_tracker.dart';
 import 'package:memos_flutter_app/data/models/image_bed_settings.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 import 'package:memos_flutter_app/data/repositories/image_bed_settings_repository.dart';
 import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/state/memos/memo_mutation_service.dart';
@@ -291,6 +292,11 @@ void main() {
       await deleteTestDatabase(dbName);
     });
 
+    final adjusted = DateTime.utc(2026, 1, 2, 3, 4, 5);
+    final adjustedSec = adjusted.millisecondsSinceEpoch ~/ 1000;
+    final refreshed = DateTime.utc(2026, 3, 14, 4, 5, 6);
+    final refreshedSec = refreshed.millisecondsSinceEpoch ~/ 1000;
+
     await db.upsertMemo(
       uid: 'memo-time',
       content: 'memo time update',
@@ -299,7 +305,7 @@ void main() {
       state: 'NORMAL',
       createTimeSec: 1773424800,
       displayTimeSec: 1773424800,
-      updateTimeSec: 1773424800,
+      updateTimeSec: refreshedSec,
       tags: const <String>[],
       attachments: const <Map<String, dynamic>>[],
       location: null,
@@ -307,21 +313,36 @@ void main() {
       syncState: 1,
       lastError: null,
     );
-    final adjusted = DateTime.utc(2026, 1, 2, 3, 4, 5);
-    final adjustedSec = adjusted.millisecondsSinceEpoch ~/ 1000;
+    await db.upsertMemo(
+      uid: 'memo-older-update',
+      content: 'older updated memo',
+      visibility: 'PRIVATE',
+      pinned: false,
+      state: 'NORMAL',
+      createTimeSec: 1773424900,
+      displayTimeSec: 1773424900,
+      updateTimeSec: 1773424900,
+      tags: const <String>[],
+      attachments: const <Map<String, dynamic>>[],
+      location: null,
+      relationCount: 0,
+      syncState: 0,
+      lastError: null,
+    );
     await db.enqueueOutbox(
       type: 'update_memo',
       payload: {
         'uid': 'memo-time',
         'create_time': adjustedSec,
         'display_time': adjustedSec,
+        'update_time': refreshedSec,
       },
     );
 
     final controller = RemoteSyncController(
       db: db,
       api: api,
-      currentUserName: 'users/demo',
+      currentUserName: 'users/1',
       syncStatusTracker: SyncStatusTracker(),
       syncQueueProgressTracker: SyncQueueProgressTracker(),
       imageBedRepository: _FakeImageBedSettingsRepository(),
@@ -348,6 +369,22 @@ void main() {
       DateTime.parse(patchRequest.jsonBody?['displayTime'] as String).toUtc(),
       adjusted,
     );
+    expect(
+      DateTime.parse(patchRequest.jsonBody?['updateTime'] as String).toUtc(),
+      refreshed,
+    );
+    expect(
+      patchRequest.queryParameters['updateMask'],
+      'create_time,display_time,update_time',
+    );
+
+    final sortedRows = await db.listMemos(
+      state: 'NORMAL',
+      sortOrder: MemoSortOrder.updateDesc,
+      limit: 2,
+    );
+    expect(sortedRows.first['uid'], 'memo-time');
+    expect(sortedRows.first['update_time'], refreshedSec);
   });
 
   test(
@@ -1498,6 +1535,17 @@ void main() {
       expect(rewrittenContent, contains(sourceUrl));
       expect(rewrittenContent, isNot(contains(contentLocalUrl)));
       expect(rewrittenContent, isNot(contains(payloadLocalUrl)));
+      final row = await db.getMemoByUid('memo-1');
+      final updateTimeSec = row?['update_time'] as int?;
+      expect(updateTimeSec, isNotNull);
+      expect(
+        patchRequest.queryParameters['updateMask'],
+        'content,visibility,pinned,update_time',
+      );
+      expect(
+        DateTime.parse(patchRequest.jsonBody?['updateTime'] as String).toUtc(),
+        DateTime.fromMillisecondsSinceEpoch(updateTimeSec! * 1000, isUtc: true),
+      );
     },
   );
 

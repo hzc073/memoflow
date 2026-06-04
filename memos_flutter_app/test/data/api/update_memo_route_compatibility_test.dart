@@ -243,6 +243,74 @@ void main() {
       expect(capturedRequest.jsonBody?.containsKey('displayTime'), isFalse);
     });
   });
+
+  group('MemoApiFacade updateMemo updateTime compatibility', () {
+    for (final version in kMemoApiVersionsProbeOrder) {
+      test(
+        'version ${version.versionString} uses supported update_time shape',
+        () async {
+          final harness = await _FakeUpdateMemoServer.start(version);
+          addTearDown(() async {
+            await harness.close();
+          });
+
+          final api = MemoApiFacade.authenticated(
+            baseUrl: harness.baseUrl,
+            personalAccessToken: 'test-pat',
+            version: version,
+          );
+
+          final updateTime = DateTime.utc(2026, 6, 4, 2, 44, 55);
+          final memo = await api.updateMemo(
+            memoUid: '101',
+            content: 'updated memo content',
+            updateTime: updateTime,
+          );
+          expect(memo.uid, '101');
+
+          final capturedRequest = harness.findUpdateRequest();
+          expect(capturedRequest, isNotNull);
+
+          if (version == MemoApiVersion.v021) {
+            expect(capturedRequest!.path, '/api/v1/memo/101');
+            expect(capturedRequest.queryParameters, isEmpty);
+            expect(
+              capturedRequest.jsonBody?.containsKey('updateTime'),
+              isFalse,
+            );
+          } else if (version == MemoApiVersion.v022) {
+            expect(capturedRequest!.method, 'POST');
+            expect(
+              capturedRequest.path,
+              '/memos.api.v1.MemoService/UpdateMemo',
+            );
+            expect(capturedRequest.queryParameters, isEmpty);
+          } else if (version == MemoApiVersion.v023) {
+            expect(capturedRequest!.path, '/api/v1/memos/101');
+            expect(capturedRequest.queryParameters['updateMask'], 'content');
+            expect(
+              capturedRequest.jsonBody?.containsKey('updateTime'),
+              isFalse,
+            );
+          } else {
+            expect(capturedRequest!.path, '/api/v1/memos/101');
+            expect(
+              capturedRequest.queryParameters['updateMask'],
+              'content,update_time',
+            );
+            expect(
+              capturedRequest.queryParameters.containsKey('update_mask'),
+              isFalse,
+            );
+            expect(
+              capturedRequest.jsonBody?['updateTime'],
+              updateTime.toIso8601String(),
+            );
+          }
+        },
+      );
+    }
+  });
 }
 
 class _CapturedRequest {

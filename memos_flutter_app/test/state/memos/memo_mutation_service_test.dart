@@ -118,6 +118,66 @@ void main() {
               as Map<String, dynamic>;
       expect(payload['uid'], 'memo-update');
       expect(payload['content'], 'new content #fresh');
+      expect(payload['update_time'], isA<int>());
+    },
+  );
+
+  test(
+    'preserveUpdateTime content updates do not enqueue update_time',
+    () async {
+      final dbName = uniqueDbName('memo_mutation_preserve_update_time');
+      final db = AppDatabase(dbName: dbName);
+      final timelineService = MemoTimelineService(
+        db: db,
+        account: null,
+        triggerSync: () async {},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          memoTimelineServiceProvider.overrideWithValue(timelineService),
+        ],
+      );
+
+      addTearDown(() async {
+        container.dispose();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await db.upsertMemo(
+        uid: 'memo-preserve',
+        content: 'old task text',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: 1735689600,
+        updateTimeSec: 1735689600,
+        tags: const [],
+        attachments: const [],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+      );
+      final before = LocalMemo.fromDb(
+        (await db.getMemoByUid('memo-preserve'))!,
+      );
+
+      await container
+          .read(memoMutationServiceProvider)
+          .updateMemoContent(before, 'new task text', preserveUpdateTime: true);
+
+      final after = LocalMemo.fromDb((await db.getMemoByUid('memo-preserve'))!);
+      expect(after.updateTime, before.updateTime);
+
+      final pending = await db.listOutboxPending(limit: 10);
+      expect(pending, hasLength(1));
+      final payload =
+          jsonDecode(pending.single['payload'] as String)
+              as Map<String, dynamic>;
+      expect(payload['uid'], 'memo-preserve');
+      expect(payload.containsKey('update_time'), isFalse);
+      expect(payload.containsKey('updateTime'), isFalse);
     },
   );
 
@@ -187,5 +247,4 @@ void main() {
       expect(payload['content'], '# 标题\n\n正文内容');
     },
   );
-
 }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
+import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
 import 'package:memos_flutter_app/state/memos/link_memo_providers.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -82,6 +83,7 @@ void main() {
         endTimeSecExclusive: null,
         advancedFilters: AdvancedSearchFilters.empty,
         pageSize: 20,
+        sortOrder: MemoSortOrder.createDesc,
       );
 
       final results = await container.read(
@@ -186,6 +188,7 @@ void main() {
         endTimeSecExclusive: null,
         advancedFilters: AdvancedSearchFilters.empty,
         pageSize: 20,
+        sortOrder: MemoSortOrder.createDesc,
       );
 
       final results = await container.read(memosStreamProvider(query).future);

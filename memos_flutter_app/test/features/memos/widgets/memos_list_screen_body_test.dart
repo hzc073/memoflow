@@ -17,6 +17,7 @@ import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/attachment.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
+import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
 import 'package:memos_flutter_app/features/memos/home_quick_actions.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_desktop_presentation.dart';
@@ -1128,6 +1129,7 @@ MemosListScreenQueryState _buildQueryState({
     startTimeSec: null,
     endTimeSecExclusive: null,
     advancedFilters: AdvancedSearchFilters.empty,
+    sortOrder: MemoSortOrder.createDesc,
     pageSize: 20,
   );
   final aiQuery = (

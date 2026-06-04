@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
+import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 
 import '../../test_support.dart';
 
@@ -124,6 +125,53 @@ void main() {
       expect(uids, isNot(contains('memo-archived')));
       expect(uids, isNot(contains('memo-other-tag')));
       expect(uids, isNot(contains('memo-old')));
+
+      await db.close();
+      await deleteTestDatabase(dbName);
+    },
+  );
+
+  test(
+    'listMemos update desc uses update_time for first page candidates',
+    () async {
+      final dbName = uniqueDbName('memo_update_sort_first_page');
+      final db = AppDatabase(dbName: dbName);
+      final baseSec =
+          DateTime.utc(2026, 6, 4, 1, 0).millisecondsSinceEpoch ~/ 1000;
+
+      for (var i = 0; i < 5; i += 1) {
+        await _insertMemo(
+          db,
+          uid: 'recent-create-$i',
+          content: 'recent create $i',
+          createTimeSec: baseSec + 100 + i,
+          updateTimeSec: baseSec + 100 + i,
+        );
+      }
+      await _insertMemo(
+        db,
+        uid: 'old-create-new-update',
+        content: 'old create new update',
+        createTimeSec: baseSec - 100000,
+        updateTimeSec: baseSec + 1000,
+      );
+
+      final createRows = await db.listMemos(
+        state: 'NORMAL',
+        sortOrder: MemoSortOrder.createDesc,
+        limit: 3,
+      );
+      expect(
+        createRows.map((row) => row['uid']),
+        isNot(contains('old-create-new-update')),
+      );
+
+      final updateRows = await db.listMemos(
+        state: 'NORMAL',
+        sortOrder: MemoSortOrder.updateDesc,
+        limit: 3,
+      );
+      expect(updateRows.first['uid'], 'old-create-new-update');
 
       await db.close();
       await deleteTestDatabase(dbName);
@@ -307,6 +355,7 @@ Future<void> _insertMemo(
   required String uid,
   required String content,
   required int createTimeSec,
+  int? updateTimeSec,
   String state = 'NORMAL',
   List<String> tags = const <String>[],
 }) {
@@ -317,7 +366,7 @@ Future<void> _insertMemo(
     pinned: false,
     state: state,
     createTimeSec: createTimeSec,
-    updateTimeSec: createTimeSec,
+    updateTimeSec: updateTimeSec ?? createTimeSec,
     tags: tags,
     attachments: const <Map<String, dynamic>>[],
     location: null,
