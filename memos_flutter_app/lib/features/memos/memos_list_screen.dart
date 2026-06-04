@@ -289,6 +289,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       aiSearchActive: _aiSearchActive,
       resolvedTag: _activeTagFilter,
       advancedFilters: _advancedSearchFilters,
+      sortOrder: _headerController.querySortOrder,
       searching: _searching,
       showDrawer: widget.showDrawer,
     );
@@ -3176,6 +3177,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       aiSearchActive: _aiSearchActive,
       resolvedTag: _activeTagFilter,
       advancedFilters: _advancedSearchFilters,
+      sortOrder: _headerController.querySortOrder,
       searching: _searching,
       showDrawer: widget.showDrawer,
     );

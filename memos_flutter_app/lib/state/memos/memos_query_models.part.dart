@@ -7,6 +7,7 @@ typedef MemosQuery = ({
   int? startTimeSec,
   int? endTimeSecExclusive,
   AdvancedSearchFilters advancedFilters,
+  MemoSortOrder sortOrder,
   int pageSize,
 });
 

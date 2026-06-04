@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/memo_search_matcher.dart';
 import '../../core/tag_colors.dart';
 import '../../data/models/memo_template_settings.dart';
+import '../../data/models/memo_sort_order.dart';
 import '../../data/models/shortcut.dart';
 import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../state/memos/memos_providers.dart';
@@ -158,6 +159,7 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
   bool aiSearchActive = false,
   required String? resolvedTag,
   required AdvancedSearchFilters advancedFilters,
+  MemoSortOrder sortOrder = MemoSortOrder.createDesc,
   required bool searching,
   required bool showDrawer,
 }) {
@@ -194,6 +196,7 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
     startTimeSec: dayRange?.startSec,
     endTimeSecExclusive: dayRange?.endSecExclusive,
     advancedFilters: normalizedFilters,
+    sortOrder: sortOrder,
     pageSize: pageSize,
   );
   final shortcutQuery = selectedShortcut == null
@@ -235,7 +238,8 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
       '$state|${resolvedTag ?? ''}|$trimmedSearchQuery|${shortcutFilter.trim()}|'
       '${dayRange?.startSec ?? ''}|${dayRange?.endSecExclusive ?? ''}|${useShortcutFilter ? 1 : 0}|'
       '${selectedQuickSearchKind?.name ?? ''}|${useQuickSearch ? 1 : 0}|'
-      '${useAiSearch ? 1 : 0}|${useRemoteSearch ? 1 : 0}|${normalizedFilters.signature}';
+      '${useAiSearch ? 1 : 0}|${useRemoteSearch ? 1 : 0}|'
+      '${sortOrder.name}|${normalizedFilters.signature}';
   final showSearchLanding =
       searching &&
       trimmedSearchQuery.isEmpty &&

@@ -26,6 +26,7 @@ import 'stats_cache_db_persistence.dart';
 import 'tag_db_persistence.dart';
 import '../models/memo_clip_card_metadata.dart';
 import '../models/memo_location.dart';
+import '../models/memo_sort_order.dart';
 import '../models/quick_clip_recovery_job.dart';
 
 export 'tag_db_persistence.dart' show ResolvedTag;
@@ -2789,6 +2790,7 @@ class AppDatabase {
     String? tag,
     int? startTimeSec,
     int? endTimeSecExclusive,
+    MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
   }) async {
     final db = await this.db;
@@ -2799,6 +2801,7 @@ class AppDatabase {
       tag: tag,
       startTimeSec: startTimeSec,
       endTimeSecExclusive: endTimeSecExclusive,
+      sortOrder: sortOrder,
       limit: limit,
       dirtyDrainLimit: _memoSearchDrainBatchSize,
     );
@@ -2850,6 +2853,7 @@ class AppDatabase {
     String? tag,
     int? startTimeSec,
     int? endTimeSecExclusive,
+    MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
   }) async* {
     yield await listMemos(
@@ -2858,6 +2862,7 @@ class AppDatabase {
       tag: tag,
       startTimeSec: startTimeSec,
       endTimeSecExclusive: endTimeSecExclusive,
+      sortOrder: sortOrder,
       limit: limit,
     );
     await for (final _ in changes) {
@@ -2867,6 +2872,7 @@ class AppDatabase {
         tag: tag,
         startTimeSec: startTimeSec,
         endTimeSecExclusive: endTimeSecExclusive,
+        sortOrder: sortOrder,
         limit: limit,
       );
     }

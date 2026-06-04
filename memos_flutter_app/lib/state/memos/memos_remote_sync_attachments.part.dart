@@ -445,7 +445,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
               )
               .map((item) => item.toJson())
               .toList(growable: false);
-    await _rewriteLocalMemo(
+    final updateTime = await _rewriteLocalMemo(
       memo,
       content: updatedContent,
       attachments: attachments,
@@ -465,6 +465,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
             'content': updatedContent,
             'visibility': memo.visibility,
             'pinned': memo.pinned,
+            ...memoUpdateTimePayload(updateTime),
           },
         );
       }
@@ -488,10 +489,11 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       content: rewrittenContent,
       visibility: memo.visibility,
       pinned: memo.pinned,
+      updateTime: memo.updateTime,
     );
   }
 
-  Future<void> _rewriteLocalMemo(
+  Future<DateTime> _rewriteLocalMemo(
     LocalMemo memo, {
     required String content,
     required List<Map<String, dynamic>> attachments,
@@ -512,6 +514,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       syncState: 1,
       lastError: null,
     );
+    return now;
   }
 
   Future<void> _appendImageBedLink({
@@ -569,6 +572,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
           'content': updatedContent,
           'visibility': memo.visibility,
           'pinned': memo.pinned,
+          ...memoUpdateTimePayload(now),
         },
       );
     }

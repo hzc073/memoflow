@@ -788,19 +788,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
   }
 
   DateTime? _parsePayloadTime(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is DateTime) return raw.toUtc();
-    if (raw is int) return _epochToDateTime(raw);
-    if (raw is double) return _epochToDateTime(raw.round());
-    if (raw is String) {
-      final trimmed = raw.trim();
-      if (trimmed.isEmpty) return null;
-      final asInt = int.tryParse(trimmed);
-      if (asInt != null) return _epochToDateTime(asInt);
-      final parsed = DateTime.tryParse(trimmed);
-      if (parsed != null) return parsed.isUtc ? parsed : parsed.toUtc();
-    }
-    return null;
+    return parseMemoPayloadTime(raw);
   }
 
   MemoLocation? _parseLocationPayload(dynamic raw) {
@@ -808,11 +796,6 @@ extension _RemoteSyncOutbox on RemoteSyncController {
       return MemoLocation.fromJson(raw.cast<String, dynamic>());
     }
     return null;
-  }
-
-  DateTime _epochToDateTime(int value) {
-    final ms = value > 1000000000000 ? value : value * 1000;
-    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
   }
 
   Future<void> _handleUpdateMemo(Map<String, dynamic> payload) async {
@@ -838,6 +821,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
     final displayTime = _parsePayloadTime(
       payload['display_time'] ?? payload['displayTime'],
     );
+    final updateTime = decodeMemoUpdateTimePayload(payload);
     if (createTime != null && !api.supportsMemoCreateTimeUpdate) {
       throw StateError(
         'Remote memo createTime update is unsupported by this server version',
@@ -865,6 +849,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         state: state,
         createTime: createTime,
         displayTime: displayTime,
+        updateTime: updateTime,
         location: payload['location'] == null ? null : location,
       );
     } else {
@@ -876,6 +861,7 @@ extension _RemoteSyncOutbox on RemoteSyncController {
         state: state,
         createTime: createTime,
         displayTime: displayTime,
+        updateTime: updateTime,
       );
     }
     if (hasRelations) {

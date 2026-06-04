@@ -22,6 +22,7 @@ class MemoSearchCoordinator {
           tag: query.tag,
           startTimeSec: query.startTimeSec,
           endTimeSecExclusive: query.endTimeSecExclusive,
+          sortOrder: query.sortOrder,
           limit: localCandidateLimit,
         )
         .map(
@@ -155,6 +156,7 @@ class MemoSearchCoordinator {
         endTimeSecExclusive: endTimeSecExclusive,
         advancedFilters: advancedFilters,
         candidateLimit: localCandidateLimit,
+        sortOrder: query.sortOrder,
       );
       final matchedLocalMemoKeys = localMatches
           .map(_memoLocalKey)
@@ -378,6 +380,7 @@ class MemoSearchCoordinator {
         tag: normalizedTag.isEmpty ? null : normalizedTag,
         startTimeSec: query.startTimeSec,
         endTimeSecExclusive: query.endTimeSecExclusive,
+        sortOrder: query.sortOrder,
         limit: localCandidateLimit,
       );
       final seed = _applyAdvancedFiltersToRows(
@@ -415,6 +418,7 @@ class MemoSearchCoordinator {
       endTimeSecExclusive: query.endTimeSecExclusive,
       advancedFilters: advancedFilters,
       candidateLimit: localCandidateLimit,
+      sortOrder: query.sortOrder,
     );
     return _mergeRemoteSearchSeedWithLocalMatches(
       seed: refreshed,

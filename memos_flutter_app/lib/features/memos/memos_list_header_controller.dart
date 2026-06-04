@@ -3,11 +3,23 @@ import 'package:intl/intl.dart';
 
 import '../../core/tags.dart';
 import '../../data/models/local_memo.dart';
+import '../../data/models/memo_sort_order.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/memos/memos_providers.dart';
 import 'memos_list_desktop_presentation.dart';
 
 enum MemosListSortOption { createAsc, createDesc, updateAsc, updateDesc }
+
+extension MemosListSortOptionX on MemosListSortOption {
+  MemoSortOrder toMemoSortOrder() {
+    return switch (this) {
+      MemosListSortOption.createAsc => MemoSortOrder.createAsc,
+      MemosListSortOption.createDesc => MemoSortOrder.createDesc,
+      MemosListSortOption.updateAsc => MemoSortOrder.updateAsc,
+      MemosListSortOption.updateDesc => MemoSortOrder.updateDesc,
+    };
+  }
+}
 
 enum MemosListAdvancedSearchChipKind {
   createdDateRange,
@@ -81,6 +93,7 @@ class MemosListHeaderController extends ChangeNotifier {
   AdvancedSearchFilters get advancedSearchFilters => _advancedSearchFilters;
   String? get activeTagFilter => _activeTagFilter;
   MemosListSortOption get sortOption => _sortOption;
+  MemoSortOrder get querySortOrder => _sortOption.toMemoSortOrder();
   bool get desktopHeaderSearchExpanded => _desktopHeaderSearchExpanded;
   bool get hasAdvancedSearchFilters => !_advancedSearchFilters.isEmpty;
 

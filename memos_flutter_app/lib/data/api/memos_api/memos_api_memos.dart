@@ -436,6 +436,7 @@ mixin _MemosApiMemos on _MemosApiBase {
     String? state,
     DateTime? createTime,
     DateTime? displayTime,
+    DateTime? updateTime,
     Object? location = _unset,
   }) async {
     await _ensureServerHints();
@@ -468,6 +469,7 @@ mixin _MemosApiMemos on _MemosApiBase {
       state: state,
       createTime: createTime,
       displayTime: displayTime,
+      updateTime: updateTime,
       location: location,
     );
   }
@@ -480,6 +482,7 @@ mixin _MemosApiMemos on _MemosApiBase {
     String? state,
     DateTime? createTime,
     DateTime? displayTime,
+    DateTime? updateTime,
     required Object? location,
   }) async {
     final updateMask = <String>[];
@@ -517,6 +520,10 @@ mixin _MemosApiMemos on _MemosApiBase {
       updateMask.add(_displayTimeUpdateMaskField());
       data['displayTime'] = displayTime.toUtc().toIso8601String();
     }
+    if (updateTime != null && _supportsMemoUpdateTimeUpdate()) {
+      updateMask.add('update_time');
+      data['updateTime'] = updateTime.toUtc().toIso8601String();
+    }
     final supportsLocation = _supportsMemoLocationField();
     final locationRequested = !identical(location, _unset);
     if (locationRequested && supportsLocation) {
@@ -528,6 +535,8 @@ mixin _MemosApiMemos on _MemosApiBase {
     final droppedUnsupportedLocation = locationRequested && !supportsLocation;
     final droppedUnsupportedDisplayTime =
         displayTime != null && !supportsDisplayTime;
+    final droppedUnsupportedUpdateTime =
+        updateTime != null && !_supportsMemoUpdateTimeUpdate();
     if (updateMask.isEmpty) {
       if (pinnedNeedsLegacyOrganizer) {
         return _setMemoPinnedWithLegacyOrganizer(
@@ -540,6 +549,9 @@ mixin _MemosApiMemos on _MemosApiBase {
         return getMemo(memoUid: memoUid);
       }
       if (droppedUnsupportedDisplayTime) {
+        return getMemo(memoUid: memoUid);
+      }
+      if (droppedUnsupportedUpdateTime) {
         return getMemo(memoUid: memoUid);
       }
       throw ArgumentError('updateMemo requires at least one field');
@@ -656,6 +668,23 @@ mixin _MemosApiMemos on _MemosApiBase {
     return _supportsModernCreateMemoBodyFields(
       minimum: const _ServerVersion(0, 26, 0),
     );
+  }
+
+  bool _supportsMemoUpdateTimeUpdate() {
+    if (_serverFlavor == _ServerApiFlavor.v0_24) {
+      return true;
+    }
+    if (_serverFlavor != _ServerApiFlavor.v0_25Plus) {
+      return false;
+    }
+    final version = _serverVersion;
+    if (version == null) {
+      return true;
+    }
+    if (version.major > 0) {
+      return true;
+    }
+    return version >= const _ServerVersion(0, 25, 0);
   }
 
   bool _supportsDisplayTimeUpdate() {

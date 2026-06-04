@@ -66,6 +66,7 @@ final shortcutMemosProvider =
             startTimeSec: query.startTimeSec,
             endTimeSecExclusive: query.endTimeSecExclusive,
             advancedFilters: query.advancedFilters,
+            sortOrder: MemoSortOrder.createDesc,
             pageSize: query.pageSize,
           ));
         }
@@ -487,6 +488,7 @@ Future<List<LocalMemo>> _loadLocalSearchMemos({
   required String? tag,
   required AdvancedSearchFilters advancedFilters,
   required int? candidateLimit,
+  MemoSortOrder sortOrder = MemoSortOrder.createDesc,
   int? startTimeSec,
   int? endTimeSecExclusive,
 }) async {
@@ -496,6 +498,7 @@ Future<List<LocalMemo>> _loadLocalSearchMemos({
     tag: tag,
     startTimeSec: startTimeSec,
     endTimeSecExclusive: endTimeSecExclusive,
+    sortOrder: sortOrder,
     limit: candidateLimit,
   );
   return _applyAdvancedFiltersToRows(

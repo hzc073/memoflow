@@ -19,6 +19,7 @@ import 'create_memo_outbox_payload.dart';
 import 'memo_composer_state.dart';
 import 'memo_sync_constraints.dart';
 import 'memo_timeline_provider.dart';
+import 'memos_update_time_payload.dart';
 
 final memoMutationServiceProvider = Provider<MemoMutationService>((ref) {
   return MemoMutationService(ref: ref, db: ref.watch(databaseProvider));
@@ -410,6 +411,7 @@ class MemoMutationService {
 
   Future<void> updateMemo(LocalMemo memo, {bool? pinned, String? state}) async {
     final now = DateTime.now();
+    final updateTimeSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
     final db = this.db;
     final syncPolicy = resolveMemoSyncMutationPolicy(
       currentLastError: memo.lastError,
@@ -422,7 +424,7 @@ class MemoMutationService {
       pinned: pinned ?? memo.pinned,
       state: state ?? memo.state,
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
-      updateTimeSec: now.toUtc().millisecondsSinceEpoch ~/ 1000,
+      updateTimeSec: updateTimeSec,
       tags: memo.tags,
       attachments: memo.attachments
           .map((attachment) => attachment.toJson())
@@ -440,6 +442,7 @@ class MemoMutationService {
         'uid': memo.uid,
         if (pinned != null) 'pinned': pinned,
         if (state != null) 'state': state,
+        ...memoUpdateTimePayloadFromSeconds(updateTimeSec),
       },
     );
   }
@@ -482,6 +485,7 @@ class MemoMutationService {
         'uid': memo.uid,
         'create_time': createTimeSec,
         'display_time': createTimeSec,
+        ...memoUpdateTimePayloadFromSeconds(nowSec),
       },
     );
   }
@@ -545,6 +549,7 @@ class MemoMutationService {
         'uid': memo.uid,
         'content': content,
         'visibility': memo.visibility,
+        if (!preserveUpdateTime) ...memoUpdateTimePayload(updateTime),
       },
     );
   }
@@ -688,6 +693,7 @@ class MemoMutationService {
         'pinned': memo.pinned,
         'sync_attachments': true,
         'has_pending_attachments': true,
+        ...memoUpdateTimePayload(now),
       },
     );
     await db.enqueueOutbox(type: 'upload_attachment', payload: stagedPayload);
@@ -853,6 +859,7 @@ class MemoMutationService {
             if (includeRelations) 'relations': relations,
             if (shouldSyncAttachments) 'sync_attachments': true,
             if (hasPendingAttachments) 'has_pending_attachments': true,
+            ...memoUpdateTimePayload(now),
           },
         );
       }
@@ -968,6 +975,7 @@ class MemoMutationService {
             'visibility': memo.visibility,
             'pinned': memo.pinned,
             'has_pending_attachments': true,
+            ...memoUpdateTimePayload(now),
           },
         },
         <String, Object?>{

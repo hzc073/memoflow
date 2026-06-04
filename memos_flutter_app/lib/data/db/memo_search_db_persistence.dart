@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../core/memo_search_document_builder.dart';
 import '../../core/memo_search_matcher.dart';
+import '../models/memo_sort_order.dart';
 import 'app_database_write_dao.dart';
 
 final class MemoSearchDbPersistence {
@@ -14,6 +15,7 @@ final class MemoSearchDbPersistence {
     String? tag,
     int? startTimeSec,
     int? endTimeSecExclusive,
+    MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
     int dirtyDrainLimit = 64,
   }) async {
@@ -25,6 +27,8 @@ final class MemoSearchDbPersistence {
     final normalizedState = (state ?? '').trim();
     final normalizedSearch = MemoSearchMatcher.normalizeQuery(searchQuery);
     final normalizedLimit = (limit != null && limit > 0) ? limit : null;
+    final orderBy = _orderBy(sortOrder);
+    final aliasedOrderBy = _orderBy(sortOrder, alias: 'm');
 
     final baseWhereClauses = <String>[];
     final baseWhereArgs = <Object?>[];
@@ -50,7 +54,7 @@ final class MemoSearchDbPersistence {
         'memos',
         where: baseWhereClauses.isEmpty ? null : baseWhereClauses.join(' AND '),
         whereArgs: baseWhereArgs.isEmpty ? null : baseWhereArgs,
-        orderBy: 'pinned DESC, COALESCE(display_time, create_time) DESC',
+        orderBy: orderBy,
         limit: normalizedLimit,
       );
     }
@@ -98,7 +102,7 @@ SELECT DISTINCT m.*
 FROM memos m
 LEFT JOIN memo_clip_cards c ON c.memo_uid = m.uid
 WHERE ${literalSearchClauses.join(' AND ')}
-ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC
+ORDER BY $aliasedOrderBy
 $limitClause;
 ''', args);
     }
@@ -142,6 +146,7 @@ $limitClause;
           primary: dirtyMatched,
           secondary: await listByLiteralSearch(),
           limit: normalizedLimit,
+          sortOrder: sortOrder,
         );
       }
 
@@ -182,12 +187,13 @@ FROM candidate_rows cr
 JOIN memos m ON m.id = cr.memo_row_id
 JOIN memo_search_documents sd ON sd.memo_row_id = m.id
 WHERE ${cleanWhereClauses.join(' AND ')}
-ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
+ORDER BY $aliasedOrderBy;
 ''', cleanWhereArgs);
       return _mergeRows(
         primary: dirtyMatched,
         secondary: cleanRows,
         limit: normalizedLimit,
+        sortOrder: sortOrder,
       );
     } on DatabaseException {
       return listByLiteralSearch();
@@ -601,6 +607,7 @@ ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
     required Iterable<Map<String, dynamic>> primary,
     required Iterable<Map<String, dynamic>> secondary,
     required int? limit,
+    required MemoSortOrder sortOrder,
   }) {
     final merged = <Map<String, dynamic>>[];
     final seen = <String>{};
@@ -619,28 +626,87 @@ ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
     for (final row in secondary) {
       addRow(Map<String, dynamic>.from(row));
     }
-    merged.sort(_compareRows);
+    merged.sort((a, b) => _compareRows(a, b, sortOrder));
     if (limit != null && limit > 0 && merged.length > limit) {
       return merged.take(limit).toList(growable: false);
     }
     return merged;
   }
 
-  static int _compareRows(Map<String, dynamic> a, Map<String, dynamic> b) {
+  static int _compareRows(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+    MemoSortOrder sortOrder,
+  ) {
     final aPinned = (_readInt(a['pinned']) ?? 0) != 0;
     final bPinned = (_readInt(b['pinned']) ?? 0) != 0;
     if (aPinned != bPinned) {
       return aPinned ? -1 : 1;
     }
-    final timeCompare = _rowSortTime(b).compareTo(_rowSortTime(a));
-    if (timeCompare != 0) return timeCompare;
-    return (_readInt(b['id']) ?? 0).compareTo(_readInt(a['id']) ?? 0);
+    final primaryCompare = switch (sortOrder) {
+      MemoSortOrder.createAsc => _compareTime(
+        _rowCreateDisplayTime(a),
+        _rowCreateDisplayTime(b),
+        ascending: true,
+      ),
+      MemoSortOrder.createDesc => _compareTime(
+        _rowCreateDisplayTime(a),
+        _rowCreateDisplayTime(b),
+        ascending: false,
+      ),
+      MemoSortOrder.updateAsc => _compareTime(
+        _readInt(a['update_time']) ?? 0,
+        _readInt(b['update_time']) ?? 0,
+        ascending: true,
+      ),
+      MemoSortOrder.updateDesc => _compareTime(
+        _readInt(a['update_time']) ?? 0,
+        _readInt(b['update_time']) ?? 0,
+        ascending: false,
+      ),
+    };
+    if (primaryCompare != 0) return primaryCompare;
+
+    final fallbackCompare = _compareTime(
+      _rowCreateDisplayTime(a),
+      _rowCreateDisplayTime(b),
+      ascending: false,
+    );
+    if (fallbackCompare != 0) return fallbackCompare;
+
+    final uidCompare = ((a['uid'] as String?) ?? '').compareTo(
+      (b['uid'] as String?) ?? '',
+    );
+    if (uidCompare != 0) return uidCompare;
+    return (_readInt(a['id']) ?? 0).compareTo(_readInt(b['id']) ?? 0);
   }
 
-  static int _rowSortTime(Map<String, dynamic> row) {
+  static int _rowCreateDisplayTime(Map<String, dynamic> row) {
     final displayTime = _readInt(row['display_time']);
     if (displayTime != null) return displayTime;
     return _readInt(row['create_time']) ?? 0;
+  }
+
+  static int _compareTime(int a, int b, {required bool ascending}) {
+    if (a == b) return 0;
+    return ascending ? a.compareTo(b) : b.compareTo(a);
+  }
+
+  static String _orderBy(MemoSortOrder sortOrder, {String? alias}) {
+    final prefix = alias == null || alias.trim().isEmpty
+        ? ''
+        : '${alias.trim()}.';
+    final createExpr = 'COALESCE(${prefix}display_time, ${prefix}create_time)';
+    return switch (sortOrder) {
+      MemoSortOrder.createAsc =>
+        '${prefix}pinned DESC, $createExpr ASC, ${prefix}uid ASC',
+      MemoSortOrder.createDesc =>
+        '${prefix}pinned DESC, $createExpr DESC, ${prefix}uid ASC',
+      MemoSortOrder.updateAsc =>
+        '${prefix}pinned DESC, ${prefix}update_time ASC, $createExpr DESC, ${prefix}uid ASC',
+      MemoSortOrder.updateDesc =>
+        '${prefix}pinned DESC, ${prefix}update_time DESC, $createExpr DESC, ${prefix}uid ASC',
+    };
   }
 
   static Set<String> _buildIndexGrams(String document) {

@@ -27,6 +27,7 @@ import '../../data/models/recycle_bin_item.dart';
 import 'memo_sync_constraints.dart';
 import 'create_memo_outbox_payload.dart';
 import 'memo_timeline_mutation_service.dart';
+import 'memos_update_time_payload.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
 import '../system/database_provider.dart';
 import '../system/session_provider.dart';
@@ -263,6 +264,7 @@ class MemoTimelineService {
           'location': restoredLocation?.toJson(),
           'sync_attachments': true,
           if (hasPendingAttachments) 'has_pending_attachments': true,
+          ...memoUpdateTimePayload(now),
         },
       );
 
@@ -526,6 +528,7 @@ class MemoTimelineService {
           'location': location?.toJson(),
           'sync_attachments': true,
           if (hasPendingAttachments) 'has_pending_attachments': true,
+          ...memoUpdateTimePayload(now),
         },
       );
     }
@@ -629,6 +632,7 @@ class MemoTimelineService {
           'pinned': memo.pinned,
           'sync_attachments': true,
           'has_pending_attachments': true,
+          ...memoUpdateTimePayload(now),
         },
       );
 
