@@ -4,14 +4,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../application/legal/legal_consent_policy.dart';
-import '../../core/memoflow_palette.dart';
-import '../../platform/platform_icons.dart';
+import '../../i18n/strings.g.dart';
 import '../../platform/platform_route.dart';
-import '../../platform/widgets/platform_page.dart';
 import '../debug/debug_tools_screen.dart';
 import '../updates/donors_wall_screen.dart';
 import '../updates/release_notes_screen.dart';
-import '../../i18n/strings.g.dart';
+import 'settings_ui.dart';
 
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key, this.showBackButton = true});
@@ -23,21 +21,10 @@ class AboutUsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    return PlatformPage(
-      backgroundColor: bg,
-      leading: showBackButton
-          ? IconButton(
-              tooltip: context.t.strings.legacy.msg_back,
-              icon: Icon(PlatformIcons.back),
-              onPressed: () => Navigator.of(context).maybePop(),
-            )
-          : null,
+    return SettingsPage(
+      showBackButton: showBackButton,
       title: Text(context.t.strings.legacy.msg_about),
-      body: const AboutUsContent(),
+      children: const [AboutUsContent()],
     );
   }
 }
@@ -114,18 +101,7 @@ class _AboutUsContentState extends State<AboutUsContent> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.06);
+    final tokens = settingsPageTokens(context);
     const websiteUrl = 'https://memoflow.hzc073.com/';
     const helpUrl = 'https://memoflow.hzc073.com/help/';
     const feedbackUrl = 'https://github.com/hzc073/memoflow/issues';
@@ -134,12 +110,14 @@ class _AboutUsContentState extends State<AboutUsContent> {
         icon: Icons.public_outlined,
         title: context.t.strings.legacy.msg_about_website_link,
         subtitle: context.t.strings.legacy.msg_about_website_link_subtitle,
+        external: true,
         onTap: () => _openExternalLink(context, websiteUrl),
       ),
       _AboutEntry(
         icon: Icons.privacy_tip_outlined,
         title: context.t.strings.legacy.msg_about_privacy_policy,
         subtitle: context.t.strings.legacy.msg_about_privacy_policy_subtitle,
+        external: true,
         onTap: () => _openExternalLink(
           context,
           MemoFlowLegalConsentPolicy.privacyPolicyUrl,
@@ -149,6 +127,7 @@ class _AboutUsContentState extends State<AboutUsContent> {
         icon: Icons.description_outlined,
         title: context.t.strings.legacy.msg_about_user_agreement,
         subtitle: context.t.strings.legacy.msg_about_user_agreement_subtitle,
+        external: true,
         onTap: () => _openExternalLink(
           context,
           MemoFlowLegalConsentPolicy.termsOfServiceUrl,
@@ -158,6 +137,7 @@ class _AboutUsContentState extends State<AboutUsContent> {
         icon: Icons.help_outline,
         title: context.t.strings.legacy.msg_about_help_center,
         subtitle: context.t.strings.legacy.msg_about_help_center_subtitle,
+        external: true,
         onTap: () => _openExternalLink(context, helpUrl),
       ),
       _AboutEntry(
@@ -177,6 +157,7 @@ class _AboutUsContentState extends State<AboutUsContent> {
         icon: Icons.feedback_outlined,
         title: context.t.strings.legacy.msg_about_submit_feedback,
         subtitle: context.t.strings.legacy.msg_about_submit_feedback_subtitle,
+        external: true,
         onTap: () => _openExternalLink(context, feedbackUrl),
       ),
       _AboutEntry(
@@ -194,179 +175,87 @@ class _AboutUsContentState extends State<AboutUsContent> {
       ),
     ];
 
-    return Stack(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (isDark)
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [const Color(0xFF0B0B0B), bg, bg],
-                ),
-              ),
-            ),
-          ),
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+        _AboutSummary(
+          onTap: _handleDebugTap,
+          versionBuilder: (snapshot) =>
+              _versionDescription(context, snapshot.data),
+        ),
+        const SizedBox(height: 16),
+        SettingsSection(
           children: [
-            GestureDetector(
-              onTap: _handleDebugTap,
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: 92,
-                    height: 92,
-                    child: Image.asset(
-                      'assets/splash/splash_logo_native.png',
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'MemoFlow',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  FutureBuilder<PackageInfo>(
-                    future: AboutUsScreen._packageInfoFuture,
-                    builder: (context, snapshot) {
-                      return Text(
-                        _versionDescription(context, snapshot.data),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          height: 1.35,
-                          color: textMuted,
-                        ),
-                      );
-                    },
-                  ),
-                ],
+            for (final entry in entries)
+              SettingsNavigationRow(
+                leading: Icon(entry.icon, size: 20, color: tokens.textMuted),
+                label: entry.title,
+                description: entry.subtitle,
+                trailingIcon: entry.external
+                    ? Icons.open_in_new
+                    : Icons.chevron_right,
+                onTap: entry.onTap,
               ),
-            ),
-            const SizedBox(height: 16),
-            _CardGroup(
-              card: card,
-              divider: divider,
-              children: [
-                for (final entry in entries)
-                  _AboutEntryRow(
-                    entry: entry,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                  ),
-              ],
-            ),
-            if (kDebugMode) ...[
-              const SizedBox(height: 10),
-              Text(
-                context.t.strings.legacy.msg_debug_tap_logo_enter_debug_tools,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: textMuted),
-              ),
-            ],
-            const SizedBox(height: 4),
           ],
         ),
+        if (kDebugMode) ...[
+          const SizedBox(height: 10),
+          Text(
+            context.t.strings.legacy.msg_debug_tap_logo_enter_debug_tools,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: tokens.textMuted),
+          ),
+        ],
+        const SizedBox(height: 4),
       ],
     );
   }
 }
 
-class _CardGroup extends StatelessWidget {
-  const _CardGroup({
-    required this.card,
-    required this.divider,
-    required this.children,
-  });
+class _AboutSummary extends StatelessWidget {
+  const _AboutSummary({required this.onTap, required this.versionBuilder});
 
-  final Color card;
-  final Color divider;
-  final List<Widget> children;
+  final VoidCallback onTap;
+  final String Function(AsyncSnapshot<PackageInfo> snapshot) versionBuilder;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
+    final tokens = settingsPageTokens(context);
+    return GestureDetector(
+      onTap: onTap,
       child: Column(
         children: [
-          for (var i = 0; i < children.length; i++) ...[
-            children[i],
-            if (i != children.length - 1) Divider(height: 1, color: divider),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _AboutEntryRow extends StatelessWidget {
-  const _AboutEntryRow({
-    required this.entry,
-    required this.textMain,
-    required this.textMuted,
-  });
-
-  final _AboutEntry entry;
-  final Color textMain;
-  final Color textMuted;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: entry.onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(
-            children: [
-              Icon(entry.icon, size: 20, color: textMuted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      entry.subtitle,
-                      style: TextStyle(fontSize: 12, color: textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Icon(Icons.chevron_right, size: 20, color: textMuted),
-            ],
+          SizedBox(
+            width: 92,
+            height: 92,
+            child: Image.asset(
+              'assets/splash/splash_logo_native.png',
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          const SettingsContentHeader(
+            title: 'MemoFlow',
+            textAlign: TextAlign.center,
+            prominent: true,
+          ),
+          const SizedBox(height: 6),
+          FutureBuilder<PackageInfo>(
+            future: AboutUsScreen._packageInfoFuture,
+            builder: (context, snapshot) {
+              return Text(
+                versionBuilder(snapshot),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: tokens.textMuted,
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -377,11 +266,13 @@ class _AboutEntry {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.external = false,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final bool external;
   final VoidCallback onTap;
 }

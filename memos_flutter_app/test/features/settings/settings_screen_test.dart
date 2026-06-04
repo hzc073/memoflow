@@ -11,9 +11,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/access_boundary/access_boundary.dart';
 import 'package:memos_flutter_app/access_boundary/access_decision.dart';
 import 'package:memos_flutter_app/access_boundary/app_capability.dart';
+import 'package:memos_flutter_app/application/sync/sync_coordinator.dart';
+import 'package:memos_flutter_app/application/sync/sync_error.dart';
+import 'package:memos_flutter_app/application/sync/sync_request.dart';
+import 'package:memos_flutter_app/application/sync/sync_types.dart';
+import 'package:memos_flutter_app/application/sync/webdav_backup_service.dart';
+import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/api/memos_api.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
+import 'package:memos_flutter_app/data/models/webdav_backup.dart';
+import 'package:memos_flutter_app/data/models/webdav_export_status.dart';
+import 'package:memos_flutter_app/data/models/webdav_settings.dart';
+import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
 import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
@@ -21,28 +31,41 @@ import 'package:memos_flutter_app/data/models/server_setting.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
 import 'package:memos_flutter_app/data/models/user_setting.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
+import 'package:memos_flutter_app/data/repositories/webdav_vault_state_repository.dart';
 import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
 import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
+import 'package:memos_flutter_app/features/settings/account_security_screen.dart';
+import 'package:memos_flutter_app/features/settings/about_us_screen.dart';
 import 'package:memos_flutter_app/features/settings/customize_home_shortcuts_screen.dart';
+import 'package:memos_flutter_app/features/settings/feedback_screen.dart';
 import 'package:memos_flutter_app/features/settings/laboratory_screen.dart';
 import 'package:memos_flutter_app/features/settings/navigation_mode_screen.dart';
+import 'package:memos_flutter_app/features/settings/password_lock_screen.dart';
 import 'package:memos_flutter_app/features/settings/server_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/features/settings/user_general_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/webdav_sync_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/module_boundary/settings_entry_contribution.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_list_section.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle_provider.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
+import 'package:memos_flutter_app/state/settings/app_lock_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/settings/server_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/user_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
+import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
 import 'package:memos_flutter_app/state/system/notifications_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
+import 'package:memos_flutter_app/state/webdav/webdav_settings_provider.dart';
+import 'package:memos_flutter_app/state/webdav/webdav_vault_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 void main() {
@@ -117,6 +140,234 @@ void main() {
     expect(donationFinder, findsOneWidget);
     expect(find.byIcon(Icons.workspace_premium_rounded), findsNothing);
     expect(find.text('Private Entry'), findsNothing);
+  });
+
+  testWidgets('settings home keeps semantic entry seams and core entries', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsHomeProfileEntry), findsOneWidget);
+    expect(find.byType(SettingsHomeShortcutTile), findsNWidgets(3));
+    expect(find.byType(SettingsNavigationRow), findsWidgets);
+    expect(find.text('Stats'), findsOneWidget);
+    expect(find.text('Widgets'), findsOneWidget);
+    expect(find.text('API & Plugins'), findsOneWidget);
+    expect(find.text('Preferences'), findsOneWidget);
+
+    final componentsFinder = find.text('Components');
+    await tester.scrollUntilVisible(
+      componentsFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(componentsFinder, findsOneWidget);
+  });
+
+  testWidgets('settings home uses mobile hierarchy seams on phone', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.android;
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(buildTestApp());
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.byType(SettingsScreen));
+    final tokens = settingsPageTokens(context);
+    final home = tokens.homeHierarchy;
+
+    expect(home.usesLayeredCards, isTrue);
+    expect(find.byType(SettingsHomeProfileEntry), findsOneWidget);
+    expect(find.byType(SettingsHomeShortcutTile), findsNWidgets(3));
+    expect(find.byType(SettingsHomeSection), findsAtLeastNWidgets(5));
+
+    final firstHomeSection = tester.widget<PlatformListSection>(
+      find.descendant(
+        of: find.byType(SettingsHomeSection).first,
+        matching: find.byType(PlatformListSection),
+      ),
+    );
+    expect(firstHomeSection.style?.sectionColor, home.cardBackground);
+    expect(firstHomeSection.style?.borderColor, home.border);
+    expect(firstHomeSection.style?.dividerColor, home.divider);
+    expect(
+      firstHomeSection.style?.borderRadius,
+      BorderRadius.circular(home.sectionRadius),
+    );
+    expect(firstHomeSection.style?.boxShadow, home.sectionShadow);
+
+    expect(find.text('Stats'), findsOneWidget);
+    expect(find.text('Widgets'), findsOneWidget);
+    expect(find.text('API & Plugins'), findsOneWidget);
+    expect(find.text('About'), findsOneWidget);
+  });
+
+  testWidgets('feedback screen uses settings semantic rows', (tester) async {
+    await tester.pumpWidget(buildTestApp(home: const FeedbackScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsSection), findsOneWidget);
+    expect(find.byType(SettingsNavigationRow), findsNWidgets(3));
+    expect(find.text('Export Logs'), findsOneWidget);
+    expect(find.text('Self Repair'), findsOneWidget);
+    expect(find.text('How to report?'), findsOneWidget);
+  });
+
+  testWidgets(
+    'about screen keeps identity and support entries on settings seams',
+    (tester) async {
+      await tester.pumpWidget(buildTestApp(home: const AboutUsScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsPage), findsOneWidget);
+      expect(find.byType(SettingsSection), findsOneWidget);
+      expect(find.byType(SettingsNavigationRow), findsNWidgets(7));
+      expect(find.text('MemoFlow'), findsOneWidget);
+      expect(find.text('Version: v1.0.0 (1)'), findsOneWidget);
+      expect(find.text('Official Website'), findsOneWidget);
+      expect(find.text('Release Notes'), findsOneWidget);
+      expect(find.text('Contributors'), findsOneWidget);
+    },
+  );
+
+  testWidgets('account security screen uses settings semantic rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const AccountSecurityScreen(),
+        overrides: [
+          appSessionProvider.overrideWith(
+            (ref) => _TestSessionController(hasAccount: true),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsProfileSummary), findsOneWidget);
+    expect(find.byType(SettingsSection), findsWidgets);
+    expect(find.byType(SettingsNavigationRow), findsNWidgets(5));
+    expect(find.byType(SettingsSelectableItemRow), findsOneWidget);
+    expect(find.text('Add Account'), findsOneWidget);
+    expect(find.text('Add local library'), findsOneWidget);
+    expect(find.text('User General Settings'), findsOneWidget);
+    expect(find.text('Server Settings'), findsOneWidget);
+    expect(find.text('Sign Out'), findsOneWidget);
+    expect(find.text('Accounts'), findsOneWidget);
+  });
+
+  testWidgets('password lock screen uses settings semantic rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const PasswordLockScreen(),
+        overrides: [
+          appLockProvider.overrideWith(
+            (ref) => _FakeAppLockController(
+              const AppLockState(
+                enabled: true,
+                autoLockTime: AutoLockTime.after5Min,
+                hasPassword: true,
+                locked: false,
+                loaded: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsSection), findsNWidgets(3));
+    expect(find.byType(SettingsToggleRow), findsOneWidget);
+    expect(find.byType(SettingsNavigationRow), findsNWidgets(2));
+    expect(find.byType(SettingsInfoRow), findsOneWidget);
+    expect(find.text('App Lock'), findsOneWidget);
+    expect(find.text('Enable App Lock'), findsOneWidget);
+    expect(find.text('Change Password'), findsOneWidget);
+    expect(find.text('Auto-lock time'), findsOneWidget);
+  });
+
+  testWidgets('vault security status screen uses settings semantic rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const VaultSecurityStatusScreen(),
+        overrides: [
+          desktopSyncFacadeProvider.overrideWithValue(
+            _VaultStatusSyncFacade(
+              meta: const WebDavSyncMeta(
+                schemaVersion: 1,
+                deviceId: 'device-a',
+                updatedAt: '2026-06-02T00:00:00Z',
+                files: <String, WebDavFileMeta>{},
+                deprecatedFiles: <String>['legacy.json'],
+              ),
+              exportStatus: const WebDavExportStatus(
+                webDavConfigured: true,
+                encSignature: null,
+                plainSignature: null,
+                plainDetected: true,
+                plainDeprecated: true,
+                plainDetectedAt: null,
+                plainRemindAfter: null,
+                lastExportSuccessAt: '2026-06-01T10:00:00Z',
+                lastUploadSuccessAt: '2026-06-01T10:05:00Z',
+              ),
+            ),
+          ),
+          webDavSettingsProvider.overrideWith(
+            (ref) => _FakeWebDavSettingsController(
+              WebDavSettings.defaults.copyWith(
+                vaultEnabled: true,
+                vaultKeepPlainCache: true,
+                backupMirrorRootPath: '/tmp/memoflow-backup',
+              ),
+            ),
+          ),
+          webDavVaultStateRepositoryProvider.overrideWithValue(
+            _FakeWebDavVaultStateRepository(
+              const WebDavVaultState(recoveryVerified: true),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsSection), findsNWidgets(2));
+    expect(find.byType(SettingsToggleRow), findsOneWidget);
+    expect(find.byType(SettingsAction), findsNWidgets(5));
+    expect(find.text('Vault security status'), findsOneWidget);
+    expect(find.text('Vault enabled'), findsOneWidget);
+    expect(find.text('Yes'), findsOneWidget);
+    expect(find.text('Recovery code'), findsOneWidget);
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('Remote plaintext'), findsOneWidget);
+    expect(find.text('1 detected'), findsOneWidget);
+    expect(find.text('Local plaintext cache'), findsOneWidget);
+    expect(find.text('Possible'), findsOneWidget);
+    expect(find.text('Export plaintext'), findsOneWidget);
+    expect(find.text('Detected (legacy)'), findsOneWidget);
+    expect(find.text('View recovery code'), findsOneWidget);
+    expect(find.text('Clean remote plaintext'), findsOneWidget);
+    expect(find.text('Backup restore test'), findsOneWidget);
   });
 
   testWidgets(
@@ -328,6 +579,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsSection), findsNWidgets(2));
+    expect(find.byType(SettingsInputRow), findsNWidgets(2));
     expect(find.text('Memo maximum bytes'), findsOneWidget);
     expect(find.text('Attachment maximum capacity'), findsOneWidget);
     expect(
@@ -656,6 +910,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(SettingsSection), findsOneWidget);
+    expect(find.byType(SettingsValueRow), findsNWidgets(2));
+    expect(find.text('Locale'), findsOneWidget);
+    expect(find.text('Default visibility'), findsOneWidget);
     expect(find.text('Memo maximum bytes'), findsNothing);
     expect(find.text('Attachment maximum capacity'), findsNothing);
     expect(find.text('Server Settings'), findsNothing);
@@ -1037,6 +1296,293 @@ class _FakeServerSettingsController extends ServerSettingsController {
     attachmentSaveCount++;
     return const ServerSettingSaveResult.saved();
   }
+}
+
+class _FakeAppLockController extends StateNotifier<AppLockState>
+    implements AppLockController {
+  _FakeAppLockController(super.state);
+
+  @override
+  void setEnabled(bool v) {
+    state = state.copyWith(enabled: v, locked: v ? state.locked : false);
+  }
+
+  @override
+  void setAutoLockTime(AutoLockTime v) {
+    state = state.copyWith(autoLockTime: v);
+  }
+
+  @override
+  Future<void> setPassword(String password) async {
+    state = state.copyWith(hasPassword: true);
+  }
+
+  @override
+  Future<bool> verifyPassword(String password) async {
+    state = state.copyWith(locked: false, clearLastBackgroundAt: true);
+    return true;
+  }
+
+  @override
+  void lock() {
+    if (!state.enabled || !state.hasPassword) return;
+    state = state.copyWith(locked: true);
+  }
+
+  @override
+  void recordBackgrounded() {}
+
+  @override
+  void handleAppResumed() {}
+
+  @override
+  Future<void> setSnapshot(
+    AppLockSnapshot snapshot, {
+    bool triggerSync = true,
+  }) async {
+    state = state.copyWith(
+      enabled: snapshot.settings.enabled,
+      autoLockTime: snapshot.settings.autoLockTime,
+      hasPassword: snapshot.passwordRecord != null,
+      locked: snapshot.settings.enabled && snapshot.passwordRecord != null,
+      loaded: true,
+      clearLastBackgroundAt: true,
+    );
+  }
+}
+
+class _FakeWebDavSettingsController extends StateNotifier<WebDavSettings>
+    implements WebDavSettingsController {
+  _FakeWebDavSettingsController(super.settings);
+
+  @override
+  void setEnabled(bool value) => state = state.copyWith(enabled: value);
+
+  @override
+  void setAutoSyncAllowed(bool value) =>
+      state = state.copyWith(autoSyncAllowed: value);
+
+  @override
+  void setServerUrl(String value) => state = state.copyWith(serverUrl: value);
+
+  @override
+  void setUsername(String value) => state = state.copyWith(username: value);
+
+  @override
+  void setPassword(String value) => state = state.copyWith(password: value);
+
+  @override
+  void setAuthMode(WebDavAuthMode mode) =>
+      state = state.copyWith(authMode: mode);
+
+  @override
+  void setIgnoreTlsErrors(bool value) =>
+      state = state.copyWith(ignoreTlsErrors: value);
+
+  @override
+  void setRootPath(String value) => state = state.copyWith(rootPath: value);
+
+  @override
+  void setVaultEnabled(bool value) =>
+      state = state.copyWith(vaultEnabled: value);
+
+  @override
+  void setRememberVaultPassword(bool value) =>
+      state = state.copyWith(rememberVaultPassword: value);
+
+  @override
+  void setVaultKeepPlainCache(bool value) =>
+      state = state.copyWith(vaultKeepPlainCache: value);
+
+  @override
+  void setBackupEnabled(bool value) =>
+      state = state.copyWith(backupEnabled: value);
+
+  @override
+  void setBackupConfigScope(WebDavBackupConfigScope scope) =>
+      state = state.copyWith(backupConfigScope: scope);
+
+  @override
+  void setBackupContentMemos(bool value) =>
+      state = state.copyWith(backupContentMemos: value);
+
+  @override
+  void setBackupEncryptionMode(WebDavBackupEncryptionMode mode) =>
+      state = state.copyWith(backupEncryptionMode: mode);
+
+  @override
+  void setBackupSchedule(WebDavBackupSchedule schedule) =>
+      state = state.copyWith(backupSchedule: schedule);
+
+  @override
+  void setBackupRetentionCount(int value) =>
+      state = state.copyWith(backupRetentionCount: value);
+
+  @override
+  void setRememberBackupPassword(bool value) =>
+      state = state.copyWith(rememberBackupPassword: value);
+
+  @override
+  void setBackupExportEncrypted(bool value) =>
+      state = state.copyWith(backupExportEncrypted: value);
+
+  @override
+  void setBackupMirrorLocation({String? treeUri, String? rootPath}) {
+    state = state.copyWith(
+      backupMirrorTreeUri: treeUri,
+      backupMirrorRootPath: rootPath,
+    );
+  }
+
+  @override
+  void setAll(WebDavSettings settings) {
+    state = settings;
+  }
+}
+
+class _FakeWebDavVaultStateRepository implements WebDavVaultStateRepository {
+  _FakeWebDavVaultStateRepository(this.state);
+
+  WebDavVaultState state;
+
+  @override
+  Future<WebDavVaultState> read() async => state;
+
+  @override
+  Future<void> write(WebDavVaultState state) async {
+    this.state = state;
+  }
+
+  @override
+  Future<void> clear() async {
+    state = WebDavVaultState.defaults;
+  }
+}
+
+class _VaultStatusSyncFacade extends DesktopSyncFacade {
+  _VaultStatusSyncFacade({required this.meta, required this.exportStatus})
+    : super(SyncCoordinatorState.initial);
+
+  final WebDavSyncMeta? meta;
+  final WebDavExportStatus exportStatus;
+
+  @override
+  Future<WebDavSyncMeta?> fetchWebDavSyncMeta() async => meta;
+
+  @override
+  Future<WebDavExportStatus> fetchWebDavExportStatus() async => exportStatus;
+
+  @override
+  Future<WebDavSyncMeta?> cleanWebDavDeprecatedPlainFiles() async => null;
+
+  @override
+  Future<WebDavExportCleanupStatus> cleanWebDavPlainExport() async =>
+      WebDavExportCleanupStatus.notFound;
+
+  @override
+  Future<SyncRunResult> requestSync(SyncRequest request) async {
+    return const SyncRunStarted();
+  }
+
+  @override
+  Future<SyncRunResult> requestWebDavBackup({
+    required SyncRequestReason reason,
+    String? password,
+    WebDavBackupExportIssueHandler? onExportIssue,
+  }) async {
+    return const SyncRunStarted();
+  }
+
+  @override
+  Future<WebDavConnectionTestResult> testWebDavConnection({
+    required WebDavSettings settings,
+  }) async {
+    return const WebDavConnectionTestResult.success();
+  }
+
+  @override
+  Future<SyncError?> verifyWebDavBackup({
+    required String password,
+    required bool deep,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<List<WebDavBackupSnapshotInfo>> listWebDavBackupSnapshots({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required String password,
+  }) async {
+    return const <WebDavBackupSnapshotInfo>[];
+  }
+
+  @override
+  Future<String> recoverWebDavBackupPassword({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required String recoveryCode,
+    required String newPassword,
+  }) async {
+    return '';
+  }
+
+  @override
+  Future<WebDavRestoreResult> restoreWebDavPlainBackup({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+    Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigRestorePromptHandler? onConfigRestorePrompt,
+  }) async {
+    return const WebDavRestoreSuccess();
+  }
+
+  @override
+  Future<WebDavRestoreResult> restoreWebDavPlainBackupToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigRestorePromptHandler? onConfigRestorePrompt,
+  }) async {
+    return const WebDavRestoreSuccess();
+  }
+
+  @override
+  Future<WebDavRestoreResult> restoreWebDavSnapshot({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required LocalLibrary? activeLocalLibrary,
+    required WebDavBackupSnapshotInfo snapshot,
+    required String password,
+    Map<String, bool>? conflictDecisions,
+    WebDavBackupConfigRestorePromptHandler? onConfigRestorePrompt,
+  }) async {
+    return const WebDavRestoreSuccess();
+  }
+
+  @override
+  Future<WebDavRestoreResult> restoreWebDavSnapshotToDirectory({
+    required WebDavSettings settings,
+    required String? accountKey,
+    required WebDavBackupSnapshotInfo snapshot,
+    required String password,
+    required LocalLibrary exportLibrary,
+    required String exportPrefix,
+    WebDavBackupConfigRestorePromptHandler? onConfigRestorePrompt,
+  }) async {
+    return const WebDavRestoreSuccess();
+  }
+
+  @override
+  Future<void> resolveWebDavConflicts(Map<String, bool> resolutions) async {}
+
+  @override
+  Future<void> resolveLocalScanConflicts(Map<String, bool> resolutions) async {}
+
+  @override
+  Future<void> retryPending() async {}
 }
 
 class _TestSessionController extends AppSessionController {

@@ -3,12 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
-import '../../core/memoflow_palette.dart';
 import '../../data/models/server_setting.dart';
-import '../../platform/platform_icons.dart';
-import '../../platform/widgets/platform_controls.dart';
-import '../../platform/widgets/platform_page.dart';
 import '../../state/settings/server_settings_provider.dart';
+import 'settings_ui.dart';
 
 class ServerSettingsScreen extends ConsumerStatefulWidget {
   const ServerSettingsScreen({super.key});
@@ -61,24 +58,66 @@ class _ServerSettingsScreenState extends ConsumerState<ServerSettingsScreen> {
       );
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.58 : 0.62);
+    final content = state.snapshot.when<List<Widget>>(
+      loading: () => const [_ServerSettingsLoadingState()],
+      error: (error, _) => [
+        _LoadError(
+          onRetry: () => ref.read(serverSettingsProvider.notifier).refresh(),
+        ),
+      ],
+      data: (settings) => [
+        _LimitSection(
+          icon: Icons.notes_outlined,
+          title: context.tr(
+            zh: '\u7B14\u8BB0\u6700\u5927\u5B57\u8282',
+            en: 'Memo maximum bytes',
+          ),
+          unitLabel: context.tr(zh: '\u5B57\u8282', en: 'Bytes'),
+          emptyHintText: _memoContentLimitRangeHint(context),
+          setting: settings.memoContentLimitBytes,
+          controller: _memoController,
+          focusNode: _memoFocus,
+          isSaving: state.isSavingMemoContentLimit,
+          inputError: _memoInputError,
+          saveResult: state.memoContentSaveResult,
+          onChanged: () {
+            if (_memoInputError != null) {
+              setState(() => _memoInputError = null);
+            }
+          },
+          onSave: () => _saveMemoLimit(context),
+        ),
+        const SizedBox(height: 12),
+        _LimitSection(
+          icon: Icons.attach_file,
+          title: context.tr(
+            zh: '\u9644\u4EF6\u6700\u5927\u5BB9\u91CF',
+            en: 'Attachment maximum capacity',
+          ),
+          unitLabel: 'MiB',
+          emptyHintText: _currentServerLimitHint(
+            context,
+            value: settings.attachmentUploadLimitMiB.value,
+            unitLabel: 'MiB',
+          ),
+          setting: settings.attachmentUploadLimitMiB,
+          controller: _attachmentController,
+          focusNode: _attachmentFocus,
+          isSaving: state.isSavingAttachmentUploadLimit,
+          inputError: _attachmentInputError,
+          saveResult: state.attachmentUploadSaveResult,
+          onChanged: () {
+            if (_attachmentInputError != null) {
+              setState(() => _attachmentInputError = null);
+            }
+          },
+          onSave: () => _saveAttachmentLimit(context),
+        ),
+      ],
+    );
 
-    return PlatformPage(
-      backgroundColor: bg,
+    return SettingsPage(
       title: Text(_serverSettingsLabel(context)),
-      leading: IconButton(
-        tooltip: context.tr(zh: '\u8FD4\u56DE', en: 'Back'),
-        icon: Icon(PlatformIcons.back),
-        onPressed: () => Navigator.of(context).maybePop(),
-      ),
       actions: [
         IconButton(
           tooltip: context.tr(zh: '\u5237\u65B0', en: 'Refresh'),
@@ -88,73 +127,7 @@ class _ServerSettingsScreenState extends ConsumerState<ServerSettingsScreen> {
               : () => ref.read(serverSettingsProvider.notifier).refresh(),
         ),
       ],
-      body: state.snapshot.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _LoadError(
-          card: card,
-          textMain: textMain,
-          textMuted: textMuted,
-          onRetry: () => ref.read(serverSettingsProvider.notifier).refresh(),
-        ),
-        data: (settings) => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            _LimitSection(
-              card: card,
-              textMain: textMain,
-              textMuted: textMuted,
-              icon: Icons.notes_outlined,
-              title: context.tr(
-                zh: '\u7B14\u8BB0\u6700\u5927\u5B57\u8282',
-                en: 'Memo maximum bytes',
-              ),
-              unitLabel: context.tr(zh: '\u5B57\u8282', en: 'Bytes'),
-              emptyHintText: _memoContentLimitRangeHint(context),
-              setting: settings.memoContentLimitBytes,
-              controller: _memoController,
-              focusNode: _memoFocus,
-              isSaving: state.isSavingMemoContentLimit,
-              inputError: _memoInputError,
-              saveResult: state.memoContentSaveResult,
-              onChanged: () {
-                if (_memoInputError != null) {
-                  setState(() => _memoInputError = null);
-                }
-              },
-              onSave: () => _saveMemoLimit(context),
-            ),
-            const SizedBox(height: 12),
-            _LimitSection(
-              card: card,
-              textMain: textMain,
-              textMuted: textMuted,
-              icon: Icons.attach_file,
-              title: context.tr(
-                zh: '\u9644\u4EF6\u6700\u5927\u5BB9\u91CF',
-                en: 'Attachment maximum capacity',
-              ),
-              unitLabel: 'MiB',
-              emptyHintText: _currentServerLimitHint(
-                context,
-                value: settings.attachmentUploadLimitMiB.value,
-                unitLabel: 'MiB',
-              ),
-              setting: settings.attachmentUploadLimitMiB,
-              controller: _attachmentController,
-              focusNode: _attachmentFocus,
-              isSaving: state.isSavingAttachmentUploadLimit,
-              inputError: _attachmentInputError,
-              saveResult: state.attachmentUploadSaveResult,
-              onChanged: () {
-                if (_attachmentInputError != null) {
-                  setState(() => _attachmentInputError = null);
-                }
-              },
-              onSave: () => _saveAttachmentLimit(context),
-            ),
-          ],
-        ),
-      ),
+      children: content,
     );
   }
 
@@ -249,9 +222,6 @@ class _ServerSettingsScreenState extends ConsumerState<ServerSettingsScreen> {
 
 class _LimitSection extends StatelessWidget {
   const _LimitSection({
-    required this.card,
-    required this.textMain,
-    required this.textMuted,
     required this.icon,
     required this.title,
     required this.unitLabel,
@@ -266,9 +236,6 @@ class _LimitSection extends StatelessWidget {
     required this.onSave,
   });
 
-  final Color card;
-  final Color textMain;
-  final Color textMuted;
   final IconData icon;
   final String title;
   final String unitLabel;
@@ -284,7 +251,8 @@ class _LimitSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = settingsPageTokens(context);
+    final colorScheme = Theme.of(context).colorScheme;
     final editable = setting.isKnown && setting.editable && !isSaving;
     final message =
         inputError ??
@@ -296,87 +264,59 @@ class _LimitSection extends StatelessWidget {
             saveResult!.status != ServerSettingSaveStatus.saved);
     final isSaved = saveResult?.status == ServerSettingSaveStatus.saved;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsSection(
+          header: Row(
             children: [
-              Icon(icon, size: 20, color: textMuted),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: textMain,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
+              Icon(icon, size: 18, color: tokens.textMuted),
+              const SizedBox(width: 8),
+              Flexible(child: Text(title)),
             ],
           ),
-          const SizedBox(height: 14),
-          PlatformTextField(
-            controller: controller,
-            focusNode: focusNode,
-            enabled: editable,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: (_) => onChanged(),
-            decoration: InputDecoration(
-              labelText: unitLabel,
-              hintText: editable ? emptyHintText : null,
-              border: const OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          if (message.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              message,
-              style: TextStyle(
-                color: isError
-                    ? Theme.of(context).colorScheme.error
-                    : isSaved
-                    ? Colors.green.shade600
-                    : textMuted,
-                fontSize: 12,
-                height: 1.35,
-              ),
+          footer: message.isEmpty
+              ? null
+              : Text(
+                  message,
+                  style: TextStyle(
+                    color: isError
+                        ? colorScheme.error
+                        : isSaved
+                        ? colorScheme.primary
+                        : tokens.textMuted,
+                    height: 1.35,
+                  ),
+                ),
+          children: [
+            SettingsInputRow(
+              label: unitLabel,
+              controller: controller,
+              focusNode: focusNode,
+              hint: editable ? emptyHintText : null,
+              enabled: editable,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => onChanged(),
             ),
           ],
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: editable ? onSave : null,
-              icon: isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined),
-              label: Text(context.tr(zh: '\u4FDD\u5B58', en: 'Save')),
-            ),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerRight,
+          child: SettingsAction(
+            onPressed: editable ? onSave : null,
+            icon: isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_outlined),
+            label: Text(context.tr(zh: '\u4FDD\u5B58', en: 'Save')),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -454,58 +394,45 @@ class _LimitSection extends StatelessWidget {
   }
 }
 
-class _LoadError extends StatelessWidget {
-  const _LoadError({
-    required this.card,
-    required this.textMain,
-    required this.textMuted,
-    required this.onRetry,
-  });
+class _ServerSettingsLoadingState extends StatelessWidget {
+  const _ServerSettingsLoadingState();
 
-  final Color card;
-  final Color textMain;
-  final Color textMuted;
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 48),
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.onRetry});
+
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: card,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                      color: Colors.black.withValues(alpha: 0.06),
-                    ),
-                  ],
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.error_outline, color: textMuted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  context.tr(
-                    zh: '\u670D\u52A1\u5668\u8BBE\u7F6E\u52A0\u8F7D\u5931\u8D25\u3002',
-                    en: 'Server settings failed to load.',
-                  ),
-                  style: TextStyle(color: textMain),
-                ),
+        SettingsSection(
+          children: [
+            SettingsInfoRow(
+              description: context.tr(
+                zh: '\u670D\u52A1\u5668\u8BBE\u7F6E\u52A0\u8F7D\u5931\u8D25\u3002',
+                en: 'Server settings failed to load.',
               ),
-              TextButton(
-                onPressed: onRetry,
-                child: Text(context.tr(zh: '\u91CD\u8BD5', en: 'Retry')),
-              ),
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.center,
+          child: SettingsAction(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(context.tr(zh: '\u91CD\u8BD5', en: 'Retry')),
           ),
         ),
       ],

@@ -438,16 +438,6 @@ class _VaultSecurityStatusScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-
     final settings = ref.watch(webDavSettingsProvider);
     final localLibrary = ref.watch(currentLocalLibraryProvider);
     final vaultEnabled = settings.vaultEnabled;
@@ -461,244 +451,131 @@ class _VaultSecurityStatusScreenState
             settings.backupMirrorRootPath.trim().isNotEmpty);
     final exportPlainDetected = exportStatus?.plainDetected ?? false;
     final exportPlainDeprecated = exportStatus?.plainDeprecated ?? false;
+    final statusEntries = <_StatusEntry>[
+      _StatusEntry(
+        label: context.tr(zh: 'Vault 已启用', en: 'Vault enabled'),
+        value: vaultEnabled
+            ? context.tr(zh: '是', en: 'Yes')
+            : context.tr(zh: '否', en: 'No'),
+        status: vaultEnabled ? _StatusKind.good : _StatusKind.warn,
+      ),
+      _StatusEntry(
+        label: context.tr(zh: '恢复码', en: 'Recovery code'),
+        value: recoveryVerified
+            ? context.tr(zh: '已验证', en: 'Verified')
+            : context.tr(zh: '未验证', en: 'Not verified'),
+        status: recoveryVerified ? _StatusKind.good : _StatusKind.warn,
+      ),
+      _StatusEntry(
+        label: context.tr(zh: '远端明文', en: 'Remote plaintext'),
+        value: deprecatedCount == 0
+            ? context.tr(zh: '未检测到', en: 'Not detected')
+            : context.tr(
+                zh: '检测到 $deprecatedCount 个',
+                en: '$deprecatedCount detected',
+              ),
+        status: deprecatedCount == 0 ? _StatusKind.good : _StatusKind.warn,
+      ),
+      _StatusEntry(
+        label: context.tr(zh: '本地明文缓存', en: 'Local plaintext cache'),
+        value: hasLocalPlainCache
+            ? context.tr(zh: '可能存在', en: 'Possible')
+            : context.tr(zh: '未检测到', en: 'Not detected'),
+        status: hasLocalPlainCache ? _StatusKind.warn : _StatusKind.good,
+      ),
+      if (exportPathAvailable) ...[
+        _StatusEntry(
+          label: context.tr(zh: '导出路径明文', en: 'Export plaintext'),
+          value: exportPlainDetected
+              ? exportPlainDeprecated
+                    ? context.tr(zh: '检测到（残留）', en: 'Detected (legacy)')
+                    : context.tr(zh: '检测到', en: 'Detected')
+              : context.tr(zh: '未检测到', en: 'Not detected'),
+          status: exportPlainDetected ? _StatusKind.warn : _StatusKind.good,
+        ),
+        _StatusEntry(
+          label: context.tr(zh: '最近一次导出', en: 'Last export'),
+          value: _formatTimeLabel(exportStatus?.lastExportSuccessAt),
+          status: (exportStatus?.lastExportSuccessAt ?? '').isNotEmpty
+              ? _StatusKind.good
+              : _StatusKind.warn,
+        ),
+        _StatusEntry(
+          label: context.tr(zh: '最近一次上传', en: 'Last upload'),
+          value: _formatTimeLabel(exportStatus?.lastUploadSuccessAt),
+          status: (exportStatus?.lastUploadSuccessAt ?? '').isNotEmpty
+              ? _StatusKind.good
+              : _StatusKind.warn,
+        ),
+      ],
+    ];
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
-          context: context,
-          automaticallyImplyLeading: true,
-        ),
-        leading: resolveDesktopRouteDismissalLeading(
-          context: context,
-          leading: IconButton(
-            tooltip: context.tr(zh: '返回', en: 'Back'),
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-        ),
-        title: Text(context.tr(zh: '安全状态检查', en: 'Vault security status')),
-        centerTitle: false,
-      ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
-                ),
+    return SettingsPage(
+      title: Text(context.tr(zh: '安全状态检查', en: 'Vault security status')),
+      children: [
+        SettingsSection(
+          children: [
+            for (final entry in statusEntries) _VaultStatusRow(entry: entry),
+            if (_loading)
+              _VaultLoadingRow(
+                label: context.tr(zh: '正在检测…', en: 'Checking…'),
               ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SettingsToggleRow(
+              label: context.tr(
+                zh: '过渡期保留本地明文',
+                en: 'Keep local plaintext temporarily',
+              ),
+              description: context.tr(
+                zh: '用于兼容过渡期，建议确认后关闭',
+                en: 'For transition only. Turn off after verification.',
+              ),
+              value: hasLocalPlainCache,
+              onChanged: vaultEnabled ? _setLocalPlainCache : null,
             ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              _StatusCard(
-                card: card,
-                textMain: textMain,
-                textMuted: textMuted,
-                loading: _loading,
-                entries: [
-                  _StatusEntry(
-                    label: context.tr(zh: 'Vault 已启用', en: 'Vault enabled'),
-                    value: vaultEnabled
-                        ? context.tr(zh: '是', en: 'Yes')
-                        : context.tr(zh: '否', en: 'No'),
-                    status: vaultEnabled ? _StatusKind.good : _StatusKind.warn,
-                  ),
-                  _StatusEntry(
-                    label: context.tr(zh: '恢复码', en: 'Recovery code'),
-                    value: recoveryVerified
-                        ? context.tr(zh: '已验证', en: 'Verified')
-                        : context.tr(zh: '未验证', en: 'Not verified'),
-                    status: recoveryVerified
-                        ? _StatusKind.good
-                        : _StatusKind.warn,
-                  ),
-                  _StatusEntry(
-                    label: context.tr(zh: '远端明文', en: 'Remote plaintext'),
-                    value: deprecatedCount == 0
-                        ? context.tr(zh: '未检测到', en: 'Not detected')
-                        : context.tr(
-                            zh: '检测到 $deprecatedCount 个',
-                            en: '$deprecatedCount detected',
-                          ),
-                    status: deprecatedCount == 0
-                        ? _StatusKind.good
-                        : _StatusKind.warn,
-                  ),
-                  _StatusEntry(
-                    label: context.tr(
-                      zh: '本地明文缓存',
-                      en: 'Local plaintext cache',
-                    ),
-                    value: hasLocalPlainCache
-                        ? context.tr(zh: '可能存在', en: 'Possible')
-                        : context.tr(zh: '未检测到', en: 'Not detected'),
-                    status: hasLocalPlainCache
-                        ? _StatusKind.warn
-                        : _StatusKind.good,
-                  ),
-                  if (exportPathAvailable) ...[
-                    _StatusEntry(
-                      label: context.tr(zh: '导出路径明文', en: 'Export plaintext'),
-                      value: exportPlainDetected
-                          ? exportPlainDeprecated
-                                ? context.tr(
-                                    zh: '检测到（残留）',
-                                    en: 'Detected (legacy)',
-                                  )
-                                : context.tr(zh: '检测到', en: 'Detected')
-                          : context.tr(zh: '未检测到', en: 'Not detected'),
-                      status: exportPlainDetected
-                          ? _StatusKind.warn
-                          : _StatusKind.good,
-                    ),
-                    _StatusEntry(
-                      label: context.tr(zh: '最近一次导出', en: 'Last export'),
-                      value: _formatTimeLabel(
-                        exportStatus?.lastExportSuccessAt,
-                      ),
-                      status:
-                          (exportStatus?.lastExportSuccessAt ?? '').isNotEmpty
-                          ? _StatusKind.good
-                          : _StatusKind.warn,
-                    ),
-                    _StatusEntry(
-                      label: context.tr(zh: '最近一次上传', en: 'Last upload'),
-                      value: _formatTimeLabel(
-                        exportStatus?.lastUploadSuccessAt,
-                      ),
-                      status:
-                          (exportStatus?.lastUploadSuccessAt ?? '').isNotEmpty
-                          ? _StatusKind.good
-                          : _StatusKind.warn,
-                    ),
-                  ],
-                ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            _VaultActionButton(
+              label: context.tr(zh: '查看恢复码', en: 'View recovery code'),
+              icon: Icons.visibility_outlined,
+              onPressed: vaultEnabled ? _handleViewRecoveryCode : null,
+            ),
+            _VaultActionButton(
+              label: context.tr(zh: '清理远端明文', en: 'Clean remote plaintext'),
+              icon: Icons.delete_outline,
+              onPressed: deprecatedCount == 0 ? null : _handleCleanRemotePlain,
+            ),
+            if (exportPathAvailable)
+              _VaultActionButton(
+                label: context.tr(zh: '清理导出明文', en: 'Clean export plaintext'),
+                icon: Icons.delete_sweep_outlined,
+                onPressed: exportPlainDetected ? _handleCleanExportPlain : null,
               ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                decoration: BoxDecoration(
-                  color: card,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    context.tr(
-                      zh: '过渡期保留本地明文',
-                      en: 'Keep local plaintext temporarily',
-                    ),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: textMain,
-                    ),
-                  ),
-                  subtitle: Text(
-                    context.tr(
-                      zh: '用于兼容过渡期，建议确认后关闭',
-                      en: 'For transition only. Turn off after verification.',
-                    ),
-                    style: TextStyle(color: textMuted, fontSize: 12),
-                  ),
-                  value: hasLocalPlainCache,
-                  onChanged: vaultEnabled ? _setLocalPlainCache : null,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    height: 42,
-                    child: OutlinedButton.icon(
-                      onPressed: vaultEnabled ? _handleViewRecoveryCode : null,
-                      icon: const Icon(Icons.visibility_outlined, size: 18),
-                      label: Text(
-                        context.tr(zh: '查看恢复码', en: 'View recovery code'),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 42,
-                    child: OutlinedButton.icon(
-                      onPressed: deprecatedCount == 0
-                          ? null
-                          : _handleCleanRemotePlain,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: Text(
-                        context.tr(zh: '清理远端明文', en: 'Clean remote plaintext'),
-                      ),
-                    ),
-                  ),
-                  if (exportPathAvailable)
-                    SizedBox(
-                      height: 42,
-                      child: OutlinedButton.icon(
-                        onPressed: exportPlainDetected
-                            ? _handleCleanExportPlain
-                            : null,
-                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                        label: Text(
-                          context.tr(
-                            zh: '清理导出明文',
-                            en: 'Clean export plaintext',
-                          ),
-                        ),
-                      ),
-                    ),
-                  SizedBox(
-                    height: 42,
-                    child: OutlinedButton.icon(
-                      onPressed: hasLocalPlainCache
-                          ? _handleClearLocalPlainCache
-                          : null,
-                      icon: const Icon(
-                        Icons.cleaning_services_outlined,
-                        size: 18,
-                      ),
-                      label: Text(
-                        context.tr(zh: '清理本地明文', en: 'Clean local plaintext'),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 42,
-                    child: ElevatedButton.icon(
-                      onPressed: vaultEnabled ? _handleBackupTest : null,
-                      icon: const Icon(Icons.shield_outlined, size: 18),
-                      label: Text(
-                        context.tr(zh: '备份恢复测试', en: 'Backup restore test'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (_loading) ...[
-                const SizedBox(height: 16),
-                LinearProgressIndicator(
-                  minHeight: 2,
-                  color: isDark
-                      ? MemoFlowPalette.textDark
-                      : MemoFlowPalette.textLight,
-                  backgroundColor: Colors.transparent,
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
+            _VaultActionButton(
+              label: context.tr(zh: '清理本地明文', en: 'Clean local plaintext'),
+              icon: Icons.cleaning_services_outlined,
+              onPressed: hasLocalPlainCache
+                  ? _handleClearLocalPlainCache
+                  : null,
+            ),
+            _VaultActionButton(
+              label: context.tr(zh: '备份恢复测试', en: 'Backup restore test'),
+              icon: Icons.shield_outlined,
+              onPressed: vaultEnabled ? _handleBackupTest : null,
+              variant: PlatformPrimaryActionVariant.filled,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -717,79 +594,73 @@ class _StatusEntry {
 
 enum _StatusKind { good, warn }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({
-    required this.card,
-    required this.textMain,
-    required this.textMuted,
-    required this.entries,
-    required this.loading,
-  });
+class _VaultStatusRow extends StatelessWidget {
+  const _VaultStatusRow({required this.entry});
 
-  final Color card;
-  final Color textMain;
-  final Color textMuted;
-  final List<_StatusEntry> entries;
-  final bool loading;
+  final _StatusEntry entry;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(16),
+    final isGood = entry.status == _StatusKind.good;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusColor = isGood
+        ? (isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32))
+        : (isDark ? const Color(0xFFFFD54F) : const Color(0xFFF9A825));
+
+    return PlatformListSectionRow(
+      leading: Icon(
+        isGood ? Icons.check_circle : Icons.warning_amber_rounded,
+        color: statusColor,
+        size: 18,
       ),
-      child: Column(
-        children: [
-          for (final entry in entries) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  entry.status == _StatusKind.good
-                      ? Icons.check_circle
-                      : Icons.warning_amber_rounded,
-                  color: entry.status == _StatusKind.good
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFF9A825),
-                  size: 18,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.label,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: textMain,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        entry.value,
-                        style: TextStyle(color: textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (entry != entries.last) const SizedBox(height: 12),
-          ],
-          if (loading) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                context.tr(zh: '正在检测…', en: 'Checking…'),
-                style: TextStyle(color: textMuted, fontSize: 12),
-              ),
-            ),
-          ],
-        ],
+      title: SettingsRowTitle(entry.label),
+      subtitle: SettingsRowDescription(entry.value),
+      denseOnDesktop: false,
+    );
+  }
+}
+
+class _VaultLoadingRow extends StatelessWidget {
+  const _VaultLoadingRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return PlatformListSectionRow(
+      leading: const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      title: SettingsRowDescription(label),
+      denseOnDesktop: false,
+    );
+  }
+}
+
+class _VaultActionButton extends StatelessWidget {
+  const _VaultActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.variant = PlatformPrimaryActionVariant.outlined,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final PlatformPrimaryActionVariant variant;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 184, maxWidth: 280),
+      child: SettingsAction(
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        icon: Icon(icon, size: 18),
+        onPressed: onPressed,
+        variant: variant,
       ),
     );
   }

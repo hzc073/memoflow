@@ -6,8 +6,6 @@ import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_types.dart';
 import '../../core/app_localization.dart';
 import '../../application/desktop/desktop_settings_window.dart';
-import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
-import '../../core/memoflow_palette.dart';
 import '../../core/sync_error_presenter.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
@@ -20,11 +18,13 @@ import '../../state/memos/account_security_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/personal_access_token_repository_provider.dart';
 import '../../state/system/session_provider.dart';
+import '../../platform/platform_route.dart';
+import '../../i18n/strings.g.dart';
 import '../auth/login_screen.dart';
 import 'local_mode_setup_screen.dart';
 import 'server_settings_screen.dart';
+import 'settings_ui.dart';
 import 'user_general_settings_screen.dart';
-import '../../i18n/strings.g.dart';
 
 class AccountSecurityScreen extends ConsumerWidget {
   const AccountSecurityScreen({super.key, this.showBackButton = true});
@@ -33,21 +33,10 @@ class AccountSecurityScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.06);
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((p) => p.hapticsEnabled),
     );
+    final tokens = settingsPageTokens(context);
 
     void haptic() {
       if (hapticsEnabled) {
@@ -408,459 +397,181 @@ class AccountSecurityScreen extends ConsumerWidget {
       }
     }
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        automaticallyImplyLeading: resolveDesktopRouteAutomaticallyImplyLeading(
-          context: context,
-          automaticallyImplyLeading: showBackButton,
-        ),
-        leading: resolveDesktopRouteDismissalLeading(
-          context: context,
-          leading: showBackButton
-              ? IconButton(
-                  tooltip: context.t.strings.legacy.msg_back,
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                )
-              : null,
-        ),
-        title: Text(context.t.strings.legacy.msg_account_security),
-        centerTitle: false,
-      ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
-                ),
-              ),
+    return SettingsPage(
+      showBackButton: showBackButton,
+      title: Text(context.t.strings.legacy.msg_account_security),
+      children: [
+        SettingsSection(
+          children: [
+            SettingsProfileSummary(
+              icon: currentLocalLibrary == null
+                  ? Icons.person
+                  : Icons.folder_open,
+              title: currentName,
+              subtitle: currentSubtitle,
             ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            children: [
-              _ProfileCard(
-                card: card,
-                textMain: textMain,
-                textMuted: textMuted,
-                title: currentName,
-                subtitle: currentSubtitle,
-              ),
-              const SizedBox(height: 12),
-              _CardGroup(
-                card: card,
-                divider: divider,
-                children: [
-                  _SettingRow(
-                    icon: Icons.person_add,
-                    label: context.t.strings.legacy.msg_add_account,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const LoginScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.folder_open,
-                    label: context.t.strings.legacy.msg_add_local_library,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () async {
-                      haptic();
-                      await addLocalLibrary();
-                    },
-                  ),
-                  _SettingRow(
-                    icon: Icons.settings_outlined,
-                    label: context.t.strings.legacy.msg_user_general_settings,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () {
-                      haptic();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const UserGeneralSettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  if (currentAccount != null && currentLocalLibrary == null)
-                    _SettingRow(
-                      icon: Icons.admin_panel_settings_outlined,
-                      label: context.tr(
-                        zh: '\u670D\u52A1\u5668\u8BBE\u7F6E',
-                        en: 'Server Settings',
-                      ),
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () {
-                        haptic();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ServerSettingsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  if (currentKey != null)
-                    _SettingRow(
-                      icon: Icons.logout,
-                      label: context.t.strings.legacy.msg_sign_2,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onTap: () async {
-                        haptic();
-                        await removeAccountAndClearCache(currentKey);
-                      },
-                    ),
-                ],
-              ),
-              if (accounts.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text(
-                  context.t.strings.legacy.msg_accounts,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: textMuted,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    for (final a in accounts)
-                      _AccountRow(
-                        isCurrent: a.key == currentKey,
-                        title: a.user.displayName.isNotEmpty
-                            ? a.user.displayName
-                            : (a.user.name.isNotEmpty ? a.user.name : a.key),
-                        subtitle: a.baseUrl.toString(),
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: () {
-                          haptic();
-                          ref
-                              .read(appSessionProvider.notifier)
-                              .switchAccount(a.key);
-                        },
-                        onDelete: () async {
-                          haptic();
-                          await removeAccountAndClearCache(a.key);
-                        },
-                      ),
-                  ],
-                ),
-              ],
-              if (localLibraries.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text(
-                  context.t.strings.legacy.msg_local_libraries,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: textMuted,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _CardGroup(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    for (final l in localLibraries)
-                      _AccountRow(
-                        isCurrent: l.key == currentKey,
-                        title: l.name.isNotEmpty
-                            ? l.name
-                            : context.t.strings.legacy.msg_local_library,
-                        subtitle: l.locationLabel,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: () async {
-                          haptic();
-                          await ref
-                              .read(appSessionProvider.notifier)
-                              .switchWorkspace(l.key);
-                          if (!context.mounted) return;
-                          await WidgetsBinding.instance.endOfFrame;
-                          if (!context.mounted) return;
-                          await maybeScanLocalLibrary();
-                        },
-                        onEdit: () async {
-                          haptic();
-                          await renameLocalLibrary(l);
-                        },
-                        onDelete: () async {
-                          haptic();
-                          await removeLocalLibrary(l);
-                        },
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 16),
-              Text(
-                context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_removing_signing_clear_local_cache_account,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.4,
-                  color: textMuted.withValues(alpha: 0.7),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({
-    required this.card,
-    required this.textMain,
-    required this.textMuted,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final Color card;
-  final Color textMain;
-  final Color textMuted;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.06),
-            child: Icon(Icons.person, color: textMuted),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: textMain,
-                  ),
-                ),
-                if (subtitle.trim().isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 12, color: textMuted),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CardGroup extends StatelessWidget {
-  const _CardGroup({
-    required this.card,
-    required this.divider,
-    required this.children,
-  });
-
-  final Color card;
-  final Color divider;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            children[i],
-            if (i != children.length - 1) Divider(height: 1, color: divider),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingRow extends StatelessWidget {
-  const _SettingRow({
-    required this.icon,
-    required this.label,
-    required this.textMain,
-    required this.textMuted,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color textMain;
-  final Color textMuted;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: textMuted),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                ),
-              ),
-              Icon(Icons.chevron_right, size: 20, color: textMuted),
-            ],
-          ),
         ),
-      ),
-    );
-  }
-}
-
-class _AccountRow extends StatelessWidget {
-  const _AccountRow({
-    required this.isCurrent,
-    required this.title,
-    required this.subtitle,
-    required this.textMain,
-    required this.textMuted,
-    required this.onTap,
-    this.onEdit,
-    required this.onDelete,
-  });
-
-  final bool isCurrent;
-  final String title;
-  final String subtitle;
-  final Color textMain;
-  final Color textMuted;
-  final VoidCallback onTap;
-  final VoidCallback? onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Icon(
-                isCurrent ? Icons.radio_button_checked : Icons.radio_button_off,
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SettingsNavigationRow(
+              leading: Icon(
+                Icons.person_add,
                 size: 20,
-                color: textMuted,
+                color: tokens.textMuted,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: TextStyle(fontSize: 12, color: textMuted),
-                    ),
-                  ],
+              label: context.t.strings.legacy.msg_add_account,
+              onTap: () {
+                haptic();
+                Navigator.of(context).push(
+                  buildPlatformPageRoute<void>(
+                    context: context,
+                    builder: (_) => const LoginScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsNavigationRow(
+              leading: Icon(
+                Icons.folder_open,
+                size: 20,
+                color: tokens.textMuted,
+              ),
+              label: context.t.strings.legacy.msg_add_local_library,
+              onTap: () async {
+                haptic();
+                await addLocalLibrary();
+              },
+            ),
+            SettingsNavigationRow(
+              leading: Icon(
+                Icons.settings_outlined,
+                size: 20,
+                color: tokens.textMuted,
+              ),
+              label: context.t.strings.legacy.msg_user_general_settings,
+              onTap: () {
+                haptic();
+                Navigator.of(context).push(
+                  buildPlatformPageRoute<void>(
+                    context: context,
+                    builder: (_) => const UserGeneralSettingsScreen(),
+                  ),
+                );
+              },
+            ),
+            if (currentAccount != null && currentLocalLibrary == null)
+              SettingsNavigationRow(
+                leading: Icon(
+                  Icons.admin_panel_settings_outlined,
+                  size: 20,
+                  color: tokens.textMuted,
                 ),
-              ),
-              if (onEdit != null)
-                IconButton(
-                  tooltip: context.t.strings.legacy.msg_edit,
-                  icon: Icon(Icons.edit_outlined, color: textMuted),
-                  onPressed: onEdit,
+                label: context.tr(
+                  zh: '\u670D\u52A1\u5668\u8BBE\u7F6E',
+                  en: 'Server Settings',
                 ),
-              IconButton(
-                tooltip: context.t.strings.legacy.msg_remove,
-                icon: Icon(Icons.delete_outline, color: textMuted),
-                onPressed: onDelete,
+                onTap: () {
+                  haptic();
+                  Navigator.of(context).push(
+                    buildPlatformPageRoute<void>(
+                      context: context,
+                      builder: (_) => const ServerSettingsScreen(),
+                    ),
+                  );
+                },
               ),
+            if (currentKey != null)
+              SettingsNavigationRow(
+                leading: Icon(Icons.logout, size: 20, color: tokens.textMuted),
+                label: context.t.strings.legacy.msg_sign_2,
+                trailingIcon: Icons.logout,
+                onTap: () async {
+                  haptic();
+                  await removeAccountAndClearCache(currentKey);
+                },
+              ),
+          ],
+        ),
+        if (accounts.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SettingsSection(
+            header: Text(context.t.strings.legacy.msg_accounts),
+            children: [
+              for (final account in accounts)
+                SettingsSelectableItemRow(
+                  selected: account.key == currentKey,
+                  title: account.user.displayName.isNotEmpty
+                      ? account.user.displayName
+                      : (account.user.name.isNotEmpty
+                            ? account.user.name
+                            : account.key),
+                  subtitle: account.baseUrl.toString(),
+                  deleteTooltip: context.t.strings.legacy.msg_remove,
+                  onTap: () {
+                    haptic();
+                    ref
+                        .read(appSessionProvider.notifier)
+                        .switchAccount(account.key);
+                  },
+                  onDelete: () async {
+                    haptic();
+                    await removeAccountAndClearCache(account.key);
+                  },
+                ),
             ],
           ),
+        ],
+        if (localLibraries.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SettingsSection(
+            header: Text(context.t.strings.legacy.msg_local_libraries),
+            children: [
+              for (final library in localLibraries)
+                SettingsSelectableItemRow(
+                  selected: library.key == currentKey,
+                  title: library.name.isNotEmpty
+                      ? library.name
+                      : context.t.strings.legacy.msg_local_library,
+                  subtitle: library.locationLabel,
+                  editTooltip: context.t.strings.legacy.msg_edit,
+                  deleteTooltip: context.t.strings.legacy.msg_remove,
+                  onTap: () async {
+                    haptic();
+                    await ref
+                        .read(appSessionProvider.notifier)
+                        .switchWorkspace(library.key);
+                    if (!context.mounted) return;
+                    await WidgetsBinding.instance.endOfFrame;
+                    if (!context.mounted) return;
+                    await maybeScanLocalLibrary();
+                  },
+                  onEdit: () async {
+                    haptic();
+                    await renameLocalLibrary(library);
+                  },
+                  onDelete: () async {
+                    haptic();
+                    await removeLocalLibrary(library);
+                  },
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 12),
+        SettingsSection(
+          children: [
+            SettingsInfoRow(
+              description: context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_removing_signing_clear_local_cache_account,
+            ),
+          ],
         ),
-      ),
+      ],
     );
   }
 }

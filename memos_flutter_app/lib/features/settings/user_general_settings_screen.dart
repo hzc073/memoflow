@@ -3,18 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
-import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/user_setting.dart';
-import '../../platform/platform_icons.dart';
+import '../../i18n/strings.g.dart';
 import '../../platform/widgets/platform_action_sheet.dart';
-import '../../platform/widgets/platform_page.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
-import '../../state/system/session_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
-import '../../i18n/strings.g.dart';
+import '../../state/system/session_provider.dart';
+import 'settings_ui.dart';
 
 class UserGeneralSettingsScreen extends ConsumerStatefulWidget {
   const UserGeneralSettingsScreen({super.key});
@@ -198,18 +196,6 @@ class _UserGeneralSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.06);
     final hapticsEnabled = ref.watch(
       devicePreferencesProvider.select((p) => p.hapticsEnabled),
     );
@@ -222,203 +208,99 @@ class _UserGeneralSettingsScreenState
 
     final settingsAsync = ref.watch(userGeneralSettingProvider);
 
-    return PlatformPage(
-      backgroundColor: bg,
+    return SettingsPage(
       title: Text(context.t.strings.legacy.msg_user_general_settings),
-      leading: IconButton(
-        tooltip: context.t.strings.legacy.msg_back,
-        icon: Icon(PlatformIcons.back),
-        onPressed: () => Navigator.of(context).maybePop(),
-      ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
-                ),
+      children: [
+        settingsAsync.when(
+          data: (settings) {
+            final locale = (settings.locale ?? '').trim();
+            final visibility = (settings.memoVisibility ?? '').trim().isNotEmpty
+                ? settings.memoVisibility!.trim()
+                : 'PRIVATE';
+            final localeLabel = _localeLabel(locale);
+
+            return SettingsSection(
+              footer: Text(
+                context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_these_settings_apply_newly_created_memos,
               ),
-            ),
-          settingsAsync.when(
-            data: (settings) {
-              final locale = (settings.locale ?? '').trim();
-              final visibility =
-                  (settings.memoVisibility ?? '').trim().isNotEmpty
-                  ? settings.memoVisibility!.trim()
-                  : 'PRIVATE';
-              final localeLabel = _localeLabel(locale);
-
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                children: [
-                  _Group(
-                    card: card,
-                    divider: divider,
-                    children: [
-                      _SelectRow(
-                        label: context.t.strings.legacy.msg_locale,
-                        value: localeLabel,
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: _saving
-                            ? null
-                            : () {
-                                maybeHaptic();
-                                _selectLocale(settings);
-                              },
-                      ),
-                      _SelectRow(
-                        label: context.t.strings.legacy.msg_default_visibility,
-                        value: _visibilityLabel(visibility),
-                        textMain: textMain,
-                        textMuted: textMuted,
-                        onTap: _saving
-                            ? null
-                            : () {
-                                maybeHaptic();
-                                _selectVisibility(settings);
-                              },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    context
-                        .t
-                        .strings
-                        .legacy
-                        .msg_these_settings_apply_newly_created_memos,
-                    style: TextStyle(fontSize: 12, color: textMuted),
-                  ),
-                ],
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      context.t.strings.legacy.msg_failed_load_2,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: textMain,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      error.toString(),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: textMuted),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () =>
-                          ref.invalidate(userGeneralSettingProvider),
-                      child: Text(context.t.strings.legacy.msg_retry),
-                    ),
-                  ],
+              children: [
+                SettingsValueRow(
+                  label: context.t.strings.legacy.msg_locale,
+                  value: localeLabel,
+                  enabled: !_saving,
+                  onTap: () {
+                    maybeHaptic();
+                    _selectLocale(settings);
+                  },
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Group extends StatelessWidget {
-  const _Group({
-    required this.card,
-    required this.divider,
-    required this.children,
-  });
-
-  final Color card;
-  final Color divider;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
+                SettingsValueRow(
+                  label: context.t.strings.legacy.msg_default_visibility,
+                  value: _visibilityLabel(visibility),
+                  enabled: !_saving,
+                  onTap: () {
+                    maybeHaptic();
+                    _selectVisibility(settings);
+                  },
                 ),
               ],
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            children[i],
-            if (i != children.length - 1) Divider(height: 1, color: divider),
-          ],
-        ],
-      ),
+            );
+          },
+          loading: () => const _UserGeneralLoadingState(),
+          error: (error, _) => _UserGeneralErrorState(
+            message: error.toString(),
+            onRetry: () => ref.invalidate(userGeneralSettingProvider),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _SelectRow extends StatelessWidget {
-  const _SelectRow({
-    required this.label,
-    required this.value,
-    required this.textMain,
-    required this.textMuted,
-    this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final Color textMain;
-  final Color textMuted;
-  final VoidCallback? onTap;
+class _UserGeneralLoadingState extends StatelessWidget {
+  const _UserGeneralLoadingState();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(fontWeight: FontWeight.w600, color: textMuted),
-              ),
-              const SizedBox(width: 6),
-              Icon(PlatformIcons.chevronForward, size: 18, color: textMuted),
-            ],
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 48),
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _UserGeneralErrorState extends StatelessWidget {
+  const _UserGeneralErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsSection(
+          children: [
+            SettingsInfoRow(
+              description:
+                  '${context.t.strings.legacy.msg_failed_load_2}\n$message',
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.center,
+          child: SettingsAction(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(context.t.strings.legacy.msg_retry),
           ),
         ),
-      ),
+      ],
     );
   }
 }
