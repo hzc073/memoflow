@@ -46,10 +46,13 @@ class ComponentsSettingsScreen extends ConsumerWidget {
 
     return SettingsPage(
       showBackButton: showBackButton,
-      title: SettingsTitleWithHelp(
-        label: context.t.strings.legacy.msg_components,
-        tooltip: _componentsStatusTooltip(context),
-      ),
+      title: Text(context.t.strings.legacy.msg_components),
+      actions: [
+        Padding(
+          padding: const EdgeInsetsDirectional.only(end: 12),
+          child: SettingsHelpButton(message: _componentsStatusTooltip(context)),
+        ),
+      ],
       contentKey: const ValueKey<String>('components.boundedContent'),
       children: [
         SettingsFeatureModule(

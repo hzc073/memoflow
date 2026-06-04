@@ -62,7 +62,8 @@ void main() {
     ).readAsStringSync();
 
     expect(source, contains('SettingsPage('));
-    expect(source, contains('SettingsTitleWithHelp('));
+    expect(source, contains('title: Text('));
+    expect(source, contains('SettingsHelpButton('));
     expect(source, contains('_componentsStatusTooltip('));
     expect(source, contains('SettingsFeatureModule('));
     expect(source, contains('SettingsFeatureStatus'));
