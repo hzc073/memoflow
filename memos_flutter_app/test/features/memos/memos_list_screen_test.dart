@@ -62,6 +62,7 @@ import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/memos/memos_list_providers.dart';
 import 'package:memos_flutter_app/state/memos/desktop_memo_preview_session.dart';
 import 'package:memos_flutter_app/state/memos/desktop_home_pane_state.dart';
+import 'package:memos_flutter_app/state/memos/memo_composer_state.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/location_settings_provider.dart';
@@ -2176,6 +2177,108 @@ void main() {
       const ValueKey<String>('memos-inline-compose-text-field'),
     );
     expect(tester.getSize(editorFinder).height, closeTo(180, 1));
+
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('home compose grows for pending attachments without overflow', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    const savedLayout = HomeInlineComposePanelLayoutPreference(
+      width: 560,
+      editorHeight: 180,
+      xRatio: 0,
+      yRatio: 0,
+    );
+    final devicePrefsRepo = _TestDevicePreferencesRepository(
+      DevicePreferences.defaultsForLanguage(
+        AppLanguage.en,
+      ).copyWith(homeInlineComposePanelLayout: savedLayout),
+    );
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: Stream.value(<LocalMemo>[
+          _buildMemo(uid: 'memo-1', content: 'Memo'),
+        ]),
+        screenSize: const Size(1280, 1200),
+        enableCompose: true,
+        enableDesktopResizableHomeInlineCompose: true,
+        devicePreferencesRepository: devicePrefsRepo,
+        seedDevicePreferencesSynchronously: true,
+      ),
+    );
+    await _pumpScreenFrames(tester);
+
+    final initialShell = tester.widget<DesktopResizablePanelShell>(
+      find.byType(DesktopResizablePanelShell),
+    );
+    final initialHeight = initialShell.rect.height;
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(
+              const ValueKey<String>('memos-inline-compose-text-field'),
+            ),
+          )
+          .expands,
+      isTrue,
+    );
+
+    final screenState = _screenState(tester);
+    screenState.debugInlineComposer.addPendingAttachments([
+      const MemoComposerPendingAttachment(
+        uid: 'att-1',
+        filePath: 'Z:/does-not-exist.png',
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        size: 42,
+      ),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey<String>('inline-attachment-att-1')),
+      findsOneWidget,
+    );
+
+    final attachedShell = tester.widget<DesktopResizablePanelShell>(
+      find.byType(DesktopResizablePanelShell),
+    );
+    expect(attachedShell.rect.height, greaterThan(initialHeight));
+    expect(attachedShell.rect.height - initialHeight, closeTo(72, 2));
+
+    final editorFinder = find.byKey(
+      const ValueKey<String>('memos-inline-compose-text-field'),
+    );
+    expect(tester.getSize(editorFinder).height, closeTo(180, 1));
+    expect(
+      find.byKey(const ValueKey<String>('memos-inline-compose-send-button')),
+      findsOneWidget,
+    );
+
+    screenState.debugInlineComposer.clearPendingAttachments();
+    await _pumpScreenFrames(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey<String>('inline-attachment-att-1')),
+      findsNothing,
+    );
+    final clearedShell = tester.widget<DesktopResizablePanelShell>(
+      find.byType(DesktopResizablePanelShell),
+    );
+    expect(clearedShell.rect.height, closeTo(initialHeight, 2));
+    expect(tester.getSize(editorFinder).height, closeTo(180, 1));
+
+    final sendButton = tester.widget<InkWell>(
+      find.byKey(const ValueKey<String>('memos-inline-compose-send-button')),
+    );
+    expect(sendButton.onTap, isNotNull);
 
     debugDefaultTargetPlatformOverride = null;
   });

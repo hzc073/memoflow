@@ -267,6 +267,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _floatingCollapseController;
 
   @visibleForTesting
+  MemoComposerController get debugInlineComposer => _inlineComposer;
+
+  @visibleForTesting
   TextEditingController get debugSearchController => _searchController;
 
   @visibleForTesting
@@ -990,9 +993,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   void _handleHomeInlineLayoutMetrics(InlineComposeLayoutMetrics metrics) {
-    final chromeHeight = math
-        .max(0, metrics.totalHeight - metrics.editorViewportHeight)
-        .toDouble();
+    final chromeHeight = math.max(0, metrics.chromeHeight).toDouble();
     final nextEditorHeight =
         _homeInlinePanelEditorHeight ?? metrics.editorViewportHeight;
     if ((_homeInlinePanelChromeHeight - chromeHeight).abs() < 0.5 &&
