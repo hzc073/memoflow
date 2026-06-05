@@ -269,4 +269,75 @@ void main() {
       );
     },
   );
+
+  test('macOS release permissions match confirmed public features', () {
+    final infoPlist = readRepoFile('memos_flutter_app/macos/Runner/Info.plist');
+    final releaseEntitlements = readRepoFile(
+      'memos_flutter_app/macos/Runner/Release.entitlements',
+    );
+
+    const requiredInfoPlistKeys = <String>[
+      'NSBonjourServices',
+      '_memoflow._tcp',
+      '_memoflow-migrate._tcp',
+      'NSLocalNetworkUsageDescription',
+      'NSLocationUsageDescription',
+      'NSMicrophoneUsageDescription',
+    ];
+    for (final key in requiredInfoPlistKeys) {
+      expect(infoPlist.contains(key), isTrue, reason: '$key is required');
+    }
+
+    const forbiddenInfoPlistKeys = <String>[
+      'NSCameraUsageDescription',
+      'NSPhotoLibraryUsageDescription',
+      'NSPhotoLibraryAddUsageDescription',
+      'NSContactsUsageDescription',
+      'NSCalendarsUsageDescription',
+      'NSRemindersUsageDescription',
+      'NSSpeechRecognitionUsageDescription',
+      'NSBluetoothAlwaysUsageDescription',
+      'NSBluetoothPeripheralUsageDescription',
+      'NSAppleEventsUsageDescription',
+      'NSScreenCaptureUsageDescription',
+    ];
+    for (final key in forbiddenInfoPlistKeys) {
+      expect(
+        infoPlist.contains(key),
+        isFalse,
+        reason: '$key must not be declared for the public macOS shell',
+      );
+    }
+
+    const requiredEntitlements = <String>[
+      'com.apple.security.app-sandbox',
+      'com.apple.security.device.microphone',
+      'com.apple.security.files.user-selected.read-write',
+      'com.apple.security.network.client',
+      'com.apple.security.network.server',
+      'com.apple.security.personal-information.location',
+    ];
+    for (final key in requiredEntitlements) {
+      expect(
+        releaseEntitlements.contains(key),
+        isTrue,
+        reason: '$key is required',
+      );
+    }
+
+    const forbiddenEntitlements = <String>[
+      'com.apple.security.device.camera',
+      'com.apple.security.personal-information.photos-library',
+      'com.apple.security.automation.apple-events',
+      'com.apple.security.device.bluetooth',
+      'com.apple.security.device.usb',
+    ];
+    for (final key in forbiddenEntitlements) {
+      expect(
+        releaseEntitlements.contains(key),
+        isFalse,
+        reason: '$key must not be declared for the public macOS shell',
+      );
+    }
+  });
 }
