@@ -1,0 +1,167 @@
+## Context
+
+现有入口位于设置首页，“充电站”点击后直接调用 `DonationDialog.show(context)`。这个实现有三个局限：
+
+1. 产品语义偏短期玩笑，不能承载“支持 MemoFlow 长期维护”的正式叙事。
+2. 弹窗空间有限，不适合表达 Apple 平台支持者、公开赞赏、基础功能长期可用等边界。
+3. Apple 私有商业版需要 StoreKit、权益、价格和恢复购买，但公开仓明确不能包含这些实现细节。
+
+当前可用边界：
+
+- `PlatformTarget` 已能区分 `android`、`iPhone`、`iPad`、`macOS`、`windows` 等目标。
+- `PrivateExtensionBundle` 当前可贡献 settings entries、app ready hook 和 diagnostics access boundary。
+- `apple-commercialization-capability-boundary` 已要求 subscription / upgrade UI 通过 private bundle contribution，而不是公开 settings shell 商业分支。
+
+## Product Shape
+
+统一入口：
+
+```text
+设置
+└─ 支持 MemoFlow
+```
+
+页面内部按“公开外壳 + 可选私有贡献 + 公开 fallback”组织：
+
+```text
+SupportMemoFlowScreen
+┌────────────────────────────────────────────┐
+│ 公共品牌叙事                                │
+│ - MemoFlow 是简单、克制、长期可用的记录工具   │
+│ - 基础记录能力长期可用                       │
+│ - 支持帮助项目维护和平台体验优化             │
+├────────────────────────────────────────────┤
+│ Private support contribution slot           │
+│ - Apple 私有版：成为支持者 / Pro / StoreKit   │
+│ - 由 memoflow-macos-private 提供              │
+├────────────────────────────────────────────┤
+│ Public appreciation fallback                 │
+│ - Windows / Android / 公开构建                 │
+│ - 外部赞赏链接，不展示二维码                   │
+└────────────────────────────────────────────┘
+```
+
+## Decisions
+
+1. **入口命名统一为“支持 MemoFlow”。**
+
+   “充电站”可以作为内部小彩蛋或历史文案退出主入口。主入口应清楚表达页面目的，避免用户以为这是工具、诊断或电量设置。
+
+2. **公开仓拥有支持页外壳和公开赞赏 fallback。**
+
+   公开仓可以展示：
+
+   - “支持 MemoFlow”标题和品牌叙事。
+   - 基础功能长期可用的承诺。
+   - 项目维护、适配、公益记录等非商业说明。
+   - 外部赞赏链接，首版使用 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`。
+   - 公益说明：当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠。
+
+   公开仓不得展示：
+
+   - StoreKit purchase / restore。
+   - App Store product ID、订阅组、价格、买断价格。
+   - raw subscription / buyout / trial / refunded / Family Sharing state。
+   - 基于权益状态决定商业 UI 的分支。
+
+3. **Apple 平台“成为支持者”由 private overlay 贡献。**
+
+   macOS 当前私有商业版和未来 iOS / iPadOS 的支持者体验应由 `/Users/mr.han/Desktop/memoflow-macos-private` 中的 private overlay 实现。公开仓只提供批准 seam，例如未来可扩展 `PrivateExtensionBundle`：
+
+   ```text
+   PrivateExtensionBundle
+   ├─ settingsEntries(...)
+   ├─ onAppReady(...)
+   ├─ diagnosticsAccessBoundary
+   └─ supportMemoFlowContribution(...)  ← future seam, if approved
+   ```
+
+   该 seam 返回 UI contribution 或 route intent；公开页面只渲染 contribution，不知道价格、商品 ID、StoreKit 或权益状态。
+
+4. **平台分流应基于“private contribution 是否存在”，而不是公开仓硬编码 Apple 商业分支。**
+
+   公开仓可以判断平台用于布局、文案细节、外部链接打开能力或合规提示，但不得写：
+
+   ```text
+   if (isApplePlatform) showStoreKitSupport()
+   ```
+
+   更稳的语义是：
+
+   ```text
+   if (privateSupportContribution != null) renderPrivateSupport()
+   else renderPublicDonationFallback()
+   ```
+
+   这样公开 Apple 构建没有 private overlay 时仍然保持 free-safe，不误显示商业能力。
+
+5. **Windows / Android 保留自愿赞赏支持，但升级为独立页面。**
+
+   非 Apple 平台的体验不应继续是小弹窗；它应使用同一支持页的视觉系统，让用户看到完整说明、感谢文案、公益说明和“可以不支持也继续使用”的承诺。
+
+   该页面移除现有二维码展示和保存流程，改用外部赞赏链接：
+
+   ```text
+   supportUrl: https://qr.alipay.com/tsx16856ygfke5rugz1ao4a
+   publicGoodUrl: https://memoflow.app/support/public-good
+   ```
+
+   `supportUrl` 是用户确认的外部赞赏链接。页面内仍应保留基础功能不受影响的说明、维护成本说明和公益记录入口。若未来面向 Google Play 或其他对外部支付链接有额外要求的渠道分发，SHOULD 重新评估是否改用官网中转页或按渠道替换链接。
+
+   Android 后续如果进入 Google Play 分发，应再次核对支付和赞赏政策：公开赞赏必须保持自愿支持，不提供数字功能、权益、解锁或服务交换。
+
+6. **公益 50% 是真实承诺，但应精确定义触发口径。**
+
+   页面可以展示公益说明，但应写成：
+
+   > 当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠。
+
+   该表述避免被理解为“所有赞赏收入的 50% 立即捐出”。“查看公益记录”首版可指向官网占位入口，后续官网应展示可追踪记录，例如年份、维护成本口径说明、公益接收方、捐赠日期和金额或区间。
+
+7. **视觉方向为干净 Apple 风，而不是厚重手账页。**
+
+   后续实现 SHOULD 采用：
+
+   - 大留白、浅灰/白背景、清晰层级。
+   - SF 风格排版或平台默认字体。
+   - 细线图标、轻量材质、克制红色 CTA。
+   - 少量品牌意象，例如小苗、流动线条、MemoFlow logo，但避免一页塞满装饰。
+
+   后续实现 SHOULD NOT：
+
+   - 做成营销落地页 hero。
+   - 使用大量水彩、手写体、花纹、过厚卡片和情绪化装饰。
+   - 把设置页改成与现有 settings system 割裂的整页广告。
+
+## Dependency Direction
+
+预期方向：
+
+```text
+features/settings/support_page
+        │
+        ▼
+private_hooks/private_extension_bundle_provider
+        │
+        ▼
+PrivateExtensionBundle interface
+        ▲
+        │ overlay replacement
+memoflow-macos-private/active_private_extension_bundle.dart
+```
+
+公开 settings feature 可以依赖公开 private hook interface，因为这是既有批准 seam。私有 overlay 替换 `active_private_extension_bundle.dart`。公开仓不得 import private repository 路径、StoreKit 实现或商业模块。
+
+## Risks / Trade-offs
+
+- [Risk] 公开支持页不小心写入价格或“年度支持者”文案，形成商业泄漏。Mitigation: spec 和 guardrail 明确阻止 price / product ID / subscription wording 进入公开 shell；价格放 private overlay。
+- [Risk] 同一入口在不同构建表现不同，测试和截图容易混淆。Mitigation: public fallback 和 private contribution 分别验证，页面上只暴露“支持 MemoFlow”统一入口。
+- [Risk] Android 赞赏在应用商店政策上产生风险。Mitigation: 赞赏文案不得承诺数字功能、权益、解锁或服务；正式分发前复核目标渠道规则；必要时按渠道把支付宝外部支持链接替换为官网中转页或禁用外部支付入口。
+- [Risk] 公益 50% 承诺如果没有记录页会削弱信任。Mitigation: 首版可使用占位官网入口，但正式发布前应补充公益记录页或明确“记录准备中”的状态。
+- [Risk] 为了 private contribution seam 修改 `PrivateExtensionBundle` 可能扩大公共接口。Mitigation: seam 只表达 support page contribution，不暴露商业状态；同时增加商业泄漏 guardrail。
+
+## Open Questions
+
+- 公开 Apple 构建没有 private overlay 时，是否展示普通赞赏 fallback，还是展示“Apple 支持者能力准备中”的静态说明？
+- private support contribution 是直接返回完整 section widget，还是返回 route/action model，由公开页面用统一组件渲染？
+- 支持页是否只优先完善中文，还是同步补齐所有现有 locales？

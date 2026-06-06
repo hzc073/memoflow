@@ -1,0 +1,92 @@
+## ADDED Requirements
+
+### Requirement: Settings SHALL expose a unified Support MemoFlow entry
+设置首页 SHALL expose one user-facing entry named “支持 MemoFlow” or localized equivalent for project support, replacing the previous primary “充电站” presentation.
+
+#### Scenario: User opens support from settings
+- **WHEN** 用户在设置首页点击支持入口
+- **THEN** the app SHALL navigate to an independent support page or equivalent full support surface
+- **AND** it SHALL NOT open the legacy donation dialog as the primary support experience
+- **AND** the support surface SHALL clearly communicate that base memo recording and data management capabilities remain available without support
+
+#### Scenario: Existing charging station wording is retired as primary label
+- **WHEN** settings home entries are rendered
+- **THEN** “充电站” SHOULD NOT be the primary entry label
+- **AND** playful charging or coffee copy MAY remain only as secondary copy, illustration text, or non-essential flavor text
+
+### Requirement: Public support page SHALL remain commercial-free
+公开仓的 “支持 MemoFlow” 页面 SHALL provide public project-support narrative and voluntary appreciation fallback without embedding commercial purchase logic.
+
+#### Scenario: Public build renders support page
+- **WHEN** the public repository runs without private overlay
+- **THEN** the support page SHALL render a public appreciation fallback or non-commercial support explanation
+- **AND** it SHALL use an external support link as the primary action
+- **AND** the initial external support link SHALL be `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`
+- **AND** it SHALL NOT show public donation QR assets such as `assets/images/donation_qr.png` as the support page payment method
+- **AND** it SHALL NOT show StoreKit purchase, restore purchase, product ID, subscription group, receipt validation, entitlement state, Family Sharing state, buyout state, trial state, or hardcoded commercial price
+
+#### Scenario: Public appreciation remains voluntary
+- **WHEN** Windows, Android, Linux, web, or public Apple builds render the public appreciation fallback
+- **THEN** appreciation copy SHALL present support as voluntary project maintenance support
+- **AND** appreciation copy SHALL NOT promise digital feature unlocks, paid capabilities, premium state, Apple-specific entitlement, badge unlocks, or service access in exchange for appreciation
+- **AND** unsupported or unselected appreciation SHALL NOT block base recording, editing, reading, local library access, or basic import/export
+
+#### Scenario: Public-good commitment is shown
+- **WHEN** the public appreciation page includes public-good copy
+- **THEN** it MAY state that after support income covers the necessary maintenance costs for the year, 50% of the excess amount will be donated to public-good causes
+- **AND** it SHALL NOT imply that 50% of all gross support income is donated before maintenance costs are covered
+- **AND** it SHOULD provide a public-good record link, initially `https://memoflow.app/support/public-good` or an equivalent official website location
+
+### Requirement: Apple supporter commercial experience SHALL be provided by private overlay
+Apple 平台的“成为支持者”商业体验 SHALL be implemented in private overlay code, not in the public repository shell.
+
+#### Scenario: Private Apple overlay contributes support experience
+- **WHEN** `memoflow-macos-private` or another approved private overlay is active on macOS, iOS, or iPadOS
+- **THEN** it MAY contribute Apple supporter UI for StoreKit purchase, restore purchase, product display, entitlement refresh, and Apple platform enhancement explanation through an approved private bundle seam
+- **AND** public settings code SHALL only render or route to the contributed surface
+- **AND** public settings code SHALL NOT import private StoreKit modules or branch on raw commercial state
+
+#### Scenario: Public Apple build has no private overlay
+- **WHEN** the app runs on an Apple platform without private commercial overlay
+- **THEN** public support behavior SHALL remain free-safe
+- **AND** it SHALL render public donation fallback or static non-commercial support explanation
+- **AND** it SHALL NOT infer from Apple platform alone that commercial purchase UI is available
+
+### Requirement: Support page contribution seam SHALL not leak commercial state
+Any future seam that lets private code customize the support page SHALL expose UI contribution or route intent only, not raw commercial state.
+
+#### Scenario: Public page asks for private support contribution
+- **WHEN** the support page requests optional private support content
+- **THEN** the public interface SHALL return an optional contribution, action, or route intent
+- **AND** the public interface SHALL NOT expose raw `free`, `trial`, `subscriptionPro`, `buyoutPro`, `expired`, `refunded`, `unavailable`, product ID, price, transaction, receipt, or StoreKit objects
+
+#### Scenario: Contribution is absent
+- **WHEN** no private support contribution is returned
+- **THEN** the support page SHALL render the public donation fallback
+- **AND** it SHALL remain usable on Windows, Android, Linux, web, and public Apple builds
+
+### Requirement: Support page visual direction SHALL be clean and platform-appropriate
+“支持 MemoFlow” 页面 SHALL use a clean, restrained, Apple-inspired visual direction while staying consistent with the app settings system.
+
+#### Scenario: Support page visual hierarchy is rendered
+- **WHEN** the support page is displayed
+- **THEN** it SHOULD use generous whitespace, platform default typography, subtle surfaces, restrained color, and clear hierarchy
+- **AND** it SHOULD feel consistent with settings semantic components and platform adaptive UI
+- **AND** it SHOULD avoid heavy scrapbook styling, dense watercolor decoration, oversized marketing hero sections, or page-local styling that conflicts with the settings system
+
+#### Scenario: Platform-specific layout is needed
+- **WHEN** support page layout differs across phone, tablet, macOS, Windows, Android, or future iOS / iPadOS targets
+- **THEN** those differences SHALL be expressed through settings/platform seams or approved semantic components
+- **AND** the implementation SHALL NOT create duplicated platform feature trees such as `features_ios/`, `features_macos/`, or `features_windows/`
+
+### Requirement: Support entry SHALL preserve public/private and modularity boundaries
+Support page implementation SHALL preserve current public/private split and `evolve_modularity` constraints.
+
+#### Scenario: Public support code is scanned
+- **WHEN** files under public settings, private hooks interfaces, module boundaries, shared models, session state, preferences, or app shell are reviewed
+- **THEN** they MUST NOT include subscription, billing, entitlement, receipt, paywall, StoreKit, product ID, hardcoded commercial price, buyout, Family Sharing, private release automation, or `AccessDecision.source` business branching logic
+
+#### Scenario: Settings support surface is implemented
+- **WHEN** future implementation touches settings support pages or contribution seams
+- **THEN** it SHALL NOT introduce new `state -> features`, `application -> features`, or `core -> state|application|features` dependencies
+- **AND** it SHOULD add or tighten guardrails that prevent public commercial leakage or support-page boundary regressions
