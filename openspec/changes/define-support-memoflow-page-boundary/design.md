@@ -11,6 +11,7 @@
 - `PlatformTarget` 已能区分 `android`、`iPhone`、`iPad`、`macOS`、`windows` 等目标。
 - `PrivateExtensionBundle` 当前可贡献 settings entries、app ready hook 和 diagnostics access boundary。
 - `apple-commercialization-capability-boundary` 已要求 subscription / upgrade UI 通过 private bundle contribution，而不是公开 settings shell 商业分支。
+- `DesktopSettingsWindowApp` 已为 Windows、macOS 等桌面运行时提供独立设置窗口，但当前桌面 pane / `DesktopSettingsWindowTarget` 尚未包含“支持 MemoFlow”入口；如果只补 Windows 会遗漏 macOS 的同类桌面体验。
 
 ## Product Shape
 
@@ -18,6 +19,9 @@
 
 ```text
 设置
+└─ 支持 MemoFlow
+
+桌面设置窗口
 └─ 支持 MemoFlow
 ```
 
@@ -36,9 +40,24 @@ SupportMemoFlowScreen
 │ - 由 memoflow-macos-private 提供              │
 ├────────────────────────────────────────────┤
 │ Public appreciation fallback                 │
-│ - Windows / Android / 公开构建                 │
+│ - Windows / macOS desktop / Android / 公开构建 │
 │ - 外部赞赏链接，不展示二维码                   │
 └────────────────────────────────────────────┘
+```
+
+桌面设置窗口应把支持页作为通用 desktop surface，而不是 Windows 专属设置：
+
+```text
+DesktopSettingsWindowApp
+├─ Account
+├─ Preferences
+├─ Desktop
+├─ AI
+├─ Help & Diagnostics
+├─ Import / Export
+├─ About
+└─ Support MemoFlow
+      └─ SupportMemoFlowScreen(showBackButton: false)
 ```
 
 ## Decisions
@@ -110,7 +129,25 @@ SupportMemoFlowScreen
 
    Android 后续如果进入 Google Play 分发，应再次核对支付和赞赏政策：公开赞赏必须保持自愿支持，不提供数字功能、权益、解锁或服务交换。
 
-6. **公益 50% 是真实承诺，但应精确定义触发口径。**
+6. **桌面设置窗口新增通用支持入口，而不是 Windows 专属入口。**
+
+   Windows 和 macOS 都会使用独立桌面设置窗口，因此支持页入口应挂在 `DesktopSettingsWindowApp` 的通用 pane / target 模型上。公开 macOS 构建当前没有 StoreKit 商业能力时，仍然显示公开赞赏 fallback；后续如 private overlay 贡献 Apple 支持者 UI，也应通过 `SupportMemoFlowExtension` 或等价批准 seam 进入。
+
+   推荐语义：
+
+   ```text
+   DesktopSettingsWindowTarget.supportMemoFlow
+          │
+          ▼
+   _DesktopSettingsPane.supportMemoFlow
+          │
+          ▼
+   SupportMemoFlowScreen(showBackButton: false)
+   ```
+
+   该路径不得写成 `if (Platform.isWindows) showSupportPage()`，也不得因为 `TargetPlatform.macOS` 自动显示商业购买 UI。macOS 是否展示商业内容只取决于 private contribution 是否存在。
+
+7. **公益 50% 是真实承诺，但应精确定义触发口径。**
 
    页面可以展示公益说明，但应写成：
 
@@ -118,7 +155,7 @@ SupportMemoFlowScreen
 
    该表述避免被理解为“所有赞赏收入的 50% 立即捐出”。“查看公益记录”首版可指向官网占位入口，后续官网应展示可追踪记录，例如年份、维护成本口径说明、公益接收方、捐赠日期和金额或区间。
 
-7. **视觉方向为干净 Apple 风，而不是厚重手账页。**
+8. **视觉方向为干净 Apple 风，而不是厚重手账页。**
 
    后续实现 SHOULD 采用：
 
@@ -159,6 +196,7 @@ memoflow-macos-private/active_private_extension_bundle.dart
 - [Risk] Android 赞赏在应用商店政策上产生风险。Mitigation: 赞赏文案不得承诺数字功能、权益、解锁或服务；正式分发前复核目标渠道规则；必要时按渠道把支付宝外部支持链接替换为官网中转页或禁用外部支付入口。
 - [Risk] 公益 50% 承诺如果没有记录页会削弱信任。Mitigation: 首版可使用占位官网入口，但正式发布前应补充公益记录页或明确“记录准备中”的状态。
 - [Risk] 为了 private contribution seam 修改 `PrivateExtensionBundle` 可能扩大公共接口。Mitigation: seam 只表达 support page contribution，不暴露商业状态；同时增加商业泄漏 guardrail。
+- [Risk] 桌面设置窗口左侧 pane 继续增多，降低扫描效率。Mitigation: “支持 MemoFlow”属于高感知入口，优先作为独立 pane；如果后续桌面设置导航过密，再统一评估分组或排序，而不是把支持页做成 Windows 专属分支。
 
 ## Open Questions
 

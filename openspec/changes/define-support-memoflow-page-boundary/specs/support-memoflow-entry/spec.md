@@ -14,6 +14,22 @@
 - **THEN** “充电站” SHOULD NOT be the primary entry label
 - **AND** playful charging or coffee copy MAY remain only as secondary copy, illustration text, or non-essential flavor text
 
+### Requirement: Desktop settings window SHALL expose Support MemoFlow
+Windows 和 macOS 的桌面设置窗口 SHALL expose a platform-neutral “支持 MemoFlow” entry or pane that renders the same support surface as settings home.
+
+#### Scenario: Desktop user opens support from desktop settings window
+- **WHEN** the desktop settings window is rendered on Windows or macOS
+- **THEN** it SHALL expose a user-facing “支持 MemoFlow” or localized equivalent entry
+- **AND** selecting that entry SHALL render `SupportMemoFlowScreen` or an equivalent full support surface inside the desktop settings window
+- **AND** the desktop support surface SHALL use `showBackButton: false` or equivalent desktop pane chrome semantics
+- **AND** it SHALL NOT be implemented as a Windows-only UI branch
+
+#### Scenario: Desktop settings target routes directly to support
+- **WHEN** a desktop settings window target for support is requested
+- **THEN** the target SHALL resolve through a generic desktop support target such as `DesktopSettingsWindowTarget.supportMemoFlow`
+- **AND** it SHALL route to the same support surface used by the visible desktop entry
+- **AND** macOS SHALL NOT infer commercial purchase UI from platform alone when no private support contribution exists
+
 ### Requirement: Public support page SHALL remain commercial-free
 公开仓的 “支持 MemoFlow” 页面 SHALL provide public project-support narrative and voluntary appreciation fallback without embedding commercial purchase logic.
 

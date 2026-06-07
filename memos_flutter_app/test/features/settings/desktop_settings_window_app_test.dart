@@ -47,6 +47,7 @@ import 'package:memos_flutter_app/features/settings/feedback_screen.dart';
 import 'package:memos_flutter_app/features/settings/location_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/memo_toolbar_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/self_repair_screen.dart';
+import 'package:memos_flutter_app/features/settings/support_memoflow_screen.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
@@ -524,6 +525,133 @@ void main() {
 
       expect(find.byType(DesktopSettingsScreen), findsOneWidget);
       expect(find.text('Shortcut settings'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('macOS settings window opens support page public fallback', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(windowId: 7),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+      expect(find.text('Support MemoFlow'), findsOneWidget);
+
+      await tester.tap(find.text('Support MemoFlow'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('supportMemoFlow.publicAppreciationSection'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Open support link'), findsOneWidget);
+      expect(find.text('Purchase'), findsNothing);
+      expect(find.text('Restore purchase'), findsNothing);
+      expect(find.text('MemoFlow Pro'), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Windows settings target opens support page public fallback', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final sessionController = _TestSessionController();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_multiWindowEventChannel, (call) async {
+            switch (call.method) {
+              case 'desktop.quickInput.ping':
+              case 'desktop.settings.ping':
+              case 'desktop.subWindow.visibility':
+                return true;
+              case 'desktop.main.getWorkspaceSnapshot':
+                return <String, dynamic>{
+                  'currentKey': null,
+                  'hasCurrentAccount': false,
+                  'hasLocalLibrary': false,
+                };
+            }
+            return true;
+          });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appSessionProvider.overrideWith((ref) => sessionController),
+            appPreferencesProvider.overrideWith(
+              (ref) => _TestAppPreferencesController(ref),
+            ),
+          ],
+          child: const DesktopSettingsWindowApp(windowId: 7),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        DesktopSettingsWindowTarget.fromPayload(
+          DesktopSettingsWindowTarget.supportMemoFlow.toJson(),
+        ),
+        DesktopSettingsWindowTarget.supportMemoFlow,
+      );
+      expect(find.text('Support MemoFlow'), findsOneWidget);
+
+      final accepted = await _dispatchIncomingMultiWindowMethod(
+        desktopSettingsOpenTargetMethod,
+        arguments: DesktopSettingsWindowTarget.supportMemoFlow.toJson(),
+      );
+      await tester.pumpAndSettle();
+
+      expect(accepted, isTrue);
+      expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('supportMemoFlow.publicAppreciationSection'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Open support link'), findsOneWidget);
+      expect(find.text('Purchase'), findsNothing);
+      expect(find.text('Restore purchase'), findsNothing);
+      expect(find.text('MemoFlow Pro'), findsNothing);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

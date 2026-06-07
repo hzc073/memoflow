@@ -66,6 +66,7 @@ import 'password_lock_screen.dart';
 import 'preferences_settings_screen.dart';
 import 'desktop_shortcuts_overview_screen.dart';
 import 'self_repair_screen.dart';
+import 'support_memoflow_screen.dart';
 import 'template_settings_screen.dart';
 import 'user_guide_screen.dart';
 import 'webdav_sync_screen.dart';
@@ -910,6 +911,7 @@ enum _DesktopSettingsPane {
   feedback,
   importExport,
   about,
+  supportMemoFlow,
   userGuide,
   stats,
   widgets,
@@ -1055,6 +1057,16 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
         _pane = _DesktopSettingsPane.about;
         _paneNavigatorKey = GlobalKey<NavigatorState>();
         _pendingTargetRouteBuilder = (_) => const ReleaseNotesScreen();
+      case DesktopSettingsWindowTarget.supportMemoFlow:
+        if (!_currentRuntimeSupportsDesktopSettings) {
+          _pane = _DesktopSettingsPane.account;
+          _paneNavigatorKey = GlobalKey<NavigatorState>();
+          _pendingTargetRouteBuilder = null;
+          break;
+        }
+        _pane = _DesktopSettingsPane.supportMemoFlow;
+        _paneNavigatorKey = GlobalKey<NavigatorState>();
+        _pendingTargetRouteBuilder = null;
     }
   }
 
@@ -1224,6 +1236,12 @@ class _DesktopSettingsWorkbenchState extends State<_DesktopSettingsWorkbench> {
         icon: Icons.info_outline,
         label: context.t.strings.legacy.msg_about,
       ),
+      if (showDesktopSettingsPane)
+        _DesktopPaneItem(
+          pane: _DesktopSettingsPane.supportMemoFlow,
+          icon: Icons.favorite_border,
+          label: context.tr(zh: '支持 MemoFlow', en: 'Support MemoFlow'),
+        ),
     ];
 
     return Focus(
@@ -1434,6 +1452,9 @@ class _DesktopPaneContent extends StatelessWidget {
         showBackButton: false,
       ),
       _DesktopSettingsPane.about => const AboutUsScreen(showBackButton: false),
+      _DesktopSettingsPane.supportMemoFlow => const SupportMemoFlowScreen(
+        showBackButton: false,
+      ),
       _DesktopSettingsPane.userGuide => const UserGuideScreen(
         showBackButton: false,
       ),

@@ -28,7 +28,8 @@ enum DesktopSettingsWindowTarget {
   selfRepair,
   exportDiagnostics,
   feedback,
-  releaseNotes;
+  releaseNotes,
+  supportMemoFlow;
 
   static const String payloadKey = 'desktop_settings_target';
 
@@ -54,6 +55,7 @@ enum DesktopSettingsWindowTarget {
       DesktopSettingsWindowTarget.exportDiagnostics => 'exportDiagnostics',
       DesktopSettingsWindowTarget.feedback => 'feedback',
       DesktopSettingsWindowTarget.releaseNotes => 'releaseNotes',
+      DesktopSettingsWindowTarget.supportMemoFlow => 'supportMemoFlow',
     };
   }
 
@@ -89,6 +91,7 @@ enum DesktopSettingsWindowTarget {
       'exportDiagnostics' => DesktopSettingsWindowTarget.exportDiagnostics,
       'feedback' => DesktopSettingsWindowTarget.feedback,
       'releaseNotes' => DesktopSettingsWindowTarget.releaseNotes,
+      'supportMemoFlow' => DesktopSettingsWindowTarget.supportMemoFlow,
       _ => null,
     };
   }

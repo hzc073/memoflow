@@ -6,6 +6,7 @@
 - [x] 1.4 确认 Windows / Android 走公开赞赏支持页，且赞赏不承诺数字功能、权益、解锁或服务交换。
 - [x] 1.5 确认公开赞赏移除现有二维码，首版使用支付宝外部支持链接 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`。
 - [x] 1.6 确认公益说明口径为“当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠”。
+- [x] 1.7 确认桌面端支持页入口应覆盖 Windows 和 macOS 的 `DesktopSettingsWindowApp`，不做 Windows 专属 UI；macOS 没有 private 商业贡献时显示公开赞赏 fallback。
 
 ## 2. Future Public Implementation Tasks
 
@@ -15,6 +16,8 @@
 - [x] 2.4 如需要 private 支持区，扩展 `PrivateExtensionBundle` 或等价批准 seam，让 private overlay 能贡献支持页 section / route / action。
 - [x] 2.5 确保公开页面根据 private contribution 是否存在选择展示，不根据 Apple 平台本身硬编码商业购买 UI。
 - [x] 2.6 增加“公益说明”和“查看公益记录”入口；记录入口首版可指向 `https://memoflow.app/support/public-good` 或官网支持页中的公益记录锚点。
+- [x] 2.7 在 `DesktopSettingsWindowApp` 中新增通用“支持 MemoFlow”桌面 pane，渲染 `SupportMemoFlowScreen(showBackButton: false)`，并覆盖 Windows 和 macOS 桌面设置窗口。
+- [x] 2.8 扩展 `DesktopSettingsWindowTarget`，增加通用 support target / payload，使主窗口或菜单后续可以直接路由到桌面支持页。
 
 ## 3. Future Private Implementation Tasks
 
@@ -31,3 +34,4 @@
 - [x] 4.4 增加或确认测试覆盖公开赞赏链接使用用户确认的外部支持 URL，且按钮文案不使用购买、解锁、会员、权益等交换型表达。
 - [ ] 4.5 从 `memos_flutter_app` 运行 `flutter analyze` 和相关 focused tests；正式 PR 前运行 `flutter test`。
 - [x] 4.6 检查 diff，确认未触碰 API compatibility 文件、WebDAV 协议、数据库 schema，且公开仓未引入 subscription / billing / entitlement / paywall / StoreKit / price / product ID 逻辑。
+- [x] 4.7 增加 focused widget tests，覆盖 Windows 和 macOS 的桌面设置窗口可以显示并进入 `SupportMemoFlowScreen`，且公开 fallback 不渲染商业购买 UI。

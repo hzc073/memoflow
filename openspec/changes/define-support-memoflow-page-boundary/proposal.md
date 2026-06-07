@@ -5,7 +5,7 @@
 这个入口未来会同时服务两类支持关系：
 
 - Apple 平台私有商业版：macOS 现阶段，以及未来 iOS / iPadOS，用户通过成为支持者获得 Apple 平台特有优化和支持，真实购买、恢复购买、价格、StoreKit 和权益判断由私有仓 `memoflow-macos-private` 负责。
-- Windows / Android / 公开构建：保留自愿赞赏路径，但从弹窗升级为与“支持 MemoFlow”一致的独立页面，表达为公开赞赏和项目维护支持，不提供商业解锁或权益判断。现有二维码支持方式将被外部赞赏链接替代，首版使用用户确认的支付宝外部支持链接。
+- 桌面端 / Android / 公开构建：Windows 和 macOS 的桌面设置窗口也应能直接查看“支持 MemoFlow”页面；公开构建保留自愿赞赏路径，但从弹窗升级为与“支持 MemoFlow”一致的独立页面，表达为公开赞赏和项目维护支持，不提供商业解锁或权益判断。现有二维码支持方式将被外部赞赏链接替代，首版使用用户确认的支付宝外部支持链接。
 
 需要先把规则写清楚，避免后续实现时把商业逻辑、价格、权益状态或平台付费分支写入公开仓。
 
@@ -15,6 +15,7 @@
 - 定义 `SupportMemoFlow` 独立页面规则：页面使用干净、克制的 Apple 风视觉语气，同时保持跨平台可用和公开仓可构建。
 - 定义平台和仓库边界：
   - Apple 私有版的“成为支持者”、Apple 平台优化、购买、恢复购买、价格、权益状态和 StoreKit MUST 属于 private overlay。
+  - Windows / macOS 桌面设置窗口 MUST 通过通用 desktop settings surface 暴露“支持 MemoFlow”页面，不得做成 Windows 专属入口；没有 private overlay 时 macOS 也 MUST 走公开赞赏 fallback。
   - Windows / Android / 公开构建的支持页面 MUST 走公开赞赏 fallback，移除现有二维码展示与保存流程，改为打开外部赞赏链接。
   - 首版公开赞赏链接 SHALL 使用用户确认的支付宝外部支持链接 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`。
   - 公开仓 MUST NOT 根据 macOS / iOS 平台本身直接显示商业价格、商品、权益或购买 UI。
@@ -37,6 +38,7 @@
 
 - Affected product surfaces:
   - Settings home entry currently labeled `msg_charging_station`
+  - Desktop settings window navigation for Windows and macOS
   - `DonationDialog` / legacy donation QR support flow
   - Future `SupportMemoFlow` independent settings page
   - External support link `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`
@@ -44,6 +46,8 @@
   - Private overlay support / subscription center contribution
 - Affected public code in future implementation:
   - `memos_flutter_app/lib/features/settings/settings_screen.dart`
+  - `memos_flutter_app/lib/features/settings/desktop_settings_window_app.dart`
+  - `memos_flutter_app/lib/application/desktop/desktop_settings_window.dart`
   - `memos_flutter_app/lib/features/settings/donation_dialog.dart` or replacement page
   - `memos_flutter_app/lib/private_hooks/private_extension_bundle.dart` if a support-page contribution seam is added
   - `memos_flutter_app/lib/module_boundary/...` if a new contribution model is needed
