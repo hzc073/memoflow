@@ -1,6 +1,6 @@
 # Private Overlay Workflow
 
-This document describes how to continue private commercial development without moving commercial code back into the public repository.
+This document describes how to continue Apple private commercial development without moving commercial code back into the public repository.
 
 ## Goal
 - Keep the public repository buildable on its own.
@@ -8,10 +8,10 @@ This document describes how to continue private commercial development without m
 - Connect private features only through the reserved seam in `memos_flutter_app/lib/private_hooks/active_private_extension_bundle.dart`.
 
 ## Recommended private repository layout
-Use a separate private repository, for example:
+Use a separate Apple private repository, for example:
 
 ```text
-private-memoflow/
+private-apple-memoflow/
   overlay/
     memos_flutter_app/
       lib/
@@ -20,6 +20,7 @@ private-memoflow/
   packages/
     private_billing/
     private_entitlements/
+    private_storekit/
 ```
 
 ## What the public repository may know
@@ -33,6 +34,7 @@ private-memoflow/
 - Receipt or entitlement data
 - App Store verification logic
 - StoreKit-specific runtime branching
+- Apple signing secrets, provisioning profiles, TestFlight automation, or App Store Connect credentials
 
 ## Public shell contract
 - `app.dart` may call `privateExtensionBundleProvider` only.
@@ -51,6 +53,7 @@ private-memoflow/
 - Donation entry and QR asset
 - Donor acknowledgement UI and donor update data
 - Generic shell, storage, sync, memo core, and non-commercial platform code
+- Non-commercial Apple public shell scaffolding, including approved macOS and iOS runners
 
 ## Things that stay private
 - Billing adapters
@@ -58,3 +61,4 @@ private-memoflow/
 - Commercial runtime adapters
 - Store configuration and release secrets
 - Private build scripts and App Store release automation
+- StoreKit purchase / restore, product IDs, prices, receipts, and paid Apple entitlement mapping for macOS, iPhone, and iPadOS

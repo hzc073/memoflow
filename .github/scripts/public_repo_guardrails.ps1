@@ -4,9 +4,9 @@ Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repoRoot
 
-$trackedFiles = @(& git -c core.quotepath=false ls-files)
+$repoFiles = @(& git -c core.quotepath=false ls-files --cached --others --exclude-standard)
 if ($LASTEXITCODE -ne 0) {
-  throw 'Failed to enumerate tracked files with git ls-files.'
+  throw 'Failed to enumerate repository files with git ls-files.'
 }
 
 function Normalize-Path([string]$path) {
@@ -18,7 +18,8 @@ function Is-CodeLikePath([string]$path) {
   $extension = [System.IO.Path]::GetExtension($normalized).ToLowerInvariant()
   return $extension -in @(
     '.dart', '.yaml', '.yml', '.json', '.plist', '.gradle', '.kts', '.ps1',
-    '.sh', '.py', '.swift', '.m', '.mm', '.pbxproj', '.xcconfig', '.properties'
+    '.sh', '.py', '.swift', '.m', '.mm', '.pbxproj', '.xcconfig',
+    '.entitlements', '.storyboard', '.properties'
   )
 }
 
@@ -33,7 +34,7 @@ function Add-Warning([System.Collections.Generic.List[string]]$target, [string]$
 $failures = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
 
-$normalizedTracked = $trackedFiles |
+$normalizedRepoFiles = $repoFiles |
   ForEach-Object { Normalize-Path $_ } |
   Where-Object { $_ -and (Test-Path $_) }
 
@@ -66,6 +67,10 @@ $keywordScanExcludes = @(
   '.github/scripts/public_repo_guardrails.ps1'
 )
 
+$strongScanExcludedPrefixes = @(
+  'memos_flutter_app/test/'
+)
+
 $weakScanExcludedPrefixes = @(
   'docs/',
   '_tmp/',
@@ -75,13 +80,13 @@ $weakScanExcludedPrefixes = @(
   'memos_flutter_app/third_party/'
 )
 
-$codeLikeFiles = $normalizedTracked |
+$codeLikeFiles = $normalizedRepoFiles |
   Where-Object {
     $path = $_
     (Is-CodeLikePath $path) -and ($keywordScanExcludes -notcontains $path)
   }
 
-foreach ($path in $normalizedTracked) {
+foreach ($path in $normalizedRepoFiles) {
   foreach ($prefix in $repoLayoutBlockedPrefixes) {
     if ($path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
       Add-Failure $failures "Blocked repo layout path: $path"
@@ -95,7 +100,7 @@ foreach ($path in $normalizedTracked) {
   }
 }
 
-$privateHookFiles = $normalizedTracked |
+$privateHookFiles = $normalizedRepoFiles |
   Where-Object { $_.StartsWith('memos_flutter_app/lib/private_hooks/', [System.StringComparison]::OrdinalIgnoreCase) }
 foreach ($path in $privateHookFiles) {
   if ($allowedPrivateHookFiles -notcontains $path) {
@@ -176,16 +181,55 @@ $restrictedCommercialPatterns = [ordered]@{
   in_app_purchase  = '(?i)(?<![A-Za-z])in_app_purchase(?![A-Za-z])'
 }
 
+$iosPublicShellPatterns = [ordered]@{
+  DEVELOPMENT_TEAM = '(?i)(?<![A-Za-z])DEVELOPMENT_TEAM(?![A-Za-z])'
+  PROVISIONING_PROFILE = '(?i)(?<![A-Za-z])PROVISIONING_PROFILE(?![A-Za-z])'
+  mobileprovision = '(?i)\.mobileprovision'
+  signingSecret = '(?i)(signing secret|signing_secret)'
+  AppStoreConnect = '(?i)App Store Connect'
+  TestFlight = '(?i)(?<![A-Za-z])TestFlight(?![A-Za-z])'
+  AuthKey = '(?i)(?<![A-Za-z])AuthKey_'
+  StoreKit = '(?i)(?<![A-Za-z])StoreKit(?![A-Za-z])'
+  SKPayment = '(?i)(?<![A-Za-z])SKPayment(?![A-Za-z])'
+  purchases_flutter = '(?i)(?<![A-Za-z])purchases_flutter(?![A-Za-z])'
+  in_app_purchase = '(?i)(?<![A-Za-z])in_app_purchase(?![A-Za-z])'
+  productId = '(?i)(?<![A-Za-z])productId(?![A-Za-z])'
+  productIdentifier = '(?i)(?<![A-Za-z])productIdentifier(?![A-Za-z])'
+  receipt = '(?i)(?<![A-Za-z])receipt(?![A-Za-z])'
+  restorePurchase = '(?i)(?<![A-Za-z])restorePurchase(?![A-Za-z])'
+  restorePurchases = '(?i)(?<![A-Za-z])restorePurchases(?![A-Za-z])'
+  paywall = '(?i)(?<![A-Za-z])paywall(?![A-Za-z])'
+  familySharing = '(?i)(?<![A-Za-z])familySharing(?![A-Za-z])'
+}
+
 foreach ($pattern in @('*.p8', '*.mobileprovision', 'AuthKey_*', 'GoogleService-Info.plist', '*.ipa', '*.xcarchive', '*.dSYM.zip')) {
   $matcher = [System.Management.Automation.WildcardPattern]::Get($pattern, 'IgnoreCase')
-  $matches = $normalizedTracked | Where-Object { $matcher.IsMatch([System.IO.Path]::GetFileName($_)) }
+  $matches = $normalizedRepoFiles | Where-Object { $matcher.IsMatch([System.IO.Path]::GetFileName($_)) }
   foreach ($match in $matches) {
     Add-Failure $failures "Sensitive file blocked: $match"
   }
 }
 
+$iosPublicShellFiles = $codeLikeFiles | Where-Object {
+  $_.StartsWith('memos_flutter_app/ios/', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+foreach ($iosFile in $iosPublicShellFiles) {
+  foreach ($term in $iosPublicShellPatterns.Keys) {
+    $pattern = $iosPublicShellPatterns[$term]
+    foreach ($match in (Select-String -Path $iosFile -Pattern $pattern)) {
+      Add-Failure $failures "${iosFile}:$($match.LineNumber) restricted iOS public shell term '$term'"
+    }
+  }
+}
+
+$strongFiles = $codeLikeFiles | Where-Object {
+  $path = $_
+  -not ($strongScanExcludedPrefixes | Where-Object { $path.StartsWith($_, [System.StringComparison]::OrdinalIgnoreCase) })
+}
+
 foreach ($term in $strongTerms) {
-  foreach ($match in (Select-String -Path $codeLikeFiles -Pattern $term -SimpleMatch)) {
+  foreach ($match in (Select-String -Path $strongFiles -Pattern $term -SimpleMatch)) {
     Add-Failure $failures "$($match.Path.Replace($repoRoot + [System.IO.Path]::DirectorySeparatorChar, '').Replace('\\','/')):$($match.LineNumber) strong term '$term'"
   }
 }

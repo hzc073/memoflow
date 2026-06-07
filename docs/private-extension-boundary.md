@@ -12,8 +12,8 @@ This repository stays buildable as a standalone public app.
 - The only Dart overlay seam reserved for a private repository is `memos_flutter_app/lib/private_hooks/active_private_extension_bundle.dart`.
 
 ## Public vs private responsibility
-- Public repository: memo core, sync, storage, UI shell, donor acknowledgement, and general platform support.
-- Private repository: paid features, commercial runtime, product policy, store configuration, and related release automation.
+- Public repository: memo core, sync, storage, UI shell, donor acknowledgement, general platform support, and non-commercial Apple public shell scaffolding such as macOS and iOS runners.
+- Private repository: paid features, Apple commercial runtime, entitlement evaluation, product policy, store configuration, signing secrets, and related release automation.
 
 ## Diagnostic-only metadata
 - `AccessDecision.source` is for diagnostics and logging only.
@@ -28,4 +28,5 @@ This repository stays buildable as a standalone public app.
 - The donation entry and QR asset remain public.
 - Crown state and crown persistence are removed from the public app.
 - Donor acknowledgement remains public.
-- Apple platform scaffolding is absent from the public repository.
+- Apple public shell scaffolding may live in the public repository when it is non-commercial and buildable without a private overlay.
+- Apple commercial runtime, StoreKit, product IDs, prices, receipts, entitlement state, signing secrets, and TestFlight/App Store release automation stay private.

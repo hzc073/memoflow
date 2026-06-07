@@ -2,7 +2,7 @@
 
 Use this template inside the private repository when replacing `memos_flutter_app/lib/private_hooks/active_private_extension_bundle.dart`.
 
-The goal is to keep the public shell unchanged while letting the private repository contribute settings entries and startup hooks.
+The goal is to keep the public shell unchanged while letting the Apple private repository contribute settings entries, startup hooks, and product-level capability decisions.
 
 ## Minimal template
 
@@ -27,7 +27,7 @@ class _PrivateExtensionBundle implements PrivateExtensionBundle {
 
   @override
   Future<void> onAppReady(WidgetRef ref) async {
-    // Initialize private billing / entitlement services here.
+    // Initialize private Apple billing / entitlement services here.
   }
 
   @override
@@ -58,6 +58,7 @@ class _PrivateAccessBoundary implements AccessBoundary {
     switch (capability) {
       case AppCapability.subscriptionCenter:
       case AppCapability.premiumEntitlements:
+      case AppCapability.appleCommercialRuntime:
       case AppCapability.iosCommercialRuntime:
         return const AccessDecision(enabled: true, source: 'private-bundle');
     }
@@ -68,6 +69,7 @@ class _PrivateAccessBoundary implements AccessBoundary {
 ## Important rules
 - Do not change the public shell just to fit private code.
 - Keep capability decisions inside the private bundle.
+- Map macOS, iPhone, and iPadOS paid entitlement state to product-level `AppCapability` decisions before public code sees it.
 - Let `settingsEntries(...)` decide whether a private entry exists.
 - Never make public shell files branch on `AccessDecision.source`.
 - Keep product IDs, receipts, pricing, and App Store details out of the public repository.
