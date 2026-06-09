@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/desktop_runtime_role.dart';
+import '../../core/macos_distribution_identity.dart';
 import '../../core/storage_read.dart';
 import '../../data/api/memo_api_facade.dart';
 import '../../data/api/memo_api_version.dart';
@@ -52,7 +53,7 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   }
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
     return QueuedFlutterSecureStorage(
-      mOptions: const MacOsOptions(useDataProtectionKeyChain: false),
+      mOptions: macosSecureStorageOptionsForCurrentDistributionChannel(),
     );
   }
   return QueuedFlutterSecureStorage();
