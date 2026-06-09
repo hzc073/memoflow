@@ -306,6 +306,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
 			productRefGroup = 33CC10EE2044A3C60003C045 /* Products */;
@@ -508,13 +509,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_VERSION = 5.0;
+				};
 			name = "Release-Runner";
 		};
 		18224B222BA5BDB706345C54 /* Profile-Runner */ = {
@@ -670,13 +672,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073.qa;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_VERSION = 5.0;
+				};
 			name = Profile;
 		};
 		338D0CEB231458BD00FA5F75 /* Profile */ = {
@@ -802,13 +805,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073.dev;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+					SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -822,13 +826,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_VERSION = 5.0;
+				};
 			name = Release;
 		};
 		33CC111C2044C6BA0003C045 /* Debug */ = {
@@ -944,13 +949,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073.dev;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+					SWIFT_VERSION = 5.0;
 			};
 			name = "Debug-Runner";
 		};
@@ -1051,13 +1057,14 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
+					LD_RUNPATH_SEARCH_PATHS = (
+						"$(inherited)",
+						"@executable_path/../Frameworks",
+					);
+					MEMOFLOW_MACOS_BUNDLE_ID = com.memoflow.hzc073.qa;
+					PROVISIONING_PROFILE_SPECIFIER = "";
+					SWIFT_VERSION = 5.0;
+				};
 			name = "Profile-Runner";
 		};
 /* End XCBuildConfiguration section */

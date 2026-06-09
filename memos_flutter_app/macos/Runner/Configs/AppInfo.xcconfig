@@ -7,8 +7,8 @@
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = MemoFlow
 
-// The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.memoflow.memosFlutterApp
+// The application's bundle identifier. Runner target build configurations set this value.
+PRODUCT_BUNDLE_IDENTIFIER = $(MEMOFLOW_MACOS_BUNDLE_ID)
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.memoflow. All rights reserved.
