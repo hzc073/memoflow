@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="58" viewBox="0 0 260 58" role="img" aria-labelledby="title desc">
+  <title id="title">Cloud Drive Download, password 2nor</title>
+  <desc id="desc">A cloud drive download button.</desc>
+  <rect x="1" y="1" width="258" height="56" rx="8" fill="#0f766e" stroke="#14b8a6" stroke-width="2"/>
+  <g transform="translate(20 15)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.4 24.5H24c4 0 7.3-3.2 7.3-7.2 0-3.7-2.8-6.8-6.4-7.2C23.8 5.4 19.6 2 14.8 2 9.2 2 4.7 6.5 4.7 12.1v.4C2 13.6.5 16 .5 18.6c0 3.3 2.6 5.9 5.9 5.9h3"/>
+    <path d="M15.9 15.1v13"/>
+    <path d="m10.6 22.7 5.3 5.4 5.3-5.4"/>
+  </g>
+  <text x="64" y="30" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">Cloud Drive</text>
+  <text x="64" y="49" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700">Password 2nor</text>
+</svg>
