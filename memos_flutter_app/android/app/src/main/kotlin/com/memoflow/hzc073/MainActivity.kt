@@ -487,7 +487,29 @@ class MainActivity : FlutterActivity() {
     private fun handleShareIntent(intent: Intent?) {
         if (intent == null) return
         val action = intent.action ?: return
-        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
+        if (
+            action != Intent.ACTION_SEND &&
+            action != Intent.ACTION_SEND_MULTIPLE &&
+            action != Intent.ACTION_PROCESS_TEXT
+        ) {
+            return
+        }
+
+        if (action == Intent.ACTION_PROCESS_TEXT) {
+            val processText = extractProcessText(intent)
+            if (!processText.isNullOrEmpty()) {
+                dispatchShare(
+                    SharePayload(
+                        type = "text",
+                        handlingMode = SHARE_HANDLING_MODE_QUICK_RECORD,
+                        text = processText,
+                        title = extractShareTitle(intent, processText, null),
+                    ),
+                )
+            }
+            clearShareIntent(intent)
+            return
+        }
 
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
         val urlInText = if (!text.isNullOrEmpty()) extractFirstUrl(text) else null
@@ -508,10 +530,51 @@ class MainActivity : FlutterActivity() {
             return
         }
 
+        val clipText = if (text.isNullOrEmpty()) extractPlainClipText(intent) else null
+        if (!clipText.isNullOrEmpty()) {
+            dispatchShare(
+                SharePayload(
+                    type = "text",
+                    handlingMode = SHARE_HANDLING_MODE_QUICK_RECORD,
+                    text = clipText,
+                    title = extractShareTitle(intent, clipText, null),
+                ),
+            )
+            clearShareIntent(intent)
+            return
+        }
+
         if (!text.isNullOrEmpty()) {
             dispatchShare(SharePayload(type = "text", text = text, title = title))
             clearShareIntent(intent)
         }
+    }
+
+    private fun extractProcessText(intent: Intent): String? {
+        val value = intent.extras?.getCharSequence(Intent.EXTRA_PROCESS_TEXT)
+            ?: intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)
+        return value?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun extractPlainClipText(intent: Intent): String? {
+        val clip = intent.clipData ?: return null
+        val result = mutableListOf<String>()
+        for (i in 0 until clip.itemCount) {
+            val item = clip.getItemAt(i)
+            if (item.uri != null || item.intent != null) {
+                return null
+            }
+            val text = item.text?.toString()
+                ?: item.htmlText?.toString()
+            val normalized = text?.trim().orEmpty()
+            if (normalized.isNotEmpty()) {
+                result.add(normalized)
+            }
+        }
+        return result
+            .joinToString(separator = "\n")
+            .trim()
+            .takeIf { it.isNotEmpty() }
     }
 
     private fun extractShareTitle(intent: Intent, text: String?, sharedUrl: String?): String? {
@@ -630,6 +693,7 @@ class MainActivity : FlutterActivity() {
 
     private fun clearShareIntent(intent: Intent) {
         intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.removeExtra(Intent.EXTRA_PROCESS_TEXT)
         intent.removeExtra(Intent.EXTRA_SUBJECT)
         intent.removeExtra(Intent.EXTRA_TITLE)
         intent.removeExtra(Intent.EXTRA_STREAM)
@@ -742,6 +806,7 @@ class MainActivity : FlutterActivity() {
 
     private data class SharePayload(
         val type: String,
+        val handlingMode: String = SHARE_HANDLING_MODE_STANDARD_SHARE,
         val text: String? = null,
         val title: String? = null,
         val paths: List<String> = emptyList(),
@@ -749,10 +814,16 @@ class MainActivity : FlutterActivity() {
         fun toMap(): Map<String, Any?> {
             return mapOf(
                 "type" to type,
+                "handlingMode" to handlingMode,
                 "text" to text,
                 "title" to title,
                 "paths" to paths,
             )
         }
+    }
+
+    companion object {
+        private const val SHARE_HANDLING_MODE_STANDARD_SHARE = "standardShare"
+        private const val SHARE_HANDLING_MODE_QUICK_RECORD = "quickRecord"
     }
 }

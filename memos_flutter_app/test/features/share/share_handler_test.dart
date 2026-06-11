@@ -52,6 +52,19 @@ void main() {
       expect(draft.text, 'just some text');
       expect(draft.selectionOffset, draft.text.length);
     });
+
+    test('quick record mode does not alter text draft formatting', () {
+      const payload = SharePayload(
+        type: SharePayloadType.text,
+        handlingMode: SharePayloadHandlingMode.quickRecord,
+        text: 'Example Article\nhttps://example.com/article',
+      );
+
+      final draft = buildShareTextDraft(payload);
+
+      expect(draft.text, '[Example Article](https://example.com/article)');
+      expect(draft.selectionOffset, draft.text.length);
+    });
   });
 
   test('SharePayload.fromArgs normalizes title', () {
@@ -63,7 +76,33 @@ void main() {
 
     expect(payload, isNotNull);
     expect(payload!.title, 'Example Article');
+    expect(payload.handlingMode, SharePayloadHandlingMode.standardShare);
   });
+
+  test('SharePayload.fromArgs parses quick record handling mode', () {
+    final payload = SharePayload.fromArgs(<String, Object?>{
+      'type': 'text',
+      'handlingMode': 'quickRecord',
+      'text': 'plain text',
+    });
+
+    expect(payload, isNotNull);
+    expect(payload!.handlingMode, SharePayloadHandlingMode.quickRecord);
+  });
+
+  test(
+    'SharePayload.fromArgs falls back to standard share for unknown mode',
+    () {
+      final payload = SharePayload.fromArgs(<String, Object?>{
+        'type': 'text',
+        'handlingMode': 'unexpected-mode',
+        'text': 'plain text',
+      });
+
+      expect(payload, isNotNull);
+      expect(payload!.handlingMode, SharePayloadHandlingMode.standardShare);
+    },
+  );
 
   test(
     'extractShareUrl returns the first url when multiple urls are shared',

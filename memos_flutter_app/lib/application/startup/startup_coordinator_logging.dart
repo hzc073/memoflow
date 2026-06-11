@@ -4,6 +4,7 @@ extension _StartupCoordinatorLogging on StartupCoordinator {
   Map<String, Object?> _sharePayloadContext(SharePayload payload) {
     return <String, Object?>{
       'shareType': payload.type.name,
+      'shareHandlingMode': payload.handlingMode.name,
       'sharePathsCount': payload.paths.length,
       'shareHasText': (payload.text ?? '').trim().isNotEmpty,
     };

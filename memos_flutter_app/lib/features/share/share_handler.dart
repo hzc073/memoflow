@@ -4,15 +4,19 @@ import 'package:flutter/services.dart';
 
 enum SharePayloadType { text, images }
 
+enum SharePayloadHandlingMode { standardShare, quickRecord }
+
 class SharePayload {
   const SharePayload({
     required this.type,
+    this.handlingMode = SharePayloadHandlingMode.standardShare,
     this.text,
     this.title,
     this.paths = const [],
   });
 
   final SharePayloadType type;
+  final SharePayloadHandlingMode handlingMode;
   final String? text;
   final String? title;
   final List<String> paths;
@@ -22,6 +26,7 @@ class SharePayload {
     final rawType = args['type'];
     final type = _parseType(rawType);
     if (type == null) return null;
+    final handlingMode = _parseHandlingMode(args['handlingMode']);
     final text = args['text'] as String?;
     final title = _normalizeTitle(args['title'] as String?);
     final rawPaths = args['paths'];
@@ -33,7 +38,13 @@ class SharePayload {
         }
       }
     }
-    return SharePayload(type: type, text: text, title: title, paths: paths);
+    return SharePayload(
+      type: type,
+      handlingMode: handlingMode,
+      text: text,
+      title: title,
+      paths: paths,
+    );
   }
 
   static SharePayloadType? _parseType(Object? raw) {
@@ -46,6 +57,18 @@ class SharePayload {
       return SharePayloadType.text;
     }
     return null;
+  }
+
+  static SharePayloadHandlingMode _parseHandlingMode(Object? raw) {
+    if (raw is! String) return SharePayloadHandlingMode.standardShare;
+    final normalized = raw.trim().toLowerCase();
+    if (normalized == 'quickrecord' ||
+        normalized == 'quick_record' ||
+        normalized == 'composeonly' ||
+        normalized == 'compose_only') {
+      return SharePayloadHandlingMode.quickRecord;
+    }
+    return SharePayloadHandlingMode.standardShare;
   }
 
   static String? _normalizeTitle(String? value) {

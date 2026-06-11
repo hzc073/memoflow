@@ -17,9 +17,24 @@ void main() {
 
     expect(decoded, isNotNull);
     expect(decoded!.type, payload.type);
+    expect(decoded.handlingMode, SharePayloadHandlingMode.standardShare);
     expect(decoded.text, payload.text);
     expect(decoded.title, payload.title);
     expect(decoded.paths, payload.paths);
+  });
+
+  test('share payload preserves quick record mode through JSON-safe map', () {
+    const payload = SharePayload(
+      type: SharePayloadType.text,
+      handlingMode: SharePayloadHandlingMode.quickRecord,
+      text: 'Read https://example.com/article',
+    );
+
+    final decoded = sharePayloadFromJson(sharePayloadToJson(payload));
+
+    expect(decoded, isNotNull);
+    expect(decoded!.handlingMode, SharePayloadHandlingMode.quickRecord);
+    expect(decoded.text, payload.text);
   });
 
   test('share compose request preserves capture and attachment fields', () {

@@ -113,8 +113,13 @@ extension _StartupCoordinatorShare on StartupCoordinator {
   }
 
   bool _shouldOpenSharePreviewDirectly(SharePayload payload) {
+    if (_shouldOpenPlainShareComposer(payload)) return false;
     return payload.type == SharePayloadType.text &&
         buildShareCaptureRequest(payload) != null;
+  }
+
+  bool _shouldOpenPlainShareComposer(SharePayload payload) {
+    return payload.handlingMode == SharePayloadHandlingMode.quickRecord;
   }
 
   String _nextDesktopShareTaskRequestId() {
@@ -291,6 +296,10 @@ extension _StartupCoordinatorShare on StartupCoordinator {
   }
 
   Future<void> _openShareQuickClipFlow(SharePayload payload) async {
+    if (_shouldOpenPlainShareComposer(payload)) {
+      await _openShareFlow(payload);
+      return;
+    }
     final captureRequest = buildShareCaptureRequest(payload);
     if (captureRequest == null) {
       await _openShareFlow(payload);
@@ -381,6 +390,10 @@ extension _StartupCoordinatorShare on StartupCoordinator {
       _openShareComposer(currentContext, payload);
       return;
     }
+    if (_shouldOpenPlainShareComposer(payload)) {
+      _openShareComposer(currentContext, payload);
+      return;
+    }
 
     final captureRequest = buildShareCaptureRequest(payload);
     if (captureRequest == null) {
@@ -440,6 +453,19 @@ extension _StartupCoordinatorShare on StartupCoordinator {
           text: '',
           selectionOffset: 0,
           attachmentPaths: payload.paths,
+          showLocalSaveSuccessToast: true,
+        ),
+      );
+      return;
+    }
+
+    if (_shouldOpenPlainShareComposer(payload)) {
+      final rawText = (payload.text ?? '').trim();
+      _openComposeRequest(
+        context,
+        ShareComposeRequest(
+          text: rawText,
+          selectionOffset: rawText.length,
           showLocalSaveSuccessToast: true,
         ),
       );

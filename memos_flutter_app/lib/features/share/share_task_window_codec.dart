@@ -62,6 +62,7 @@ String? desktopShareTaskCanceledRequestId(Object? args) {
 Map<String, dynamic> sharePayloadToJson(SharePayload payload) {
   return <String, dynamic>{
     'type': payload.type.name,
+    'handlingMode': payload.handlingMode.name,
     if (payload.text != null) 'text': payload.text,
     if (payload.title != null) 'title': payload.title,
     'paths': payload.paths,

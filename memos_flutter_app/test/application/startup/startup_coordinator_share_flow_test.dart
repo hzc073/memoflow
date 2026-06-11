@@ -464,6 +464,117 @@ void main() {
       },
     );
 
+    testWidgets(
+      'quick record URL share opens composer without quick clip formatting',
+      (tester) async {
+        ShareComposeRequest? presented;
+        final bootstrapAdapter = FakeBootstrapAdapter(
+          preferences: AppPreferences.defaults.copyWith(
+            thirdPartyShareEnabled: true,
+          ),
+          preferencesLoaded: true,
+          session: buildTestSessionWithAccount(),
+        );
+        final harness = await pumpStartupCoordinatorHarness(
+          tester,
+          bootstrapAdapter: bootstrapAdapter,
+          appNavigatorBuilder: TestMemosAppNavigator.new,
+          shareComposeRequestPresenterOverride: (context, request) {
+            presented = request;
+          },
+        );
+
+        await harness.coordinator.handleShareLaunch(
+          const SharePayload(
+            type: SharePayloadType.text,
+            handlingMode: SharePayloadHandlingMode.quickRecord,
+            text: 'Read https://example.com/article',
+            title: 'Read',
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Clip now'), findsNothing);
+        expect(presented, isNotNull);
+        expect(presented!.text, 'Read https://example.com/article');
+        expect(presented!.selectionOffset, presented!.text.length);
+        expect(presented!.showLocalSaveSuccessToast, isTrue);
+        expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
+      },
+    );
+
+    testWidgets('standard URL share still opens quick clip sheet', (
+      tester,
+    ) async {
+      ShareComposeRequest? presented;
+      final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          thirdPartyShareEnabled: true,
+        ),
+        preferencesLoaded: true,
+        session: buildTestSessionWithAccount(),
+      );
+      final harness = await pumpStartupCoordinatorHarness(
+        tester,
+        bootstrapAdapter: bootstrapAdapter,
+        shareComposeRequestPresenterOverride: (context, request) {
+          presented = request;
+        },
+      );
+
+      await harness.coordinator.handleShareLaunch(
+        const SharePayload(
+          type: SharePayloadType.text,
+          text: 'Read https://example.com/article',
+          title: 'Read',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clip now'), findsOneWidget);
+      expect(presented, isNull);
+      expect(harness.coordinator.shouldDeferHeavyStartupWork, isTrue);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
+    });
+
+    testWidgets('quick record respects disabled third-party share preference', (
+      tester,
+    ) async {
+      ShareComposeRequest? presented;
+      final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          thirdPartyShareEnabled: false,
+        ),
+        preferencesLoaded: true,
+        session: buildTestSessionWithAccount(),
+      );
+      final harness = await pumpStartupCoordinatorHarness(
+        tester,
+        bootstrapAdapter: bootstrapAdapter,
+        shareComposeRequestPresenterOverride: (context, request) {
+          presented = request;
+        },
+      );
+
+      await harness.coordinator.handleShareLaunch(
+        const SharePayload(
+          type: SharePayloadType.text,
+          handlingMode: SharePayloadHandlingMode.quickRecord,
+          text: 'Read https://example.com/article',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(presented, isNull);
+      expect(find.text('Clip now'), findsNothing);
+      expect(harness.coordinator.startupSharePreviewPayload, isNull);
+      expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
+    });
+
     testWidgets('image share opens composer with local-save toast enabled', (
       tester,
     ) async {
@@ -494,6 +605,45 @@ void main() {
 
       expect(presented, isNotNull);
       expect(presented!.attachmentPaths, <String>['C:/tmp/shared-image.png']);
+      expect(presented!.showLocalSaveSuccessToast, isTrue);
+      expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
+    });
+
+    testWidgets('quick record media opens composer with attachment paths', (
+      tester,
+    ) async {
+      ShareComposeRequest? presented;
+      final bootstrapAdapter = FakeBootstrapAdapter(
+        preferences: AppPreferences.defaults.copyWith(
+          thirdPartyShareEnabled: true,
+        ),
+        preferencesLoaded: true,
+        session: buildTestSessionWithAccount(),
+      );
+      final harness = await pumpStartupCoordinatorHarness(
+        tester,
+        bootstrapAdapter: bootstrapAdapter,
+        appNavigatorBuilder: TestMemosAppNavigator.new,
+        shareComposeRequestPresenterOverride: (context, request) {
+          presented = request;
+        },
+      );
+
+      await harness.coordinator.handleShareLaunch(
+        const SharePayload(
+          type: SharePayloadType.images,
+          handlingMode: SharePayloadHandlingMode.quickRecord,
+          paths: <String>['/tmp/shared-image.png', '/tmp/shared-video.mp4'],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(presented, isNotNull);
+      expect(presented!.text, isEmpty);
+      expect(presented!.attachmentPaths, <String>[
+        '/tmp/shared-image.png',
+        '/tmp/shared-video.mp4',
+      ]);
       expect(presented!.showLocalSaveSuccessToast, isTrue);
       expect(harness.coordinator.shouldDeferHeavyStartupWork, isFalse);
     });
