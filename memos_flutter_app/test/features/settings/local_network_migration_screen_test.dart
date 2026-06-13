@@ -55,7 +55,8 @@ void main() {
     expect(find.text('Connect Obsidian'), findsOneWidget);
     expect(find.text('MemoFlow Bridge'), findsNothing);
     expect(find.byType(SettingsPage), findsOneWidget);
-    expect(find.byType(SettingsInputRow), findsNWidgets(3));
+    expect(find.byType(SettingsInlineTextFieldRow), findsNWidgets(3));
+    expect(find.byType(SettingsNumericInlineFieldRow), findsOneWidget);
     expect(find.byType(SettingsToggleRow), findsOneWidget);
     expect(find.byType(PlatformSwitch), findsOneWidget);
     expect(

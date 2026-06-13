@@ -712,7 +712,7 @@ void main() {
 
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(SettingsSection), findsNWidgets(2));
-    expect(find.byType(SettingsInputRow), findsNWidgets(2));
+    expect(find.byType(SettingsNumericInlineFieldRow), findsNWidgets(2));
     expect(find.text('Memo maximum bytes'), findsOneWidget);
     expect(find.text('Attachment maximum capacity'), findsOneWidget);
     expect(

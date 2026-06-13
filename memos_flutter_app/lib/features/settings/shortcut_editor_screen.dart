@@ -198,7 +198,7 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
     final editorChildren = <Widget>[
       SettingsSection(
         children: [
-          SettingsInputRow(
+          SettingsInlineTextFieldRow(
             label: tr.msg_name,
             controller: _titleController,
             hint: tr.msg_shortcut_name,
@@ -325,11 +325,10 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                 ),
               ),
             ] else ...[
-              SettingsInputRow(
+              SettingsNumericInlineFieldRow(
                 label: tr.msg_how_many_days_back,
                 controller: _lastDaysController,
                 hint: tr.msg_enter_days,
-                keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onChanged: (value) {
                   final parsed = int.tryParse(value);

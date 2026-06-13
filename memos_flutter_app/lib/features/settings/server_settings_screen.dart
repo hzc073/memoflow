@@ -289,13 +289,12 @@ class _LimitSection extends StatelessWidget {
                   ),
                 ),
           children: [
-            SettingsInputRow(
+            SettingsNumericInlineFieldRow(
               label: unitLabel,
               controller: controller,
               focusNode: focusNode,
               hint: editable ? emptyHintText : null,
               enabled: editable,
-              keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => onChanged(),
             ),

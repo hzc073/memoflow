@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
 import 'package:memos_flutter_app/features/settings/ai_proxy_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
 
@@ -70,6 +71,9 @@ void main() {
       await tester.pumpWidget(_buildTestApp(repository));
       await tester.pumpAndSettle();
 
+      expect(find.byType(SettingsInlineTextFieldRow), findsNWidgets(3));
+      expect(find.byType(SettingsNumericInlineFieldRow), findsOneWidget);
+      expect(find.byType(SettingsFormFieldRow), findsNWidgets(2));
       expect(find.text('Proxy Test'), findsOneWidget);
       expect(find.text('Test Connection'), findsOneWidget);
       final urlField = tester.widget<TextField>(find.byType(TextField).at(4));

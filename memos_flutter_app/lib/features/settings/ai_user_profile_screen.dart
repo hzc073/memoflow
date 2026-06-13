@@ -73,7 +73,7 @@ class _AiUserProfileScreenState extends ConsumerState<AiUserProfileScreen> {
       children: [
         SettingsSection(
           children: [
-            SettingsInputRow(
+            SettingsMultilineFieldRow(
               label: context.t.strings.legacy.msg_my_profile,
               controller: _controller,
               enabled: !_saving,

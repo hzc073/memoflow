@@ -54,7 +54,7 @@ void main() {
     );
     expect(find.byType(ShortcutEditorScreen), findsOneWidget);
     expect(find.byType(SettingsSection), findsWidgets);
-    expect(find.byType(SettingsInputRow), findsWidgets);
+    expect(find.byType(SettingsInlineTextFieldRow), findsWidgets);
     expect(find.byType(SettingsAction), findsWidgets);
     expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     expect(find.byIcon(Icons.arrow_back), findsNothing);
@@ -100,7 +100,7 @@ void main() {
     expect(find.byType(ShortcutEditorScreen), findsOneWidget);
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(SettingsSection), findsWidgets);
-    expect(find.byType(SettingsInputRow), findsWidgets);
+    expect(find.byType(SettingsInlineTextFieldRow), findsWidgets);
     expect(find.text('Work'), findsOneWidget);
     expect(find.text('#work'), findsOneWidget);
 

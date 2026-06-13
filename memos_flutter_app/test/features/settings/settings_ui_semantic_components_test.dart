@@ -354,6 +354,135 @@ void main() {
     expect(actionCount, 1);
   });
 
+  testWidgets('settings form field seams keep padded Apple mobile inputs', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+    final usernameController = TextEditingController(text: 'alice');
+    final portController = TextEditingController(text: '443');
+    final urlController = TextEditingController(text: 'https://example.com');
+    final notesController = TextEditingController(text: 'notes');
+    addTearDown(usernameController.dispose);
+    addTearDown(portController.dispose);
+    addTearDown(urlController.dispose);
+    addTearDown(notesController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsPage(
+          title: const Text('Settings'),
+          showBackButton: false,
+          children: [
+            SettingsSection(
+              children: [
+                SettingsInlineTextFieldRow(
+                  label: 'Username',
+                  controller: usernameController,
+                ),
+                SettingsNumericInlineFieldRow(
+                  label: 'Port',
+                  controller: portController,
+                ),
+                SettingsFormFieldRow(
+                  label: 'Server URL',
+                  controller: urlController,
+                  suffixIcon: const Icon(Icons.visibility_outlined),
+                ),
+                SettingsMultilineFieldRow(
+                  label: 'Notes',
+                  controller: notesController,
+                  minLines: 3,
+                  maxLines: 5,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    final fields = tester
+        .widgetList<CupertinoTextField>(find.byType(CupertinoTextField))
+        .toList();
+    expect(fields, hasLength(4));
+    final rows = tester
+        .widgetList<CupertinoListTile>(find.byType(CupertinoListTile))
+        .toList();
+    expect(rows, hasLength(4));
+    expect(rows.every((row) => row.onTap == null), isTrue);
+    for (final field in fields) {
+      final padding = field.padding.resolve(TextDirection.ltr);
+      expect(padding.horizontal, greaterThan(0));
+      expect(padding.vertical, greaterThan(0));
+    }
+
+    await tester.enterText(find.byType(CupertinoTextField).first, 'bob');
+    await tester.pump();
+
+    expect(usernameController.text, 'bob');
+  });
+
+  testWidgets('inline text field falls back when label cannot fit', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'alice');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 280,
+              child: SettingsSection(
+                children: [
+                  SettingsInlineTextFieldRow(
+                    label: 'Very long username label',
+                    controller: controller,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(SettingsFormFieldRow), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('settings long value row constrains trailing text', (
+    tester,
+  ) async {
+    const longValue = 'https://example.com/a/very/long/path/that/must/truncate';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            child: SettingsSection(
+              children: [
+                SettingsLongValueRow(
+                  label: 'Root path',
+                  value: longValue,
+                  trailingIcon: Icons.chevron_right,
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final valueSize = tester.getSize(find.text(longValue));
+    expect(valueSize.width, lessThanOrEqualTo(320 * 0.42));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('disabled settings menu row does not open picker', (
     tester,
   ) async {

@@ -92,17 +92,19 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
                         value == AiProxyProtocol.http ? 'HTTP' : 'SOCKS5',
                     onChanged: (value) => setState(() => _protocol = value),
                   ),
-                  SettingsInputRow(label: t.host, controller: _hostController),
-                  SettingsInputRow(
+                  SettingsInlineTextFieldRow(
+                    label: t.host,
+                    controller: _hostController,
+                  ),
+                  SettingsNumericInlineFieldRow(
                     label: t.port,
                     controller: _portController,
-                    keyboardType: TextInputType.number,
                   ),
-                  SettingsInputRow(
+                  SettingsInlineTextFieldRow(
                     label: t.username,
                     controller: _usernameController,
                   ),
-                  SettingsInputRow(
+                  SettingsFormFieldRow(
                     label: t.password,
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -135,7 +137,7 @@ class _AiProxySettingsScreenState extends ConsumerState<AiProxySettingsScreen> {
                 header: Text(t.testSectionTitle),
                 children: [
                   SettingsInfoRow(description: t.testSectionDescription),
-                  SettingsInputRow(
+                  SettingsFormFieldRow(
                     label: t.testUrl,
                     controller: _testUrlController,
                     hint: _defaultProxyTestUrl,

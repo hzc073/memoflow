@@ -165,7 +165,7 @@ class _ImageBedSettingsScreenState
         SettingsSection(
           header: Text(context.t.strings.legacy.msg_basics),
           children: [
-            SettingsInputRow(
+            SettingsFormFieldRow(
               label: context.t.strings.legacy.msg_api_url,
               hint: 'https://lsky.example.com',
               controller: _baseUrlController,
@@ -176,7 +176,7 @@ class _ImageBedSettingsScreenState
               },
               onEditingComplete: _normalizeBaseUrl,
             ),
-            SettingsInputRow(
+            SettingsInlineTextFieldRow(
               label: context.t.strings.legacy.msg_email,
               hint: context.t.strings.legacy.msg_enter_email,
               controller: _emailController,
@@ -186,7 +186,7 @@ class _ImageBedSettingsScreenState
                 ref.read(imageBedSettingsProvider.notifier).setEmail(v);
               },
             ),
-            SettingsInputRow(
+            SettingsFormFieldRow(
               label: context.t.strings.legacy.msg_password,
               hint: context.t.strings.legacy.msg_enter_password_2,
               controller: _passwordController,
@@ -196,11 +196,10 @@ class _ImageBedSettingsScreenState
                 ref.read(imageBedSettingsProvider.notifier).setPassword(v);
               },
             ),
-            SettingsInputRow(
+            SettingsNumericInlineFieldRow(
               label: context.t.strings.legacy.msg_strategy_id,
               hint: context.t.strings.legacy.msg_optional_leave_empty_default,
               controller: _strategyController,
-              keyboardType: TextInputType.number,
               onChanged: (v) {
                 _markDirty();
                 ref.read(imageBedSettingsProvider.notifier).setStrategyId(v);

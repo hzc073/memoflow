@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/top_toast.dart';
-import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_list_section.dart';
 import '../../state/system/debug_log_provider.dart';
 import '../../state/system/logging_provider.dart';
@@ -322,27 +321,12 @@ class _NotesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    return PlatformListSectionRow(
-      title: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: PlatformTextField(
-          controller: controller,
-          minLines: 3,
-          maxLines: 5,
-          decoration: InputDecoration(
-            hintText: context
-                .t
-                .strings
-                .legacy
-                .msg_describe_issue_time_repro_steps_etc,
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: tokens.textMuted),
-          ),
-          style: TextStyle(color: tokens.textMain),
-        ),
-      ),
-      denseOnDesktop: false,
+    return SettingsMultilineFieldRow(
+      label: context.t.strings.collections.description,
+      controller: controller,
+      minLines: 3,
+      maxLines: 5,
+      hint: context.t.strings.legacy.msg_describe_issue_time_repro_steps_etc,
     );
   }
 }

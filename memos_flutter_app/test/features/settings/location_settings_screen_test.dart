@@ -52,7 +52,7 @@ void main() {
       find.byType(SettingsMenuRow<LocationServiceProvider>),
       findsOneWidget,
     );
-    expect(find.byType(SettingsInputRow), findsNWidgets(2));
+    expect(find.byType(SettingsFormFieldRow), findsNWidgets(2));
     expect(find.text('Location'), findsOneWidget);
     expect(find.text('Enable memo location'), findsOneWidget);
 

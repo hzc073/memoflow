@@ -481,22 +481,29 @@ class SettingsValueRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    final maxTrailingWidth = MediaQuery.sizeOf(context).width * 0.42;
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(label),
-        additionalInfo: _SettingsRowValueText(
-          value,
-          maxWidth: maxTrailingWidth,
-        ),
-        trailing: Icon(icon, size: 18, color: tokens.textMuted),
-        onTap: enabled ? onTap : null,
-        subtitle: description == null
-            ? null
-            : SettingsRowDescription(description!),
-        denseOnDesktop: description == null,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rowWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final maxTrailingWidth = rowWidth * 0.42;
+        return Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: PlatformListSectionRow(
+            title: SettingsRowTitle(label),
+            additionalInfo: _SettingsRowValueText(
+              value,
+              maxWidth: maxTrailingWidth,
+            ),
+            trailing: Icon(icon, size: 18, color: tokens.textMuted),
+            onTap: enabled ? onTap : null,
+            subtitle: description == null
+                ? null
+                : SettingsRowDescription(description!),
+            denseOnDesktop: description == null,
+          ),
+        );
+      },
     );
   }
 }
@@ -526,25 +533,32 @@ class SettingsNavigationRow extends StatelessWidget {
     final tokens = settingsPageTokens(context);
     final homeDensity = _SettingsHomeDensityScope.maybeOf(context);
     final isSingleLine = description == null;
-    final maxTrailingWidth = MediaQuery.sizeOf(context).width * 0.42;
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        leading: leading,
-        title: SettingsRowTitle(label),
-        subtitle: description == null
-            ? null
-            : SettingsRowDescription(description!),
-        additionalInfo: value == null
-            ? null
-            : _SettingsRowValueText(value!, maxWidth: maxTrailingWidth),
-        trailing: Icon(trailingIcon, size: 18, color: tokens.textMuted),
-        onTap: enabled ? onTap : null,
-        mobileMinTileHeight: isSingleLine
-            ? homeDensity?.navigationRowMinHeight
-            : null,
-        denseOnDesktop: description == null,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rowWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final maxTrailingWidth = rowWidth * 0.42;
+        return Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: PlatformListSectionRow(
+            leading: leading,
+            title: SettingsRowTitle(label),
+            subtitle: description == null
+                ? null
+                : SettingsRowDescription(description!),
+            additionalInfo: value == null
+                ? null
+                : _SettingsRowValueText(value!, maxWidth: maxTrailingWidth),
+            trailing: Icon(trailingIcon, size: 18, color: tokens.textMuted),
+            onTap: enabled ? onTap : null,
+            mobileMinTileHeight: isSingleLine
+                ? homeDensity?.navigationRowMinHeight
+                : null,
+            denseOnDesktop: description == null,
+          ),
+        );
+      },
     );
   }
 }
@@ -813,6 +827,509 @@ class SettingsInputRow extends StatelessWidget {
   }
 }
 
+class SettingsInlineTextFieldRow extends StatefulWidget {
+  const SettingsInlineTextFieldRow({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.suffixIcon,
+    this.inputFormatters,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
+    this.maxLengthEnforcement,
+    this.enabled = true,
+    this.obscureText = false,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+    this.fallbackWidth = 360,
+    this.minFieldWidth = 148,
+    this.maxFieldWidth = 260,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
+  final bool enabled;
+  final bool obscureText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+  final double fallbackWidth;
+  final double minFieldWidth;
+  final double maxFieldWidth;
+
+  @override
+  State<SettingsInlineTextFieldRow> createState() =>
+      _SettingsInlineTextFieldRowState();
+}
+
+class _SettingsInlineTextFieldRowState
+    extends State<SettingsInlineTextFieldRow> {
+  late final FocusNode _ownedFocusNode;
+
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownedFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _ownedFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final textScale = media.textScaler.scale(14) / 14;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : media.size.width;
+        final useStacked =
+            width < widget.fallbackWidth ||
+            textScale > 1.2 ||
+            widget.label.runes.length > 18;
+
+        if (useStacked) {
+          return SettingsFormFieldRow(
+            label: widget.label,
+            controller: widget.controller,
+            focusNode: _focusNode,
+            hint: widget.hint,
+            suffixIcon: widget.suffixIcon,
+            inputFormatters: widget.inputFormatters,
+            keyboardType: widget.keyboardType,
+            textInputAction: widget.textInputAction,
+            maxLength: widget.maxLength,
+            maxLengthEnforcement: widget.maxLengthEnforcement,
+            enabled: widget.enabled,
+            obscureText: widget.obscureText,
+            onChanged: widget.onChanged,
+            onSubmitted: widget.onSubmitted,
+            onEditingComplete: widget.onEditingComplete,
+          );
+        }
+
+        final fieldWidth = (width * 0.48)
+            .clamp(widget.minFieldWidth, widget.maxFieldWidth)
+            .toDouble();
+        return Opacity(
+          opacity: widget.enabled ? 1 : 0.55,
+          child: PlatformListSectionRow(
+            title: SettingsRowTitle(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: SizedBox(
+              width: fieldWidth,
+              child: _SettingsTextField(
+                controller: widget.controller,
+                focusNode: _focusNode,
+                hint: widget.hint,
+                suffixIcon: widget.suffixIcon,
+                inputFormatters: widget.inputFormatters,
+                keyboardType: widget.keyboardType,
+                textInputAction: widget.textInputAction,
+                maxLength: widget.maxLength,
+                maxLengthEnforcement: widget.maxLengthEnforcement,
+                enabled: widget.enabled,
+                obscureText: widget.obscureText,
+                textAlign: TextAlign.end,
+                onChanged: widget.onChanged,
+                onSubmitted: widget.onSubmitted,
+                onEditingComplete: widget.onEditingComplete,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SettingsNumericInlineFieldRow extends StatelessWidget {
+  const SettingsNumericInlineFieldRow({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.inputFormatters,
+    this.enabled = true,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+    this.minFieldWidth = 96,
+    this.maxFieldWidth = 140,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final List<TextInputFormatter>? inputFormatters;
+  final bool enabled;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+  final double minFieldWidth;
+  final double maxFieldWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsInlineTextFieldRow(
+      label: label,
+      controller: controller,
+      focusNode: focusNode,
+      hint: hint,
+      inputFormatters: inputFormatters,
+      keyboardType: TextInputType.number,
+      enabled: enabled,
+      textInputAction: TextInputAction.done,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      onEditingComplete: onEditingComplete,
+      minFieldWidth: minFieldWidth,
+      maxFieldWidth: maxFieldWidth,
+    );
+  }
+}
+
+class SettingsFormFieldRow extends StatefulWidget {
+  const SettingsFormFieldRow({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.helperText,
+    this.errorText,
+    this.suffixIcon,
+    this.inputFormatters,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
+    this.maxLengthEnforcement,
+    this.enabled = true,
+    this.obscureText = false,
+    this.minLines,
+    this.maxLines = 1,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final String? helperText;
+  final String? errorText;
+  final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
+  final bool enabled;
+  final bool obscureText;
+  final int? minLines;
+  final int? maxLines;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+
+  @override
+  State<SettingsFormFieldRow> createState() => _SettingsFormFieldRowState();
+}
+
+class _SettingsFormFieldRowState extends State<SettingsFormFieldRow> {
+  late final FocusNode _ownedFocusNode;
+
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownedFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _ownedFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final error = widget.errorText?.trim();
+    final helper = widget.helperText?.trim();
+    return Opacity(
+      opacity: widget.enabled ? 1 : 0.55,
+      child: PlatformListSectionRow(
+        title: SettingsRowTitle(widget.label),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SettingsTextField(
+                controller: widget.controller,
+                focusNode: _focusNode,
+                hint: widget.hint,
+                suffixIcon: widget.suffixIcon,
+                inputFormatters: widget.inputFormatters,
+                keyboardType: widget.keyboardType,
+                textInputAction: widget.textInputAction,
+                maxLength: widget.maxLength,
+                maxLengthEnforcement: widget.maxLengthEnforcement,
+                enabled: widget.enabled,
+                obscureText: widget.obscureText,
+                minLines: widget.minLines,
+                maxLines: widget.maxLines,
+                onChanged: widget.onChanged,
+                onSubmitted: widget.onSubmitted,
+                onEditingComplete: widget.onEditingComplete,
+              ),
+              if (error != null && error.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  error,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.error,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ] else if (helper != null && helper.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                SettingsRowDescription(helper),
+              ],
+            ],
+          ),
+        ),
+        denseOnDesktop: false,
+      ),
+    );
+  }
+}
+
+class SettingsMultilineFieldRow extends StatelessWidget {
+  const SettingsMultilineFieldRow({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.helperText,
+    this.errorText,
+    this.enabled = true,
+    this.minLines = 3,
+    this.maxLines = 6,
+    this.maxLength,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final String? helperText;
+  final String? errorText;
+  final bool enabled;
+  final int minLines;
+  final int maxLines;
+  final int? maxLength;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsFormFieldRow(
+      label: label,
+      controller: controller,
+      focusNode: focusNode,
+      hint: hint,
+      helperText: helperText,
+      errorText: errorText,
+      enabled: enabled,
+      minLines: minLines,
+      maxLines: maxLines,
+      maxLength: maxLength,
+      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+    );
+  }
+}
+
+class SettingsLongValueRow extends StatelessWidget {
+  const SettingsLongValueRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.description,
+    this.leading,
+    this.trailingIcon,
+    this.onTap,
+    this.enabled = true,
+    this.maxTrailingWidthFactor = 0.42,
+  });
+
+  final String label;
+  final String value;
+  final String? description;
+  final Widget? leading;
+  final IconData? trailingIcon;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final double maxTrailingWidthFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rowWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final maxTrailingWidth = rowWidth * maxTrailingWidthFactor;
+        return Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: PlatformListSectionRow(
+            leading: leading,
+            title: SettingsRowTitle(label),
+            subtitle: description == null
+                ? null
+                : SettingsRowDescription(description!),
+            additionalInfo: _SettingsRowValueText(
+              value,
+              maxWidth: maxTrailingWidth,
+            ),
+            trailing: trailingIcon == null
+                ? null
+                : Icon(trailingIcon, size: 18, color: tokens.textMuted),
+            onTap: enabled ? onTap : null,
+            denseOnDesktop: description == null,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsTextField extends StatelessWidget {
+  const _SettingsTextField({
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.suffixIcon,
+    this.inputFormatters,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
+    this.maxLengthEnforcement,
+    this.enabled = true,
+    this.obscureText = false,
+    this.minLines,
+    this.maxLines = 1,
+    this.textAlign = TextAlign.start,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+  });
+
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
+  final bool enabled;
+  final bool obscureText;
+  final int? minLines;
+  final int? maxLines;
+  final TextAlign textAlign;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: tokens.valueBorder),
+    );
+    return PlatformTextField(
+      controller: controller,
+      focusNode: focusNode,
+      enabled: enabled,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      maxLength: maxLength,
+      maxLengthEnforcement: maxLengthEnforcement,
+      inputFormatters: inputFormatters,
+      obscureText: obscureText,
+      minLines: minLines,
+      maxLines: maxLines,
+      textAlign: textAlign,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      onEditingComplete: onEditingComplete,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: tokens.textMain,
+        decoration: TextDecoration.none,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        suffixIcon: suffixIcon,
+        counterText: '',
+        filled: true,
+        fillColor: tokens.valueSurface,
+        hintStyle: TextStyle(color: tokens.textMuted, fontSize: 13),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+        ),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsMenuRow<T> extends StatelessWidget {
   const SettingsMenuRow({
     super.key,
@@ -835,25 +1352,34 @@ class SettingsMenuRow<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
     final selectedLabel = labelFor(value);
-    final maxValueWidth = (MediaQuery.sizeOf(context).width * 0.32)
-        .clamp(96.0, 140.0)
-        .toDouble();
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        additionalInfo: _SettingsMenuValueLabel(
-          label: selectedLabel,
-          color: tokens.textMuted,
-          maxWidth: maxValueWidth,
-        ),
-        trailing: Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
-        onTap: enabled ? () => _showPicker(context) : null,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rowWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final maxValueWidth = (rowWidth * 0.32).clamp(96.0, 140.0).toDouble();
+        return Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: PlatformListSectionRow(
+            title: SettingsRowTitle(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            additionalInfo: _SettingsMenuValueLabel(
+              label: selectedLabel,
+              color: tokens.textMuted,
+              maxWidth: maxValueWidth,
+            ),
+            trailing: Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: tokens.textMuted,
+            ),
+            onTap: enabled ? () => _showPicker(context) : null,
+          ),
+        );
+      },
     );
   }
 
@@ -973,6 +1499,277 @@ Future<T?> showSettingsSingleChoicePicker<T>({
       );
     },
   );
+}
+
+Future<DateTime?> showSettingsDatePicker({
+  required BuildContext context,
+  required DateTime initialDate,
+  required DateTime firstDate,
+  required DateTime lastDate,
+  String? title,
+}) {
+  final experience = resolvePlatformExperience(context);
+  if (experience.visualFamily != PlatformVisualFamily.cupertinoMobile) {
+    return showDatePicker(
+      context: context,
+      initialDate: _clampDate(initialDate, firstDate, lastDate),
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+  }
+
+  return showPlatformPicker<DateTime>(
+    context: context,
+    desktopMaxWidth: 420,
+    builder: (pickerContext) => _SettingsCupertinoDatePickerSheet(
+      title: title ?? MaterialLocalizations.of(context).datePickerHelpText,
+      initialDate: _clampDate(initialDate, firstDate, lastDate),
+      firstDate: firstDate,
+      lastDate: lastDate,
+    ),
+  );
+}
+
+Future<TimeOfDay?> showSettingsTimePicker({
+  required BuildContext context,
+  required TimeOfDay initialTime,
+  String? title,
+}) {
+  final experience = resolvePlatformExperience(context);
+  if (experience.visualFamily != PlatformVisualFamily.cupertinoMobile) {
+    return showTimePicker(context: context, initialTime: initialTime);
+  }
+
+  return showPlatformPicker<TimeOfDay>(
+    context: context,
+    desktopMaxWidth: 420,
+    builder: (pickerContext) => _SettingsCupertinoTimePickerSheet(
+      title: title ?? MaterialLocalizations.of(context).timePickerDialHelpText,
+      initialTime: initialTime,
+    ),
+  );
+}
+
+Future<DateTime?> showSettingsDateTimePicker({
+  required BuildContext context,
+  required DateTime initialDateTime,
+  required DateTime firstDate,
+  required DateTime lastDate,
+  String? dateTitle,
+  String? timeTitle,
+}) async {
+  final date = await showSettingsDatePicker(
+    context: context,
+    initialDate: initialDateTime,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    title: dateTitle,
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showSettingsTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(initialDateTime),
+    title: timeTitle,
+  );
+  if (time == null) return null;
+  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+}
+
+Future<DateTimeRange?> showSettingsDateRangePicker({
+  required BuildContext context,
+  required DateTimeRange initialDateRange,
+  required DateTime firstDate,
+  required DateTime lastDate,
+  String? startTitle,
+  String? endTitle,
+}) async {
+  final start = await showSettingsDatePicker(
+    context: context,
+    initialDate: initialDateRange.start,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    title: startTitle,
+  );
+  if (start == null || !context.mounted) return null;
+  final end = await showSettingsDatePicker(
+    context: context,
+    initialDate: initialDateRange.end.isBefore(start)
+        ? start
+        : initialDateRange.end,
+    firstDate: start,
+    lastDate: lastDate,
+    title: endTitle,
+  );
+  if (end == null) return null;
+  return DateTimeRange(start: start, end: end);
+}
+
+DateTime _clampDate(DateTime value, DateTime min, DateTime max) {
+  if (value.isBefore(min)) return min;
+  if (value.isAfter(max)) return max;
+  return value;
+}
+
+class _SettingsCupertinoDatePickerSheet extends StatefulWidget {
+  const _SettingsCupertinoDatePickerSheet({
+    required this.title,
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  final String title;
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_SettingsCupertinoDatePickerSheet> createState() =>
+      _SettingsCupertinoDatePickerSheetState();
+}
+
+class _SettingsCupertinoDatePickerSheetState
+    extends State<_SettingsCupertinoDatePickerSheet> {
+  late DateTime _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initialDate;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsPickerSheetFrame(
+      title: widget.title,
+      child: SizedBox(
+        height: 240,
+        child: CupertinoDatePicker(
+          mode: CupertinoDatePickerMode.date,
+          initialDateTime: widget.initialDate,
+          minimumDate: widget.firstDate,
+          maximumDate: widget.lastDate,
+          onDateTimeChanged: (value) => _selected = value,
+        ),
+      ),
+      onCancel: () => Navigator.of(context).pop(),
+      onConfirm: () => Navigator.of(context).pop(_selected),
+    );
+  }
+}
+
+class _SettingsCupertinoTimePickerSheet extends StatefulWidget {
+  const _SettingsCupertinoTimePickerSheet({
+    required this.title,
+    required this.initialTime,
+  });
+
+  final String title;
+  final TimeOfDay initialTime;
+
+  @override
+  State<_SettingsCupertinoTimePickerSheet> createState() =>
+      _SettingsCupertinoTimePickerSheetState();
+}
+
+class _SettingsCupertinoTimePickerSheetState
+    extends State<_SettingsCupertinoTimePickerSheet> {
+  late TimeOfDay _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initialTime;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initialDateTime = DateTime(
+      2000,
+      1,
+      1,
+      widget.initialTime.hour,
+      widget.initialTime.minute,
+    );
+    return _SettingsPickerSheetFrame(
+      title: widget.title,
+      child: SizedBox(
+        height: 220,
+        child: CupertinoDatePicker(
+          mode: CupertinoDatePickerMode.time,
+          initialDateTime: initialDateTime,
+          onDateTimeChanged: (value) {
+            _selected = TimeOfDay(hour: value.hour, minute: value.minute);
+          },
+        ),
+      ),
+      onCancel: () => Navigator.of(context).pop(),
+      onConfirm: () => Navigator.of(context).pop(_selected),
+    );
+  }
+}
+
+class _SettingsPickerSheetFrame extends StatelessWidget {
+  const _SettingsPickerSheetFrame({
+    required this.title,
+    required this.child,
+    required this.onCancel,
+    required this.onConfirm,
+  });
+
+  final String title;
+  final Widget child;
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final localizations = MaterialLocalizations.of(context);
+    return SafeArea(
+      child: ColoredBox(
+        color: tokens.background,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SettingsContentHeader(title: title, prominent: true),
+              const SizedBox(height: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: tokens.sectionBackground,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: tokens.border),
+                ),
+                child: child,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: SettingsAction(
+                      label: Text(localizations.cancelButtonLabel),
+                      variant: PlatformPrimaryActionVariant.text,
+                      onPressed: onCancel,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SettingsAction(
+                      label: Text(localizations.okButtonLabel),
+                      onPressed: onConfirm,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SettingsOptionChoiceRow<T> extends StatelessWidget {

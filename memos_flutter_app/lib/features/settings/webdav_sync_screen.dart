@@ -1807,38 +1807,34 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          children: [
-            _WebDavActionButton(
-              label: backupStatus.running
-                  ? context.t.strings.legacy.msg_backing
-                  : context.t.strings.legacy.msg_start_backup,
-              icon: backupStatus.running
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: PlatformProgress(),
-                    )
-                  : const Icon(Icons.backup_outlined, size: 18),
-              onPressed: (!_enabled || backupBusy) ? null : _backupNow,
-              variant: PlatformPrimaryActionVariant.filled,
-            ),
-            _WebDavActionButton(
-              label: _backupRestoring
-                  ? context.t.strings.legacy.msg_restoring
-                  : usesServerMode
-                  ? context.t.strings.legacy.msg_restore_to_directory
-                  : context.t.strings.legacy.msg_restore_cloud,
-              icon: _backupRestoring
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: PlatformProgress(),
-                    )
-                  : const Icon(Icons.cloud_download_outlined, size: 18),
-              onPressed: (!_enabled || backupBusy) ? null : _restoreBackup,
-            ),
-          ],
+        _WebDavActionLayout(
+          primaryAction: _WebDavActionButton(
+            label: backupStatus.running
+                ? context.t.strings.legacy.msg_backing
+                : context.t.strings.legacy.msg_start_backup,
+            icon: backupStatus.running
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: PlatformProgress(),
+                  )
+                : const Icon(Icons.backup_outlined, size: 18),
+            onPressed: (!_enabled || backupBusy) ? null : _backupNow,
+            variant: PlatformPrimaryActionVariant.filled,
+          ),
+          secondaryAction: _WebDavActionButton(
+            label: _backupRestoring
+                ? context.t.strings.legacy.msg_restoring
+                : usesServerMode
+                ? context.t.strings.legacy.msg_restore_to_directory
+                : context.t.strings.legacy.msg_restore_cloud,
+            icon: _backupRestoring
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: PlatformProgress(),
+                  )
+                : const Icon(Icons.cloud_download_outlined, size: 18),
+            onPressed: (!_enabled || backupBusy) ? null : _restoreBackup,
+          ),
         ),
         if (progressSnapshot.running) ...[
           const SizedBox(height: 10),
@@ -2094,6 +2090,55 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
   }
 }
 
+class _WebDavActionLayout extends StatelessWidget {
+  const _WebDavActionLayout({
+    required this.primaryAction,
+    required this.secondaryAction,
+  });
+
+  final Widget primaryAction;
+  final Widget secondaryAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final useTwoColumns =
+            constraints.hasBoundedWidth &&
+            constraints.maxWidth >= 320 &&
+            textScale <= 1.2;
+
+        if (useTwoColumns) {
+          return Row(
+            children: [
+              Expanded(child: primaryAction),
+              const SizedBox(width: 10),
+              Expanded(child: secondaryAction),
+            ],
+          );
+        }
+
+        return Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            _constrainStacked(primaryAction),
+            _constrainStacked(secondaryAction),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _constrainStacked(Widget child) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 184, maxWidth: 280),
+      child: child,
+    );
+  }
+}
+
 class _WebDavActionButton extends StatelessWidget {
   const _WebDavActionButton({
     required this.label,
@@ -2109,14 +2154,11 @@ class _WebDavActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 184, maxWidth: 280),
-      child: SettingsAction(
-        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        icon: icon,
-        onPressed: onPressed,
-        variant: variant,
-      ),
+    return SettingsAction(
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      icon: icon,
+      onPressed: onPressed,
+      variant: variant,
     );
   }
 }
@@ -2316,140 +2358,16 @@ class _SelectRow extends StatelessWidget {
   const _SelectRow({
     required this.label,
     required this.value,
-    required this.textMain,
-    required this.textMuted,
     required this.onTap,
   });
 
   final String label;
   final String value;
-  final Color textMain;
-  final Color textMuted;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return PlatformListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(value, style: TextStyle(color: textMuted)),
-          const SizedBox(width: 6),
-          Icon(PlatformIcons.chevronForward, size: 18, color: textMuted),
-        ],
-      ),
-      onTap: onTap,
-    );
-  }
-}
-
-class _InputRow extends StatelessWidget {
-  const _InputRow({
-    required this.label,
-    required this.hint,
-    required this.controller,
-    required this.textMain,
-    required this.textMuted,
-    required this.onChanged,
-    this.keyboardType,
-    this.onEditingComplete,
-    this.suffixIcon,
-  });
-
-  final String label;
-  final String hint;
-  final TextEditingController controller;
-  final Color textMain;
-  final Color textMuted;
-  final ValueChanged<String> onChanged;
-  final TextInputType? keyboardType;
-  final VoidCallback? onEditingComplete;
-  final Widget? suffixIcon;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlatformListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      subtitle: PlatformTextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        onChanged: onChanged,
-        onEditingComplete: onEditingComplete,
-        style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(
-            color: textMuted.withValues(alpha: 0.6),
-            fontSize: 12,
-          ),
-          border: InputBorder.none,
-          suffixIcon: suffixIcon,
-          suffixIconConstraints: suffixIcon == null
-              ? null
-              : const BoxConstraints(minWidth: 40, minHeight: 40),
-        ),
-      ),
-    );
-  }
-}
-
-class _InlineInputRow extends StatelessWidget {
-  const _InlineInputRow({
-    required this.label,
-    required this.hint,
-    required this.controller,
-    required this.textMain,
-    required this.textMuted,
-    required this.onChanged,
-    this.keyboardType,
-  });
-
-  final String label;
-  final String hint;
-  final TextEditingController controller;
-  final Color textMain;
-  final Color textMuted;
-  final ValueChanged<String> onChanged;
-  final TextInputType? keyboardType;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlatformListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      trailing: SizedBox(
-        width: 72,
-        child: PlatformTextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          onChanged: onChanged,
-          textAlign: TextAlign.end,
-          style: TextStyle(color: textMain, fontWeight: FontWeight.w500),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              color: textMuted.withValues(alpha: 0.6),
-              fontSize: 12,
-            ),
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 6),
-          ),
-        ),
-      ),
-    );
+    return SettingsNavigationRow(label: label, value: value, onTap: onTap);
   }
 }
 
@@ -2457,25 +2375,16 @@ class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
     required this.label,
     required this.value,
-    required this.textMain,
     required this.onChanged,
   });
 
   final String label;
   final bool value;
-  final Color textMain;
   final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return PlatformListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      trailing: PlatformSwitch(value: value, onChanged: onChanged),
-    );
+    return SettingsToggleRow(label: label, value: value, onChanged: onChanged);
   }
 }
 
@@ -2662,12 +2571,10 @@ class _WebDavConnectionScreenState
         SettingsSection(
           header: Text(context.t.strings.legacy.msg_basic_settings),
           children: [
-            _InputRow(
+            SettingsFormFieldRow(
               label: context.t.strings.legacy.msg_server_url,
               hint: 'https://example.com/dav',
               controller: widget.serverUrlController,
-              textMain: tokens.textMain,
-              textMuted: tokens.textMuted,
               keyboardType: TextInputType.url,
               onChanged: widget.onServerUrlChanged,
               onEditingComplete: widget.onServerUrlEditingComplete,
@@ -2699,52 +2606,25 @@ class _WebDavConnectionScreenState
                 ),
               ),
             ],
-            _InputRow(
+            SettingsInlineTextFieldRow(
               label: context.t.strings.legacy.msg_username,
               hint: context.t.strings.legacy.msg_enter_username,
               controller: widget.usernameController,
-              textMain: tokens.textMain,
-              textMuted: tokens.textMuted,
               onChanged: widget.onUsernameChanged,
             ),
-            PlatformListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 6,
-              ),
-              title: Text(
-                context.t.strings.legacy.msg_password,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: tokens.textMain,
-                ),
-              ),
-              subtitle: PlatformTextField(
-                controller: widget.passwordController,
-                obscureText: _obscurePassword,
-                onChanged: widget.onPasswordChanged,
-                style: TextStyle(
-                  color: tokens.textMain,
-                  fontWeight: FontWeight.w500,
-                ),
-                decoration: InputDecoration(
-                  hintText: context.t.strings.legacy.msg_enter_password_2,
-                  hintStyle: TextStyle(
-                    color: tokens.textMuted.withValues(alpha: 0.6),
-                    fontSize: 12,
-                  ),
-                  border: InputBorder.none,
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    },
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
-                      size: 18,
-                    ),
-                  ),
+            SettingsFormFieldRow(
+              label: context.t.strings.legacy.msg_password,
+              hint: context.t.strings.legacy.msg_enter_password_2,
+              controller: widget.passwordController,
+              obscureText: _obscurePassword,
+              onChanged: widget.onPasswordChanged,
+              suffixIcon: IconButton(
+                onPressed: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  size: 18,
                 ),
               ),
             ),
@@ -2768,8 +2648,6 @@ class _WebDavConnectionScreenState
             _SelectRow(
               label: context.t.strings.legacy.msg_auth_mode,
               value: _authMode.name.toUpperCase(),
-              textMain: tokens.textMain,
-              textMuted: tokens.textMuted,
               onTap: _pickAuthMode,
             ),
           ],
@@ -2781,18 +2659,15 @@ class _WebDavConnectionScreenState
             _ToggleRow(
               label: context.t.strings.legacy.msg_ignore_tls_errors,
               value: _ignoreTlsErrors,
-              textMain: tokens.textMain,
               onChanged: (v) {
                 setState(() => _ignoreTlsErrors = v);
                 widget.onIgnoreTlsChanged(v);
               },
             ),
-            _InputRow(
+            SettingsFormFieldRow(
               label: context.t.strings.legacy.msg_root_path,
               hint: '/notes',
               controller: widget.rootPathController,
-              textMain: tokens.textMain,
-              textMuted: tokens.textMuted,
               onChanged: widget.onRootPathChanged,
               onEditingComplete: widget.onRootPathEditingComplete,
             ),
@@ -3195,7 +3070,6 @@ class _WebDavBackupSettingsScreenState
                 _ToggleRow(
                   label: context.tr(zh: '备份配置', en: 'Backup config'),
                   value: _configScope != WebDavBackupConfigScope.none,
-                  textMain: tokens.textMain,
                   onChanged: busy ? null : _handleBackupConfigToggle,
                 ),
                 if (_configScope != WebDavBackupConfigScope.none) ...[
@@ -3203,8 +3077,6 @@ class _WebDavBackupSettingsScreenState
                   _SelectRow(
                     label: context.tr(zh: '配置内容', en: 'Config scope'),
                     value: _configScopeLabel(_configScope),
-                    textMain: tokens.textMain,
-                    textMuted: tokens.textMuted,
                     onTap: busy ? null : _pickBackupConfigScope,
                   ),
                   Padding(
@@ -3243,7 +3115,6 @@ class _WebDavBackupSettingsScreenState
                 _ToggleRow(
                   label: context.tr(zh: '备份笔记', en: 'Backup memos'),
                   value: _backupContentMemos,
-                  textMain: tokens.textMain,
                   onChanged: busy ? null : _handleBackupContentMemos,
                 ),
               ],
@@ -3273,8 +3144,6 @@ class _WebDavBackupSettingsScreenState
                 _SelectRow(
                   label: context.tr(zh: '备份方式', en: 'Backup mode'),
                   value: _encryptionModeLabel(_encryptionMode, context),
-                  textMain: tokens.textMain,
-                  textMuted: tokens.textMuted,
                   onTap: busy ? null : _pickBackupEncryptionMode,
                 ),
                 if (_encryptionMode == WebDavBackupEncryptionMode.encrypted)
@@ -3288,24 +3157,17 @@ class _WebDavBackupSettingsScreenState
                     value: _backupPasswordSet
                         ? context.tr(zh: '已设置', en: 'Set')
                         : context.t.strings.legacy.msg_not_set,
-                    textMain: tokens.textMain,
-                    textMuted: tokens.textMuted,
                     onTap: busy ? null : _handleSetupBackupPassword,
                   ),
                 _SelectRow(
                   label: context.t.strings.legacy.msg_backup_schedule,
                   value: _scheduleLabel(_schedule, context),
-                  textMain: tokens.textMain,
-                  textMuted: tokens.textMuted,
                   onTap: busy ? null : _pickSchedule,
                 ),
-                _InlineInputRow(
+                SettingsNumericInlineFieldRow(
                   label: context.t.strings.legacy.msg_retention,
                   hint: '5',
                   controller: widget.backupRetentionController,
-                  textMain: tokens.textMain,
-                  textMuted: tokens.textMuted,
-                  keyboardType: TextInputType.number,
                   onChanged: widget.onBackupRetentionChanged,
                 ),
               ],

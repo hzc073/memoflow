@@ -108,7 +108,7 @@ class _LocationSettingsScreenState
               },
             ),
             if (settings.provider == LocationServiceProvider.amap) ...[
-              SettingsInputRow(
+              SettingsFormFieldRow(
                 label: context.t.strings.legacy.msg_web_api_key,
                 hint: context.t.strings.legacy.msg_enter_amap_web_api_key,
                 controller: _webKeyController,
@@ -117,7 +117,7 @@ class _LocationSettingsScreenState
                   ref.read(locationSettingsProvider.notifier).setAmapWebKey(v);
                 },
               ),
-              SettingsInputRow(
+              SettingsFormFieldRow(
                 label: context.t.strings.legacy.msg_security_key_sig,
                 hint: context.t.strings.legacy.msg_optional_used_sign_requests,
                 controller: _securityKeyController,
@@ -130,7 +130,7 @@ class _LocationSettingsScreenState
               ),
             ],
             if (settings.provider == LocationServiceProvider.baidu)
-              SettingsInputRow(
+              SettingsFormFieldRow(
                 label: 'Baidu AK',
                 hint: 'Enter your Baidu AK',
                 controller: _baiduWebKeyController,
@@ -140,7 +140,7 @@ class _LocationSettingsScreenState
                 },
               ),
             if (settings.provider == LocationServiceProvider.google)
-              SettingsInputRow(
+              SettingsFormFieldRow(
                 label: 'Google API Key',
                 hint: 'Enter your Google Maps API Key',
                 controller: _googleApiKeyController,

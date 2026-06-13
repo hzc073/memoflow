@@ -525,18 +525,17 @@ class _MemoFlowBridgeScreenState extends ConsumerState<MemoFlowBridgeScreen> {
         const SizedBox(height: 14),
         SettingsSection(
           children: [
-            SettingsInputRow(
+            SettingsInlineTextFieldRow(
               label: 'Host',
               controller: _hostController,
               hint: '192.168.1.10',
             ),
-            SettingsInputRow(
+            SettingsNumericInlineFieldRow(
               label: 'Port',
               controller: _portController,
               hint: '3000',
-              keyboardType: TextInputType.number,
             ),
-            SettingsInputRow(
+            SettingsInlineTextFieldRow(
               label: tr.msg_bridge_pair_code_label,
               controller: _pairCodeController,
               hint: tr.msg_bridge_pair_code_hint,

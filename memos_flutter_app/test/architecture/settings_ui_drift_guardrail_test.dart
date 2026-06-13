@@ -562,7 +562,7 @@ void main() {
       ],
       'lib/features/settings/export_logs_screen.dart': [
         'showSettingsConfirmationDialog',
-        'PlatformTextField',
+        'SettingsMultilineFieldRow',
         'IconButton',
       ],
       'lib/features/settings/export_memos_screen.dart': [
@@ -647,6 +647,131 @@ void main() {
           ? null
           : 'Batch E settings subpages must keep high-risk controls on '
                 'settings/platform seams:\n${violations.join('\n')}',
+    );
+  });
+
+  test('settings form ergonomics targets stay on semantic seams', () async {
+    const requiredSeams = <String, List<String>>{
+      'lib/features/settings/settings_ui.dart': [
+        'class SettingsInlineTextFieldRow',
+        'class SettingsNumericInlineFieldRow',
+        'class SettingsFormFieldRow',
+        'class SettingsMultilineFieldRow',
+        'class SettingsLongValueRow',
+        'Future<DateTime?> showSettingsDatePicker',
+        'Future<TimeOfDay?> showSettingsTimePicker',
+        'Future<DateTime?> showSettingsDateTimePicker',
+      ],
+      'lib/features/settings/webdav_sync_screen.dart': [
+        'SettingsFormFieldRow',
+        'SettingsInlineTextFieldRow',
+        'SettingsNumericInlineFieldRow',
+        'SettingsNavigationRow',
+      ],
+      'lib/features/settings/ai_proxy_settings_screen.dart': [
+        'SettingsInlineTextFieldRow',
+        'SettingsNumericInlineFieldRow',
+        'SettingsFormFieldRow',
+      ],
+      'lib/features/settings/image_bed_settings_screen.dart': [
+        'SettingsInlineTextFieldRow',
+        'SettingsNumericInlineFieldRow',
+        'SettingsFormFieldRow',
+      ],
+      'lib/features/settings/location_settings_screen.dart': [
+        'SettingsFormFieldRow',
+      ],
+      'lib/features/settings/memoflow_bridge_screen.dart': [
+        'SettingsInlineTextFieldRow',
+        'SettingsNumericInlineFieldRow',
+      ],
+      'lib/features/settings/shortcut_editor_screen.dart': [
+        'SettingsInlineTextFieldRow',
+        'SettingsNumericInlineFieldRow',
+      ],
+      'lib/features/settings/server_settings_screen.dart': [
+        'SettingsNumericInlineFieldRow',
+      ],
+      'lib/features/settings/ai_user_profile_screen.dart': [
+        'SettingsMultilineFieldRow',
+      ],
+      'lib/features/settings/export_logs_screen.dart': [
+        'SettingsMultilineFieldRow',
+      ],
+      'lib/features/reminders/reminder_settings_screen.dart': [
+        'SettingsPage',
+        'SettingsToggleRow',
+        'SettingsNavigationRow',
+        'SettingsActionPill',
+        'showSettingsTimePicker',
+      ],
+      'lib/features/reminders/memo_reminder_editor_screen.dart': [
+        'SettingsPage',
+        'showSettingsDateTimePicker',
+        'SettingsOptionChipGroup<ReminderMode>',
+        'SettingsActionPill',
+      ],
+      'lib/features/reminders/custom_notification_screen.dart': [
+        'SettingsPage',
+        'SettingsInlineTextFieldRow',
+        'SettingsMultilineFieldRow',
+      ],
+    };
+
+    const formTargetFiles = <String>{
+      'lib/features/settings/webdav_sync_screen.dart',
+      'lib/features/settings/ai_proxy_settings_screen.dart',
+      'lib/features/settings/image_bed_settings_screen.dart',
+      'lib/features/settings/location_settings_screen.dart',
+      'lib/features/settings/memoflow_bridge_screen.dart',
+      'lib/features/settings/shortcut_editor_screen.dart',
+      'lib/features/settings/server_settings_screen.dart',
+      'lib/features/settings/ai_user_profile_screen.dart',
+      'lib/features/settings/export_logs_screen.dart',
+      'lib/features/reminders/reminder_settings_screen.dart',
+      'lib/features/reminders/memo_reminder_editor_screen.dart',
+      'lib/features/reminders/custom_notification_screen.dart',
+    };
+
+    const forbiddenInTargets = <String>[
+      'PlatformTextField(',
+      'InputBorder.none',
+      'showDatePicker(',
+      'showTimePicker(',
+      'OutlinedButton.styleFrom',
+      'BorderRadius.circular(22)',
+      'class _InputRow',
+      'class _InlineInputRow',
+    ];
+
+    final violations = <String>[];
+    for (final entry in requiredSeams.entries) {
+      final source = await File(entry.key).readAsString();
+      for (final seam in entry.value) {
+        if (!source.contains(seam)) {
+          violations.add('${entry.key}: missing ergonomic seam $seam');
+        }
+      }
+    }
+
+    for (final relativePath in formTargetFiles) {
+      final source = await File(relativePath).readAsString();
+      for (final forbidden in forbiddenInTargets) {
+        if (source.contains(forbidden)) {
+          violations.add(
+            '$relativePath: forbidden form ergonomics regression $forbidden',
+          );
+        }
+      }
+    }
+
+    expect(
+      violations,
+      isEmpty,
+      reason: violations.isEmpty
+          ? null
+          : 'Settings form ergonomics targets must stay on semantic seams:\n'
+                '${violations.join('\n')}',
     );
   });
 }

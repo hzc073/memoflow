@@ -5,15 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
-import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
-import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_page.dart';
+import '../../platform/widgets/platform_list_section.dart';
 import '../../state/system/reminder_scheduler.dart';
 import '../../state/settings/reminder_settings_provider.dart';
+import '../settings/settings_ui.dart';
 import 'custom_notification_screen.dart';
 import 'ringtone_picker.dart';
 import '../../state/system/reminder_utils.dart';
@@ -177,7 +175,8 @@ class _ReminderSettingsScreenState
         final go =
             await showPlatformAlertDialog<bool>(
               context: context,
-              title: context.t.strings.legacy.msg_exact_alarm_permission_required,
+              title:
+                  context.t.strings.legacy.msg_exact_alarm_permission_required,
               message: context
                   .t
                   .strings
@@ -273,7 +272,10 @@ class _ReminderSettingsScreenState
     required ReminderSettings settings,
   }) async {
     final initial = isStart ? settings.dndStartTime : settings.dndEndTime;
-    final picked = await showTimePicker(context: context, initialTime: initial);
+    final picked = await showSettingsTimePicker(
+      context: context,
+      initialTime: initial,
+    );
     if (picked == null) return;
     final minutes = minutesFromTimeOfDay(picked);
     final notifier = ref.read(reminderSettingsProvider.notifier);
@@ -299,246 +301,158 @@ class _ReminderSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(reminderSettingsProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark
-        ? MemoFlowPalette.backgroundDark
-        : MemoFlowPalette.backgroundLight;
-    final card = isDark ? MemoFlowPalette.cardDark : MemoFlowPalette.cardLight;
-    final textMain = isDark
-        ? MemoFlowPalette.textDark
-        : MemoFlowPalette.textLight;
-    final textMuted = textMain.withValues(alpha: isDark ? 0.55 : 0.6);
-    final divider = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.06);
 
-    return PlatformPage(
-      backgroundColor: bg,
+    return SettingsPage(
       title: Text(context.t.strings.legacy.msg_reminder_settings),
-      leading: IconButton(
-        tooltip: context.t.strings.legacy.msg_back,
-        icon: Icon(PlatformIcons.back),
-        onPressed: () => Navigator.of(context).maybePop(),
-      ),
-      body: Stack(
-        children: [
-          if (isDark)
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFF0B0B0B), bg, bg],
-                  ),
-                ),
-              ),
+      children: [
+        SettingsSection(
+          children: [
+            SettingsToggleRow(
+              label: context.t.strings.legacy.msg_enable_reminders,
+              description: context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_enable_scheduled_reminder_notifications,
+              value: settings.enabled,
+              onChanged: _toggleEnabled,
             ),
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (Platform.isAndroid) ...[
+          _SectionLabel(
+            label: context.t.strings.legacy.msg_permissions_system_settings,
+          ),
+          const SizedBox(height: 8),
+          _Group(
             children: [
-              _ToggleCard(
-                card: card,
-                textMain: textMain,
-                textMuted: textMuted,
-                label: context.t.strings.legacy.msg_enable_reminders,
-                description: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_enable_scheduled_reminder_notifications,
-                value: settings.enabled,
-                onChanged: _toggleEnabled,
+              _ActionRow(
+                label: context.t.strings.legacy.msg_notification_settings,
+                actionLabel: context.t.strings.legacy.msg_open,
+                onPressed: () =>
+                    _openSystemSetting(SystemSettingsTarget.notifications),
               ),
-              const SizedBox(height: 16),
-              if (Platform.isAndroid) ...[
-                _SectionLabel(
-                  label:
-                      context.t.strings.legacy.msg_permissions_system_settings,
-                  textMuted: textMuted,
+              _ActionRow(
+                label: context.t.strings.legacy.msg_reminder_channel,
+                actionLabel: context.t.strings.legacy.msg_open,
+                onPressed: () {
+                  final channelId = ref
+                      .read(reminderSchedulerProvider)
+                      .channelIdFor(settings);
+                  _openSystemSetting(
+                    SystemSettingsTarget.notificationChannel,
+                    channelId: channelId,
+                  );
+                },
+              ),
+              _ActionRow(
+                label: context.t.strings.legacy.msg_exact_alarms,
+                actionLabel: context.t.strings.legacy.msg_open,
+                onPressed: () =>
+                    _openSystemSetting(SystemSettingsTarget.exactAlarm),
+              ),
+              _ActionRow(
+                label: context.t.strings.legacy.msg_battery_optimization,
+                actionLabel: context.t.strings.legacy.msg_open,
+                onPressed: () => _openSystemSetting(
+                  SystemSettingsTarget.batteryOptimization,
                 ),
-                const SizedBox(height: 8),
-                _Group(
-                  card: card,
-                  divider: divider,
-                  children: [
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_notification_settings,
-                      actionLabel: context.t.strings.legacy.msg_open,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: () => _openSystemSetting(
-                        SystemSettingsTarget.notifications,
-                      ),
-                    ),
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_reminder_channel,
-                      actionLabel: context.t.strings.legacy.msg_open,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: () {
-                        final channelId = ref
-                            .read(reminderSchedulerProvider)
-                            .channelIdFor(settings);
-                        _openSystemSetting(
-                          SystemSettingsTarget.notificationChannel,
-                          channelId: channelId,
-                        );
-                      },
-                    ),
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_exact_alarms,
-                      actionLabel: context.t.strings.legacy.msg_open,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: () =>
-                          _openSystemSetting(SystemSettingsTarget.exactAlarm),
-                    ),
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_battery_optimization,
-                      actionLabel: context.t.strings.legacy.msg_open,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: () => _openSystemSetting(
-                        SystemSettingsTarget.batteryOptimization,
-                      ),
-                    ),
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_battery_whitelist,
-                      actionLabel: context.t.strings.legacy.msg_request,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: _requestBatteryWhitelist,
-                    ),
-                    _ActionRow(
-                      label: context.t.strings.legacy.msg_app_settings,
-                      actionLabel: context.t.strings.legacy.msg_open,
-                      textMain: textMain,
-                      textMuted: textMuted,
-                      onPressed: () =>
-                          _openSystemSetting(SystemSettingsTarget.app),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-              _SectionLabel(
-                label: context.t.strings.legacy.msg_notification_content,
-                textMuted: textMuted,
               ),
-              const SizedBox(height: 8),
-              _Group(
-                card: card,
-                divider: divider,
-                children: [
-                  _SelectRow(
-                    label: context.t.strings.legacy.msg_title,
-                    value: settings.notificationTitle,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () => _openNotificationTemplate(settings),
-                  ),
-                  _SelectRow(
-                    label: context.t.strings.legacy.msg_body,
-                    value: settings.notificationBody,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () => _openNotificationTemplate(settings),
-                  ),
-                  _ActionRow(
-                    label: context.t.strings.legacy.msg_test_reminder,
-                    actionLabel: context.t.strings.legacy.msg_send,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    enabled: !_testing,
-                    onPressed: _sendTestNotification,
-                  ),
-                ],
+              _ActionRow(
+                label: context.t.strings.legacy.msg_battery_whitelist,
+                actionLabel: context.t.strings.legacy.msg_request,
+                onPressed: _requestBatteryWhitelist,
               ),
-              const SizedBox(height: 16),
-              _SectionLabel(
-                label: context.t.strings.legacy.msg_sound_feedback,
-                textMuted: textMuted,
-              ),
-              const SizedBox(height: 8),
-              _Group(
-                card: card,
-                divider: divider,
-                children: [
-                  _SelectRow(
-                    label: context.t.strings.legacy.msg_ringtone,
-                    value: _soundLabel(settings),
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () => _pickRingtone(settings),
-                  ),
-                  _ToggleRow(
-                    label: context.t.strings.legacy.msg_vibration,
-                    value: settings.vibrationEnabled,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onChanged: (value) async {
-                      ref
-                          .read(reminderSettingsProvider.notifier)
-                          .setVibrationEnabled(value);
-                      await ref.read(reminderSchedulerProvider).rescheduleAll();
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _SectionLabel(
-                label: context.t.strings.legacy.msg_quiet_hours,
-                textMuted: textMuted,
-              ),
-              const SizedBox(height: 8),
-              _Group(
-                card: card,
-                divider: divider,
-                children: [
-                  _ToggleRow(
-                    label: context.t.strings.legacy.msg_not_disturb,
-                    value: settings.dndEnabled,
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onChanged: (value) async {
-                      ref
-                          .read(reminderSettingsProvider.notifier)
-                          .setDndEnabled(value);
-                      await ref.read(reminderSchedulerProvider).rescheduleAll();
-                    },
-                  ),
-                  _SelectRow(
-                    label: context.t.strings.legacy.msg_start_time,
-                    value: _formatTime(settings.dndStartTime),
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () =>
-                        _pickDndTime(isStart: true, settings: settings),
-                  ),
-                  _SelectRow(
-                    label: context.t.strings.legacy.msg_end_time,
-                    value: _formatTime(settings.dndEndTime),
-                    textMain: textMain,
-                    textMuted: textMuted,
-                    onTap: () =>
-                        _pickDndTime(isStart: false, settings: settings),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_during_quiet_hours_reminders_silenced,
-                style: TextStyle(fontSize: 12, color: textMuted),
+              _ActionRow(
+                label: context.t.strings.legacy.msg_app_settings,
+                actionLabel: context.t.strings.legacy.msg_open,
+                onPressed: () => _openSystemSetting(SystemSettingsTarget.app),
               ),
             ],
           ),
+          const SizedBox(height: 16),
         ],
-      ),
+        _SectionLabel(label: context.t.strings.legacy.msg_notification_content),
+        const SizedBox(height: 8),
+        _Group(
+          children: [
+            _SelectRow(
+              label: context.t.strings.legacy.msg_title,
+              value: settings.notificationTitle,
+              onTap: () => _openNotificationTemplate(settings),
+            ),
+            _SelectRow(
+              label: context.t.strings.legacy.msg_body,
+              value: settings.notificationBody,
+              onTap: () => _openNotificationTemplate(settings),
+            ),
+            _ActionRow(
+              label: context.t.strings.legacy.msg_test_reminder,
+              actionLabel: context.t.strings.legacy.msg_send,
+              enabled: !_testing,
+              onPressed: _sendTestNotification,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _SectionLabel(label: context.t.strings.legacy.msg_sound_feedback),
+        const SizedBox(height: 8),
+        _Group(
+          children: [
+            _SelectRow(
+              label: context.t.strings.legacy.msg_ringtone,
+              value: _soundLabel(settings),
+              onTap: () => _pickRingtone(settings),
+            ),
+            _ToggleRow(
+              label: context.t.strings.legacy.msg_vibration,
+              value: settings.vibrationEnabled,
+              onChanged: (value) async {
+                ref
+                    .read(reminderSettingsProvider.notifier)
+                    .setVibrationEnabled(value);
+                await ref.read(reminderSchedulerProvider).rescheduleAll();
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _SectionLabel(label: context.t.strings.legacy.msg_quiet_hours),
+        const SizedBox(height: 8),
+        _Group(
+          children: [
+            _ToggleRow(
+              label: context.t.strings.legacy.msg_not_disturb,
+              value: settings.dndEnabled,
+              onChanged: (value) async {
+                ref
+                    .read(reminderSettingsProvider.notifier)
+                    .setDndEnabled(value);
+                await ref.read(reminderSchedulerProvider).rescheduleAll();
+              },
+            ),
+            _SelectRow(
+              label: context.t.strings.legacy.msg_start_time,
+              value: _formatTime(settings.dndStartTime),
+              onTap: () => _pickDndTime(isStart: true, settings: settings),
+            ),
+            _SelectRow(
+              label: context.t.strings.legacy.msg_end_time,
+              value: _formatTime(settings.dndEndTime),
+              onTap: () => _pickDndTime(isStart: false, settings: settings),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          context.t.strings.legacy.msg_during_quiet_hours_reminders_silenced,
+          style: TextStyle(
+            fontSize: 12,
+            color: settingsPageTokens(context).textMuted,
+          ),
+        ),
+      ],
     );
   }
 
@@ -549,186 +463,47 @@ class _ReminderSettingsScreenState
   }
 }
 
-class _ToggleCard extends StatelessWidget {
-  const _ToggleCard({
-    required this.card,
-    required this.textMain,
-    required this.textMuted,
-    required this.label,
-    required this.description,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final Color card;
-  final Color textMain;
-  final Color textMuted;
-  final String label;
-  final String description;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: textMain,
-                  ),
-                ),
-              ),
-              PlatformSwitch(value: value, onChanged: onChanged),
-            ],
-          ),
-          if (description.trim().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, right: 44),
-              child: Text(
-                description,
-                style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.label, required this.textMuted});
+  const _SectionLabel({required this.label});
 
   final String label;
-  final Color textMuted;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
     return Text(
       label,
       style: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w700,
-        color: textMuted,
+        color: tokens.textMuted,
+        decoration: TextDecoration.none,
       ),
     );
   }
 }
 
 class _Group extends StatelessWidget {
-  const _Group({
-    required this.card,
-    required this.divider,
-    required this.children,
-  });
+  const _Group({required this.children});
 
-  final Color card;
-  final Color divider;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                  color: Colors.black.withValues(alpha: 0.06),
-                ),
-              ],
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            children[i],
-            if (i != children.length - 1) Divider(height: 1, color: divider),
-          ],
-        ],
-      ),
-    );
+    return SettingsSection(children: children);
   }
 }
 
 class _SelectRow extends StatelessWidget {
-  const _SelectRow({
-    required this.label,
-    required this.value,
-    required this.textMain,
-    required this.textMuted,
-    this.onTap,
-  });
+  const _SelectRow({required this.label, required this.value, this.onTap});
 
   final String label;
   final String value;
-  final Color textMain;
-  final Color textMuted;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMuted,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(PlatformIcons.chevronForward, size: 18, color: textMuted),
-            ],
-          ),
-        ),
-      ),
-    );
+    return SettingsNavigationRow(label: label, value: value, onTap: onTap);
   }
 }
 
@@ -736,52 +511,23 @@ class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.label,
     required this.actionLabel,
-    required this.textMain,
-    required this.textMuted,
     required this.onPressed,
     this.enabled = true,
   });
 
   final String label;
   final String actionLabel;
-  final Color textMain;
-  final Color textMuted;
   final VoidCallback onPressed;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final actionColor = enabled
-        ? MemoFlowPalette.primary
-        : textMuted.withValues(alpha: 0.7);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-            ),
-          ),
-          OutlinedButton(
-            onPressed: enabled ? onPressed : null,
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              minimumSize: const Size(0, 32),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: actionColor,
-              side: BorderSide(color: actionColor.withValues(alpha: 0.7)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            child: Text(
-              actionLabel,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
+    return PlatformListSectionRow(
+      title: SettingsRowTitle(label),
+      trailing: SettingsActionPill(
+        label: actionLabel,
+        enabled: enabled,
+        onPressed: enabled ? onPressed : null,
       ),
     );
   }
@@ -791,32 +537,15 @@ class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
     required this.label,
     required this.value,
-    required this.textMain,
-    required this.textMuted,
     required this.onChanged,
   });
 
   final String label;
   final bool value;
-  final Color textMain;
-  final Color textMuted;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-            ),
-          ),
-          PlatformSwitch(value: value, onChanged: onChanged),
-        ],
-      ),
-    );
+    return SettingsToggleRow(label: label, value: value, onChanged: onChanged);
   }
 }
