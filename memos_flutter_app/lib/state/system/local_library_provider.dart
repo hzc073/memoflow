@@ -13,6 +13,11 @@ final localLibraryRepositoryProvider = Provider<LocalLibraryRepository>((ref) {
   return LocalLibraryRepository(ref.watch(secureStorageProvider));
 });
 
+final localLibraryImportMigrationServiceProvider =
+    Provider<LocalLibraryImportMigrationService>((ref) {
+      return LocalLibraryImportMigrationService();
+    });
+
 final localLibrariesLoadedProvider = StateProvider<bool>((ref) => false);
 
 final localLibrariesProvider =
@@ -22,21 +27,27 @@ final localLibrariesProvider =
       return LocalLibrariesController(
         ref.watch(localLibraryRepositoryProvider),
         ref,
+        migrationService: ref.watch(localLibraryImportMigrationServiceProvider),
         onLoaded: () => loadedState.state = true,
       );
     });
 
 class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
-  LocalLibrariesController(this._repo, this._ref, {void Function()? onLoaded})
-    : _onLoaded = onLoaded,
-      super(const []) {
+  LocalLibrariesController(
+    this._repo,
+    this._ref, {
+    required LocalLibraryImportMigrationService migrationService,
+    void Function()? onLoaded,
+  }) : _migrationService = migrationService,
+       _onLoaded = onLoaded,
+       super(const []) {
     _loadFromStorage();
   }
 
   final LocalLibraryRepository _repo;
   final Ref _ref;
   final void Function()? _onLoaded;
-  final _migrationService = LocalLibraryImportMigrationService();
+  final LocalLibraryImportMigrationService _migrationService;
   Future<void> _writeChain = Future<void>.value();
 
   Future<void> reloadFromStorage() async {
@@ -79,6 +90,7 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
     _setStorageError(null);
     if (result.isEmpty) {
       state = const [];
+      _reconcileCurrentKeyAfterLoad(state);
       _onLoaded?.call();
       return;
     }
@@ -87,6 +99,7 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
     );
     if (!mounted) return;
     state = migratedLibraries;
+    _reconcileCurrentKeyAfterLoad(state);
     if (kDebugMode) {
       LogManager.instance.info(
         'LocalLibrary: load_complete',
@@ -178,6 +191,19 @@ class LocalLibrariesController extends StateNotifier<List<LocalLibrary>> {
       await _repo.write(LocalLibraryState(libraries: migrated));
     }
     return migrated;
+  }
+
+  void _reconcileCurrentKeyAfterLoad(List<LocalLibrary> libraries) {
+    final session = _ref.read(appSessionProvider).valueOrNull;
+    final currentKey = session?.currentKey?.trim();
+    if (session == null || currentKey == null || currentKey.isEmpty) return;
+    if (session.accounts.any((account) => account.key == currentKey)) return;
+    if (libraries.any((library) => library.key == currentKey)) return;
+
+    Future.microtask(() async {
+      if (!mounted) return;
+      await _ref.read(appSessionProvider.notifier).setCurrentKey(null);
+    });
   }
 }
 

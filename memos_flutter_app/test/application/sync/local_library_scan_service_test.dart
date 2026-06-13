@@ -213,6 +213,55 @@ void main() {
     await deleteTestDatabase(dbName);
   });
 
+  test(
+    'empty rebased directory without manifest does not delete database memos',
+    () async {
+      final dbName = uniqueDbName('local_scan_empty_rebased_no_manifest');
+      final db = AppDatabase(dbName: dbName);
+      final library = LocalLibrary(
+        key: 'empty_rebased_workspace',
+        name: 'Empty Rebased Workspace',
+        storageKind: LocalLibraryStorageKind.managedPrivate,
+        rootPath: await resolveManagedWorkspacePath('empty_rebased_workspace'),
+      );
+      final fs = LocalLibraryFileSystem(library);
+      await fs.ensureStructure();
+
+      final uid = 'memo-db-only';
+      final now = DateTime.now().toUtc();
+      await db.upsertMemo(
+        uid: uid,
+        content: 'db memo survives empty disk',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
+        tags: const [],
+        attachments: const [],
+        location: null,
+        relationCount: 0,
+        syncState: 1,
+        lastError: null,
+      );
+
+      final service = LocalLibraryScanService(
+        db: db,
+        fileSystem: fs,
+        attachmentStore: LocalAttachmentStore(),
+      );
+
+      await service.scanAndMergeIncremental();
+
+      final row = await db.getMemoByUid(uid);
+      expect(row, isNotNull);
+      expect(row?['content'], 'db memo survives empty disk');
+
+      await db.close();
+      await deleteTestDatabase(dbName);
+    },
+  );
+
   test('imports sidecar display time, location and relations', () async {
     final dbName = uniqueDbName('local_scan_sidecar_import');
     final db = AppDatabase(dbName: dbName);

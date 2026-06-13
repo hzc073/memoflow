@@ -7,6 +7,7 @@ import 'package:memos_flutter_app/application/sync/local_library_import_migratio
 import 'package:memos_flutter_app/core/debug_ephemeral_storage.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_fs.dart';
 import 'package:memos_flutter_app/data/local_library/local_library_markdown.dart';
+import 'package:memos_flutter_app/data/local_library/local_library_paths.dart';
 import 'package:memos_flutter_app/data/models/content_fingerprint.dart';
 import 'package:memos_flutter_app/data/models/local_library.dart';
 import 'package:memos_flutter_app/data/models/local_memo.dart';
@@ -102,4 +103,44 @@ void main() {
       expect(attachments.single.length, 5);
     },
   );
+
+  test('rebases managed private library with stale root path', () async {
+    final oldContainer = await support.createTempDir('old_ios_container');
+    final library = LocalLibrary(
+      key: 'managed_workspace_rebase',
+      name: 'Managed Workspace',
+      storageKind: LocalLibraryStorageKind.managedPrivate,
+      treeUri: 'content://legacy/tree',
+      rootPath: p.join(oldContainer.path, 'Library', 'Application Support'),
+    );
+
+    final migrated = await LocalLibraryImportMigrationService().migrateIfNeeded(
+      library,
+    );
+    final expectedPath = await resolveManagedWorkspacePath(
+      'managed_workspace_rebase',
+    );
+
+    expect(migrated.storageKind, LocalLibraryStorageKind.managedPrivate);
+    expect(migrated.treeUri, isNull);
+    expect(migrated.rootPath, expectedPath);
+    expect(migrated.updatedAt, isNotNull);
+
+    final fs = LocalLibraryFileSystem(migrated);
+    await fs.ensureStructure();
+
+    expect(await Directory(p.join(expectedPath, 'memos')).exists(), isTrue);
+    expect(
+      await Directory(p.join(expectedPath, 'memos', '_meta')).exists(),
+      isTrue,
+    );
+    expect(
+      await Directory(p.join(expectedPath, 'attachments')).exists(),
+      isTrue,
+    );
+    expect(
+      await Directory(p.join(library.rootPath!, 'memos')).exists(),
+      isFalse,
+    );
+  });
 }

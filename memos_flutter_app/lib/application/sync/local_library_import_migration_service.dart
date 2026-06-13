@@ -11,7 +11,7 @@ import '../../data/models/local_library.dart';
 class LocalLibraryImportMigrationService {
   Future<LocalLibrary> migrateIfNeeded(LocalLibrary library) async {
     if (library.storageKind == LocalLibraryStorageKind.managedPrivate) {
-      return library;
+      return _rebaseManagedPrivateLibrary(library);
     }
 
     final targetPath = await resolveManagedWorkspacePath(library.key);
@@ -73,6 +73,27 @@ class LocalLibraryImportMigrationService {
     }
 
     return targetLibrary;
+  }
+
+  Future<LocalLibrary> _rebaseManagedPrivateLibrary(
+    LocalLibrary library,
+  ) async {
+    final targetPath = await resolveManagedWorkspacePath(library.key);
+    final currentRoot = (library.rootPath ?? '').trim();
+    final pathChanged =
+        currentRoot.isEmpty ||
+        p.normalize(currentRoot) != p.normalize(targetPath);
+    final treeUriChanged = library.treeUri?.trim().isNotEmpty ?? false;
+    if (!pathChanged && !treeUriChanged) {
+      return library;
+    }
+
+    return library.copyWith(
+      storageKind: LocalLibraryStorageKind.managedPrivate,
+      clearTreeUri: true,
+      rootPath: targetPath,
+      updatedAt: DateTime.now(),
+    );
   }
 
   Future<void> _clearTarget(LocalLibraryFileSystem fileSystem) async {

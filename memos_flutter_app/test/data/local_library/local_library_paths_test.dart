@@ -38,4 +38,31 @@ void main() {
       expect(await Directory(mirrorPath).exists(), isTrue);
     },
   );
+
+  test(
+    'managed workspace probe does not create workspace directories',
+    () async {
+      final supportDir = await resolveAppSupportDirectory();
+      final missingPath = await resolveManagedWorkspacePath(
+        'probe-missing',
+        create: false,
+      );
+      final missingProbe = await probeManagedWorkspacePath('probe-missing');
+
+      expect(
+        missingPath,
+        p.join(supportDir.path, 'workspaces', 'probe-missing', 'library'),
+      );
+      expect(await Directory(missingPath).exists(), isFalse);
+      expect(missingProbe.existsInCurrentContainer, isFalse);
+
+      final existingPath = await resolveManagedWorkspacePath('probe-existing');
+      final existingProbe = await probeManagedWorkspacePath('probe-existing');
+
+      expect(existingProbe.libraryPath, existingPath);
+      expect(existingProbe.existsInCurrentContainer, isTrue);
+      expect(existingProbe.libraryExists, isTrue);
+      expect(existingProbe.hasLibraryContent, isFalse);
+    },
+  );
 }
