@@ -42,12 +42,15 @@ void main() {
     expect(find.text('Why support'), findsOneWidget);
     expect(find.text('Public-good note'), findsOneWidget);
     expect(find.text('Support the developer'), findsOneWidget);
+    expect(find.text('View foundation website'), findsOneWidget);
+    expect(find.text('View public-good records'), findsOneWidget);
     expect(find.text('Open support link'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
       findsNothing,
     );
     expect(supportMemoFlowExternalSupportUrl, contains('qr.alipay.com'));
+    expect(supportMemoFlowCharityUrl, contains('hhax.org'));
   });
 
   testWidgets('desktop public support page shows QR instead of link action', (
@@ -61,6 +64,12 @@ void main() {
     expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
     expect(find.text('Support the developer'), findsOneWidget);
     expect(
+      find.byKey(
+        const ValueKey<String>('supportMemoFlow.publicAppreciationSection'),
+      ),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
       findsOneWidget,
     );
@@ -73,6 +82,7 @@ void main() {
       find.text('Scan with Alipay on your phone to support MemoFlow.'),
       findsOneWidget,
     );
+    expect(find.text('View foundation website'), findsOneWidget);
   });
 
   testWidgets('private support contribution replaces public fallback', (

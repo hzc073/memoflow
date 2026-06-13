@@ -5,7 +5,7 @@
 这个入口未来会同时服务两类支持关系：
 
 - Apple 平台私有商业版：macOS 现阶段，以及未来 iOS / iPadOS，用户通过成为支持者获得 Apple 平台特有优化和支持，真实购买、恢复购买、价格、StoreKit 和权益判断由私有仓 `memoflow-macos-private` 负责。
-- 桌面端 / Android / 公开构建：Windows 和 macOS 的桌面设置窗口也应能直接查看“支持 MemoFlow”页面；公开构建保留自愿赞赏路径，但从弹窗升级为与“支持 MemoFlow”一致的独立页面，表达为公开赞赏和项目维护支持，不提供商业解锁或权益判断。旧二维码资产和保存流程将被移除，首版统一使用用户确认的支付宝外部支持链接作为数据源：移动端直接打开链接，桌面端显示由该链接动态生成的二维码。
+- 桌面端 / Android / 公开构建：Windows 和 macOS 的桌面设置窗口也应能直接查看“支持 MemoFlow”页面；公开构建保留自愿赞赏路径、项目支持说明和公益公示入口，但不提供商业解锁或权益判断。旧 `DonationDialog`、旧二维码资产和保存流程将被移除，首版统一使用用户确认的支付宝外部支持链接作为数据源：移动端直接打开链接，桌面端显示由该链接动态生成的二维码。
 
 需要先把规则写清楚，避免后续实现时把商业逻辑、价格、权益状态或平台付费分支写入公开仓。
 
@@ -21,7 +21,7 @@
   - 公开仓 MUST NOT 根据 macOS / iOS 平台本身直接显示商业价格、商品、权益或购买 UI。
 - 定义 private bundle seam 方向：公开页面可以提供一个支持页贡献区域，但真实商业支持内容必须由 `PrivateExtensionBundle` 或等价批准 seam 贡献。
 - 约束文案：基础记录能力长期可用；支持是对项目维护和平台优化的帮助，不得把基础功能包装成付费门票。
-- 约束公益说明：公开页面 MAY 说明“当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠”，并将公益记录入口指向官网占位页或后续正式公益记录页。
+- 约束公益说明：公开页面 MAY 说明“如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示”，并将公益公示入口指向官网占位页或后续正式公益记录页；基金会外部链接 SHOULD 指向官方地址而不是搜索引擎跳转链接。
 
 ## Capabilities
 
@@ -39,16 +39,17 @@
 - Affected product surfaces:
   - Settings home entry currently labeled `msg_charging_station`
   - Desktop settings window navigation for Windows and macOS
-  - `DonationDialog` / legacy donation QR support flow
+  - deleted `DonationDialog` / legacy donation QR support flow
   - Future `SupportMemoFlow` independent settings page
   - External support link `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`
+  - Beijing Han Hong Love Charity Foundation official site link
   - Future public-good record page, for example `https://memoflow.app/support/public-good`
   - Private overlay support / subscription center contribution
 - Affected public code in future implementation:
   - `memos_flutter_app/lib/features/settings/settings_screen.dart`
   - `memos_flutter_app/lib/features/settings/desktop_settings_window_app.dart`
   - `memos_flutter_app/lib/application/desktop/desktop_settings_window.dart`
-  - `memos_flutter_app/lib/features/settings/donation_dialog.dart` or replacement page
+  - deleted `memos_flutter_app/lib/features/settings/donation_dialog.dart`
   - `memos_flutter_app/lib/private_hooks/private_extension_bundle.dart` if a support-page contribution seam is added
   - `memos_flutter_app/lib/module_boundary/...` if a new contribution model is needed
   - i18n files for “支持 MemoFlow” and donation/support copy

@@ -75,10 +75,12 @@ DesktopSettingsWindowApp
    - 项目维护、适配、公益记录等非商业说明。
    - 外部赞赏链接，首版使用 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`。
    - 桌面端基于外部赞赏链接动态生成二维码，便于用户用手机扫码。
-   - 公益说明：当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠。
+   - 北京韩红爱心慈善基金会官方链接，使用官方地址而不是搜索引擎跳转链接。
+   - 公益说明：如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示。
 
    公开仓不得展示：
 
+   - 旧二维码图片资产、旧二维码保存流程。
    - StoreKit purchase / restore。
    - App Store product ID、订阅组、价格、买断价格。
    - raw subscription / buyout / trial / refunded / Family Sharing state。
@@ -119,16 +121,15 @@ DesktopSettingsWindowApp
 
    非 Apple 平台的体验不应继续是小弹窗；它应使用同一支持页的视觉系统，让用户看到完整说明、感谢文案、公益说明和“可以不支持也继续使用”的承诺。
 
-   该页面移除旧 `donation_qr.png` 展示和保存流程，统一以外部赞赏链接作为数据源；移动端直接打开链接，桌面端显示由该链接动态生成的二维码：
+   该页面移除旧 `DonationDialog`、旧 `donation_qr.png` 展示和保存流程，统一以外部赞赏链接作为数据源；移动端直接打开链接，桌面端显示由该链接动态生成的二维码：
 
    ```text
    supportUrl: https://qr.alipay.com/tsx16856ygfke5rugz1ao4a
+   charityUrl: https://www.hhax.org/
    publicGoodUrl: https://memoflow.app/support/public-good
    ```
 
-   `supportUrl` 是用户确认的外部赞赏链接。页面内仍应保留基础功能不受影响的说明、维护成本说明和公益记录入口。若未来面向 Google Play 或其他对外部支付链接有额外要求的渠道分发，SHOULD 重新评估是否改用官网中转页或按渠道替换链接。
-
-   Android 后续如果进入 Google Play 分发，应再次核对支付和赞赏政策：公开赞赏必须保持自愿支持，不提供数字功能、权益、解锁或服务交换。
+   `supportUrl` 是用户确认的外部赞赏链接，`charityUrl` 指向北京韩红爱心慈善基金会官方站点。页面内仍应保留基础功能不受影响的说明、维护成本说明和公益公示入口。若未来面向 Google Play、App Store 或其他有审核规则的渠道分发，MUST 复核对应渠道规则；Apple App Store 版应由 private IAP 支持中心接管，不显示公开外部付款 CTA。
 
 6. **桌面设置窗口新增通用支持入口，而不是 Windows 专属入口。**
 
@@ -148,13 +149,13 @@ DesktopSettingsWindowApp
 
    该路径不得写成 `if (Platform.isWindows) showSupportPage()`，也不得因为 `TargetPlatform.macOS` 自动显示商业购买 UI。macOS 是否展示商业内容只取决于 private contribution 是否存在。
 
-7. **公益 50% 是真实承诺，但应精确定义触发口径。**
+7. **公益说明使用保守承诺，并指向明确接收方。**
 
    页面可以展示公益说明，但应写成：
 
-   > 当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠。
+   > 如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示。
 
-   该表述避免被理解为“所有赞赏收入的 50% 立即捐出”。“查看公益记录”首版可指向官网占位入口，后续官网应展示可追踪记录，例如年份、维护成本口径说明、公益接收方、捐赠日期和金额或区间。
+   该表述避免承诺固定比例、固定金额或固定触发条件。“查看公益公示”首版可指向官网占位入口，后续官网应展示可追踪记录，例如年份、公益接收方、捐赠日期和金额或区间。
 
 8. **视觉方向为干净 Apple 风，而不是厚重手账页。**
 
@@ -194,8 +195,8 @@ memoflow-macos-private/active_private_extension_bundle.dart
 
 - [Risk] 公开支持页不小心写入价格或“年度支持者”文案，形成商业泄漏。Mitigation: spec 和 guardrail 明确阻止 price / product ID / subscription wording 进入公开 shell；价格放 private overlay。
 - [Risk] 同一入口在不同构建表现不同，测试和截图容易混淆。Mitigation: public fallback 和 private contribution 分别验证，页面上只暴露“支持 MemoFlow”统一入口。
-- [Risk] Android 赞赏在应用商店政策上产生风险。Mitigation: 赞赏文案不得承诺数字功能、权益、解锁或服务；正式分发前复核目标渠道规则；必要时按渠道把支付宝外部支持链接替换为官网中转页或禁用外部支付入口。
-- [Risk] 公益 50% 承诺如果没有记录页会削弱信任。Mitigation: 首版可使用占位官网入口，但正式发布前应补充公益记录页或明确“记录准备中”的状态。
+- [Risk] 外部付款入口在应用商店政策上产生风险。Mitigation: 公开外部赞赏入口只面向非商店公开构建；Apple App Store 版由 private IAP 支持中心接管；其他商店分发前必须复核目标渠道规则。
+- [Risk] 公益承诺如果没有记录页会削弱信任。Mitigation: 首版可使用占位官网入口，但正式发布前应补充公益公示页或明确“记录准备中”的状态。
 - [Risk] 为了 private contribution seam 修改 `PrivateExtensionBundle` 可能扩大公共接口。Mitigation: seam 只表达 support page contribution，不暴露商业状态；同时增加商业泄漏 guardrail。
 - [Risk] 桌面设置窗口左侧 pane 继续增多，降低扫描效率。Mitigation: “支持 MemoFlow”属于高感知入口，优先作为独立 pane；如果后续桌面设置导航过密，再统一评估分组或排序，而不是把支持页做成 Windows 专属分支。
 

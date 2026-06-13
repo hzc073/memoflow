@@ -167,7 +167,6 @@ flutter:
     - assets/images/flomo_import_logo.svg
     - assets/images/swashbuckler_diary_import_logo.png
     - assets/images/migration/
-    - assets/images/donation_qr.png
     - assets/images/default_avatar.webp
     - assets/images/tray_icon_macos.png
     - windows/runner/resources/app_icon.ico

@@ -5,6 +5,7 @@ import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_localization.dart';
+import '../../core/top_toast.dart';
 import '../../module_boundary/support_memo_flow_contribution.dart';
 import '../../platform/platform_experience.dart';
 import '../../private_hooks/private_extension_bundle.dart';
@@ -16,6 +17,7 @@ import 'settings_ui.dart';
 const supportMemoFlowExternalSupportUrl =
     'https://qr.alipay.com/tsx16856ygfke5rugz1ao4a';
 const supportMemoFlowPublicGoodUrl = 'https://memoflow.app/support/public-good';
+const supportMemoFlowCharityUrl = 'https://www.hhax.org/';
 
 class SupportMemoFlowScreen extends ConsumerWidget {
   const SupportMemoFlowScreen({super.key, this.showBackButton = true});
@@ -47,19 +49,14 @@ class SupportMemoFlowScreen extends ConsumerWidget {
           mode: LaunchMode.externalApplication,
         );
         if (!launched && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                context.t.strings.legacy.msg_unable_open_browser_try,
-              ),
-            ),
+          showTopToast(
+            context,
+            context.t.strings.legacy.msg_unable_open_browser_try,
           );
         }
       } catch (_) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.t.strings.legacy.msg_failed_open_try)),
-        );
+        showTopToast(context, context.t.strings.legacy.msg_failed_open_try);
       }
     }
 
@@ -83,6 +80,7 @@ class SupportMemoFlowScreen extends ConsumerWidget {
           const SizedBox(height: 14),
           _PublicGoodSection(
             onOpenPublicGood: () => openExternal(supportMemoFlowPublicGoodUrl),
+            onOpenCharity: () => openExternal(supportMemoFlowCharityUrl),
           ),
           const SizedBox(height: 14),
           _PublicAppreciationSection(
@@ -215,8 +213,8 @@ class _WhySupportSection extends StatelessWidget {
           _ReasonRow(
             icon: Icons.favorite_border,
             label: context.tr(
-              zh: '多余支持将按计划用于公益',
-              en: 'Excess support will help public-good causes',
+              zh: '部分盈利将用于公益并公示',
+              en: 'Part of any profit will support public-good causes with records',
             ),
             showDivider: false,
           ),
@@ -227,9 +225,13 @@ class _WhySupportSection extends StatelessWidget {
 }
 
 class _PublicGoodSection extends StatelessWidget {
-  const _PublicGoodSection({required this.onOpenPublicGood});
+  const _PublicGoodSection({
+    required this.onOpenPublicGood,
+    required this.onOpenCharity,
+  });
 
   final VoidCallback onOpenPublicGood;
+  final VoidCallback onOpenCharity;
 
   @override
   Widget build(BuildContext context) {
@@ -254,8 +256,8 @@ class _PublicGoodSection extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       context.tr(
-                        zh: '当支持收入覆盖当年的必要维护成本后，超出部分的 50% 将用于公益捐赠。',
-                        en: 'After support income covers the necessary maintenance costs for the year, 50% of the excess will be donated to public-good causes.',
+                        zh: '如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示。',
+                        en: 'If the project generates profit, MemoFlow will donate part of it to the Beijing Han Hong Love Charity Foundation and publish records.',
                       ),
                       style: TextStyle(
                         height: 1.48,
@@ -270,29 +272,60 @@ class _PublicGoodSection extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Divider(height: 1, color: tokens.divider),
-          InkWell(
+          _PublicGoodLinkRow(
+            label: context.tr(zh: '查看基金会官网', en: 'View foundation website'),
+            onTap: onOpenCharity,
+            accent: accent,
+            tokens: tokens,
+          ),
+          Divider(height: 1, color: tokens.divider),
+          _PublicGoodLinkRow(
+            label: context.tr(zh: '查看公益公示', en: 'View public-good records'),
             onTap: onOpenPublicGood,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      context.tr(zh: '查看公益记录', en: 'View public-good records'),
-                      style: TextStyle(
-                        color: tokens.textMain,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, color: accent),
-                ],
-              ),
-            ),
+            accent: accent,
+            tokens: tokens,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PublicGoodLinkRow extends StatelessWidget {
+  const _PublicGoodLinkRow({
+    required this.label,
+    required this.onTap,
+    required this.accent,
+    required this.tokens,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Color accent;
+  final SettingsPageTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: tokens.textMain,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right, color: accent),
+          ],
+        ),
       ),
     );
   }

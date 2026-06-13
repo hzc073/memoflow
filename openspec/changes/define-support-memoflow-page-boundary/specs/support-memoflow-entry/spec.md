@@ -39,6 +39,7 @@ Windows 和 macOS 的桌面设置窗口 SHALL expose a platform-neutral “支�
 - **AND** the initial external support link SHALL be `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a`
 - **AND** phone and tablet surfaces SHALL use the external support link as the primary support action
 - **AND** desktop surfaces SHALL show a generated QR code based on the external support link instead of opening the support link as the primary support action
+- **AND** it MAY link to the official Beijing Han Hong Love Charity Foundation website for transparency
 - **AND** it SHALL NOT show public donation QR assets such as `assets/images/donation_qr.png` as the support page support method
 - **AND** it SHALL NOT show StoreKit purchase, restore purchase, product ID, subscription group, receipt validation, entitlement state, Family Sharing state, buyout state, trial state, or hardcoded commercial price
 
@@ -50,8 +51,8 @@ Windows 和 macOS 的桌面设置窗口 SHALL expose a platform-neutral “支�
 
 #### Scenario: Public-good commitment is shown
 - **WHEN** the public appreciation page includes public-good copy
-- **THEN** it MAY state that after support income covers the necessary maintenance costs for the year, 50% of the excess amount will be donated to public-good causes
-- **AND** it SHALL NOT imply that 50% of all gross support income is donated before maintenance costs are covered
+- **THEN** it MAY state that if the project generates profit, MemoFlow will donate part of it to the Beijing Han Hong Love Charity Foundation and publish records
+- **AND** it SHALL NOT promise a fixed percentage, fixed amount, fixed donation schedule, or fixed trigger condition
 - **AND** it SHOULD provide a public-good record link, initially `https://memoflow.app/support/public-good` or an equivalent official website location
 
 ### Requirement: Apple supporter commercial experience SHALL be provided by private overlay
