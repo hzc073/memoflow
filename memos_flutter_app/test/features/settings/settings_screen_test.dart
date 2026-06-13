@@ -391,6 +391,44 @@ void main() {
     expect(find.text('Auto-lock time'), findsOneWidget);
   });
 
+  testWidgets('password lock password dialog uses settings seams on iOS', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+    });
+
+    await tester.pumpWidget(
+      buildTestApp(
+        home: const PasswordLockScreen(),
+        overrides: [
+          appLockProvider.overrideWith(
+            (ref) => _FakeAppLockController(
+              const AppLockState(
+                enabled: false,
+                autoLockTime: AutoLockTime.after5Min,
+                hasPassword: false,
+                locked: false,
+                loaded: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Enable App Lock'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(SettingsDialogTextField), findsNWidgets(2));
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+  });
+
   testWidgets('vault security status screen uses settings semantic rows', (
     tester,
   ) async {
@@ -527,36 +565,24 @@ void main() {
       await tester.tap(find.text('Quick Entry 1'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.text('Explore'), findsNothing);
       expect(find.text('Notifications'), findsNothing);
       expect(
         find.byWidgetPredicate(
-          (widget) => widget is RadioListTile<HomeQuickAction>,
+          (widget) => widget is SettingsSingleChoiceRow<HomeQuickAction>,
         ),
         findsWidgets,
       );
-      final dialogFinder = find.byType(AlertDialog);
-      expect(
-        find.descendant(of: dialogFinder, matching: find.text('AI Summary')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: dialogFinder, matching: find.text('Collections')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: dialogFinder, matching: find.text('Random Review')),
-        findsOneWidget,
-      );
+      expect(find.text('AI Summary'), findsWidgets);
+      expect(find.text('Collections'), findsOneWidget);
+      expect(find.text('Random Review'), findsWidgets);
 
-      await tester.tap(
-        find.descendant(of: dialogFinder, matching: find.text('AI Summary')),
-      );
+      await tester.tap(find.text('AI Summary').last);
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Collections'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Attachments'));
       await tester.tap(find.text('Attachments'));
       await tester.pumpAndSettle();
 
@@ -594,29 +620,45 @@ void main() {
     await tester.tap(find.text('Quick Entry 1'));
     await tester.pumpAndSettle();
 
-    final dialogFinder = find.byType(AlertDialog);
-    expect(dialogFinder, findsOneWidget);
-    expect(
-      find.descendant(of: dialogFinder, matching: find.text('Explore')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: dialogFinder, matching: find.text('Collections')),
-      findsOneWidget,
-    );
+    expect(find.text('Explore'), findsOneWidget);
+    expect(find.text('Collections'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is RadioListTile<HomeQuickAction>,
+        (widget) => widget is SettingsSingleChoiceRow<HomeQuickAction>,
       ),
       findsWidgets,
     );
 
-    await tester.tap(
-      find.descendant(of: dialogFinder, matching: find.text('Explore')),
-    );
+    await tester.tap(find.text('Explore'));
     await tester.pumpAndSettle();
 
     expect(find.text('Explore'), findsOneWidget);
+  });
+
+  testWidgets('customize quick entries picker works on iOS', (tester) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+    });
+
+    await tester.pumpWidget(
+      buildTestApp(home: const CustomizeHomeShortcutsScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Quick Entry 1'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SettingsSingleChoiceRow<HomeQuickAction>), findsWidgets);
+
+    await tester.ensureVisible(find.text('Attachments'));
+    await tester.tap(find.text('Attachments'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Attachments'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('laboratory screen exposes navigation mode entry', (

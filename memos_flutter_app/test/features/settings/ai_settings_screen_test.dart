@@ -9,8 +9,11 @@ import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
 import 'package:memos_flutter_app/features/settings/ai_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/ai_proxy_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/ai_provider_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/ai_service_detail_screen.dart';
+import 'package:memos_flutter_app/features/settings/ai_service_model_screen.dart';
 import 'package:memos_flutter_app/features/settings/ai_service_wizard_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
@@ -124,6 +127,7 @@ Widget _buildAiSettingsTestApp({
   required _MemoryAiSettingsRepository aiRepository,
   bool showBackButton = false,
   List<Override> overrides = const <Override>[],
+  Widget? home,
 }) {
   return ProviderScope(
     overrides: [
@@ -140,7 +144,7 @@ Widget _buildAiSettingsTestApp({
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: AiSettingsScreen(showBackButton: showBackButton),
+        home: home ?? AiSettingsScreen(showBackButton: showBackButton),
       ),
     ),
   );
@@ -427,7 +431,7 @@ void main() {
     );
     expect(find.byType(AiServiceDetailScreen), findsOneWidget);
     expect(find.byIcon(Icons.close_rounded), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Save'), findsOneWidget);
+    expect(find.text('Save'), findsOneWidget);
   });
 
   testWidgets('mobile service detail keeps route presentation', (tester) async {
@@ -482,7 +486,7 @@ void main() {
 
     await tester.tap(find.text('OpenAI Main'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, 'OpenAI Updated');
+    await tester.enterText(find.byType(EditableText).first, 'OpenAI Updated');
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.close_rounded));
@@ -595,9 +599,17 @@ void main() {
           .first,
       maxScrolls: 8,
     );
-    await tester.tap(find.text('Delete Service'));
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('Delete Service'),
+            matching: find.byType(InkWell),
+          )
+          .last,
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
     expect(find.byType(AiServiceDetailScreen), findsNothing);
@@ -631,10 +643,11 @@ void main() {
 
     await tester.tap(find.text('OpenAI Main'));
     await tester.pumpAndSettle();
-    final sharedProxySwitch = tester.widget<SwitchListTile>(
-      find.widgetWithText(SwitchListTile, 'Use shared proxy'),
-    );
-    sharedProxySwitch.onChanged!(true);
+    tester
+        .widget<SettingsToggleRow>(
+          find.widgetWithText(SettingsToggleRow, 'Use shared proxy'),
+        )
+        .onChanged!(true);
     await tester.pumpAndSettle();
 
     expect(
@@ -646,10 +659,11 @@ void main() {
     expect(find.text('Open proxy settings'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Open proxy settings'));
-    final openProxyButton = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Open proxy settings'),
-    );
-    openProxyButton.onPressed!();
+    tester
+        .widget<SettingsAction>(
+          find.widgetWithText(SettingsAction, 'Open proxy settings'),
+        )
+        .onPressed!();
     await tester.pumpAndSettle();
 
     expect(find.byType(AiProxySettingsScreen), findsOneWidget);
@@ -657,6 +671,75 @@ void main() {
       find.byType(AiServiceDetailScreen, skipOffstage: false),
       findsOneWidget,
     );
+  });
+
+  testWidgets('iOS model editor uses settings control seams', (tester) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() => debugPlatformTargetOverride = null);
+    await tester.binding.setSurfaceSize(const Size(390, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      _settingsWithOpenAiService(),
+    );
+
+    await tester.pumpWidget(
+      _buildAiSettingsTestApp(
+        prefsRepository: prefsRepository,
+        aiRepository: aiRepository,
+        home: const AiServiceModelScreen(serviceId: 'svc_openai'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsActionPill), findsWidgets);
+    expect(find.byType(FilterChip), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(find.byType(TextFormField), findsNothing);
+
+    await tester.tap(find.text('Add Model').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(SettingsDialogTextField), findsWidgets);
+    expect(find.byType(SettingsMultiChoiceList<AiCapability>), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(FilterChip), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(find.byType(TextFormField), findsNothing);
+  });
+
+  testWidgets('iOS legacy provider settings form uses settings seams', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() => debugPlatformTargetOverride = null);
+    await tester.binding.setSurfaceSize(const Size(390, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en),
+    );
+
+    await tester.pumpWidget(
+      _buildAiSettingsTestApp(
+        prefsRepository: prefsRepository,
+        aiRepository: aiRepository,
+        home: const AiProviderSettingsScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsDialogTextField), findsWidgets);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
   });
 
   testWidgets('mobile add service keeps route presentation', (tester) async {

@@ -20,7 +20,6 @@ void main() {
       'lib/features/settings/desktop_settings_window_app.dart',
       'lib/features/settings/desktop_shortcuts_overview_screen.dart',
       'lib/features/settings/desktop_shortcuts_settings_screen.dart',
-      'lib/features/settings/donation_dialog.dart',
       'lib/features/settings/about_us_screen.dart',
       'lib/features/settings/ai_provider_logo.dart',
       'lib/features/settings/ai_provider_settings_screen.dart',
@@ -183,6 +182,473 @@ void main() {
       }
     },
   );
+
+  test('batch A settings subpages keep migrated controls on seams', () async {
+    const migratedControlFiles = <String, List<String>>{
+      'lib/features/settings/location_settings_screen.dart': [
+        'SettingsOptionChoiceRow<LocationPrecision>',
+      ],
+      'lib/features/settings/bottom_navigation_mode_settings_screen.dart': [
+        'showSettingsSingleChoicePicker<HomeRootDestination>',
+      ],
+      'lib/features/settings/customize_home_shortcuts_screen.dart': [
+        'showSettingsSingleChoicePicker<HomeQuickAction>',
+      ],
+    };
+
+    const forbiddenControls = <String>[
+      'ChoiceChip(',
+      'FilterChip(',
+      'ActionChip(',
+      'InputChip(',
+      'DropdownButton<',
+      'RadioGroup<',
+      'RadioListTile<',
+      'CheckboxListTile(',
+      'MaterialPageRoute<',
+      'showDialog<HomeRootDestination>',
+      'showDialog<HomeQuickAction>',
+    ];
+
+    final violations = <String>[];
+    for (final entry in migratedControlFiles.entries) {
+      final source = await File(entry.key).readAsString();
+      for (final seam in entry.value) {
+        if (!source.contains(seam)) {
+          violations.add('${entry.key}: missing migrated seam $seam');
+        }
+      }
+      for (final forbidden in forbiddenControls) {
+        if (source.contains(forbidden)) {
+          violations.add('${entry.key}: forbidden migrated control $forbidden');
+        }
+      }
+    }
+
+    final components = await File(
+      'lib/features/settings/components_settings_screen.dart',
+    ).readAsString();
+    for (final requiredSeam in const [
+      'buildPlatformPageRoute<void>',
+      'showSettingsConfirmationDialog(',
+      'showPlatformDialog<bool>',
+      'SettingsMultiChoiceRow<String>',
+    ]) {
+      if (!components.contains(requiredSeam)) {
+        violations.add(
+          'lib/features/settings/components_settings_screen.dart: '
+          'missing migrated seam $requiredSeam',
+        );
+      }
+    }
+    for (final forbidden in const [
+      'CheckboxListTile(',
+      'MaterialPageRoute<',
+      'showDialog<bool>',
+    ]) {
+      if (components.contains(forbidden)) {
+        violations.add(
+          'lib/features/settings/components_settings_screen.dart: '
+          'forbidden migrated control $forbidden',
+        );
+      }
+    }
+
+    expect(
+      violations,
+      isEmpty,
+      reason: violations.isEmpty
+          ? null
+          : 'Batch A migrated settings subpages must keep high-risk controls '
+                'on settings/platform seams:\n${violations.join('\n')}',
+    );
+  });
+
+  test('batch B settings subpages keep migrated controls on seams', () async {
+    const requiredSeams = <String, List<String>>{
+      'lib/features/settings/memo_toolbar_settings_screen.dart': [
+        'showPlatformDialog<MemoToolbarCustomButton>',
+        'SettingsOptionChipGroup<_CustomIconGroup>',
+        'SettingsFormDialog',
+        'SettingsDialogTextField',
+      ],
+      'lib/features/settings/shortcut_editor_screen.dart': [
+        'showPlatformPicker<Set<String>>',
+        'SettingsRemovableChip',
+        'SettingsMultiChoiceList<String>',
+      ],
+      'lib/features/settings/template_settings_screen.dart': [
+        'showPlatformDialog<MemoTemplate>',
+        'showPlatformDialog<MemoTemplateVariableSettings>',
+        'showSettingsConfirmationDialog(',
+        'SettingsFormDialog',
+        'SettingsDialogTextField',
+      ],
+    };
+
+    const forbiddenByFile = <String, List<String>>{
+      'lib/features/settings/memo_toolbar_settings_screen.dart': [
+        'ChoiceChip(',
+        'showDialog<MemoToolbarCustomButton>',
+        'AlertDialog(',
+      ],
+      'lib/features/settings/shortcut_editor_screen.dart': [
+        'InputChip(',
+        'CheckboxListTile(',
+        'showModalBottomSheet<Set<String>>',
+      ],
+      'lib/features/settings/template_settings_screen.dart': [
+        'showDialog<',
+        'AlertDialog(',
+      ],
+    };
+
+    final rawTextField = RegExp(r'(^|[^A-Za-z0-9_])TextField\s*\(');
+    final violations = <String>[];
+    for (final entry in requiredSeams.entries) {
+      final source = await File(entry.key).readAsString();
+      for (final seam in entry.value) {
+        if (!source.contains(seam)) {
+          violations.add('${entry.key}: missing migrated seam $seam');
+        }
+      }
+      for (final forbidden in forbiddenByFile[entry.key] ?? const <String>[]) {
+        if (source.contains(forbidden)) {
+          violations.add('${entry.key}: forbidden migrated control $forbidden');
+        }
+      }
+      if (rawTextField.hasMatch(source)) {
+        violations.add('${entry.key}: forbidden raw TextField');
+      }
+    }
+
+    expect(
+      violations,
+      isEmpty,
+      reason: violations.isEmpty
+          ? null
+          : 'Batch B migrated settings subpages must keep high-risk controls '
+                'on settings/platform seams:\n${violations.join('\n')}',
+    );
+  });
+
+  test(
+    'batch C AI settings subpages keep migrated controls on seams',
+    () async {
+      const requiredSeams = <String, List<String>>{
+        'lib/features/settings/ai_route_settings_screen.dart': [
+          'showSettingsSingleChoicePicker<AiSelectableRouteOption>',
+        ],
+        'lib/features/settings/ai_service_wizard_screen.dart': [
+          'showPlatformDialog<AiProviderTemplate>',
+          'buildPlatformPageRoute<void>',
+          'SettingsDialogTextField',
+          'SettingsActionPill',
+          'SettingsMultiChoiceList<AiCapability>',
+          'SettingsToggleRow',
+        ],
+        'lib/features/settings/ai_service_model_screen.dart': [
+          'showPlatformDialog<AiModelEntry>',
+          'showSettingsSingleChoicePicker<_ModelSourceFilter>',
+          'showSettingsSingleChoicePicker<_ModelSortMode>',
+          'showSettingsConfirmationDialog(',
+          'SettingsActionPill',
+          'SettingsMultiChoiceList<AiCapability>',
+          'SettingsToggleRow',
+        ],
+        'lib/features/settings/ai_service_detail_screen.dart': [
+          'showPlatformAlertDialog<_AiServiceUnsavedCloseAction>',
+          'showSettingsConfirmationDialog(',
+          'buildPlatformPageRoute<void>',
+          'SettingsDialogTextField',
+          'SettingsToggleRow',
+        ],
+        'lib/features/settings/ai_provider_settings_screen.dart': [
+          'showPlatformDialog<String>',
+          'showPlatformDialog<String?>',
+          'SettingsFormDialog',
+          'SettingsDialogTextField',
+          'SettingsActionPill',
+        ],
+      };
+
+      const forbiddenControls = <String>[
+        'ChoiceChip(',
+        'FilterChip(',
+        'ActionChip(',
+        'InputChip(',
+        'SwitchListTile',
+        'TextFormField(',
+        'showDialog<',
+        'showModalBottomSheet',
+        'AlertDialog(',
+        'MaterialPageRoute<',
+        'PopupMenuButton',
+        'TextButton(',
+        'FilledButton(',
+        'OutlinedButton(',
+        'ElevatedButton(',
+        'ScaffoldMessenger',
+        'SnackBar(',
+      ];
+
+      final rawTextField = RegExp(r'(^|[^A-Za-z0-9_])TextField\s*\(');
+      final violations = <String>[];
+      for (final entry in requiredSeams.entries) {
+        final source = await File(entry.key).readAsString();
+        for (final seam in entry.value) {
+          if (!source.contains(seam)) {
+            violations.add('${entry.key}: missing migrated seam $seam');
+          }
+        }
+        for (final forbidden in forbiddenControls) {
+          if (source.contains(forbidden)) {
+            violations.add(
+              '${entry.key}: forbidden migrated control $forbidden',
+            );
+          }
+        }
+        if (rawTextField.hasMatch(source)) {
+          violations.add('${entry.key}: forbidden raw TextField');
+        }
+      }
+
+      expect(
+        violations,
+        isEmpty,
+        reason: violations.isEmpty
+            ? null
+            : 'Batch C AI settings subpages must keep high-risk controls on '
+                  'settings/platform seams:\n${violations.join('\n')}',
+      );
+    },
+  );
+
+  test(
+    'batch D WebDAV and utility settings keep migrated controls on seams',
+    () async {
+      const requiredSeams = <String, List<String>>{
+        'lib/features/settings/webdav_sync_screen.dart': [
+          'showSettingsSingleChoicePicker<WebDavAuthMode>',
+          'showSettingsSingleChoicePicker<WebDavBackupSchedule>',
+          'showSettingsSingleChoicePicker<WebDavBackupEncryptionMode>',
+          'showPlatformDialog<bool>',
+          'showPlatformDialog<Set<WebDavBackupConfigType>>',
+          'showSettingsConfirmationDialog',
+          'SettingsFormDialog',
+          'SettingsDialogTextField',
+          'SettingsMultiChoiceRow',
+          'SettingsSingleChoiceList<bool>',
+          'PlatformProgress',
+          'PlatformPrimaryAction',
+        ],
+        'lib/features/settings/vault_security_status_screen.dart': [
+          'showSettingsConfirmationDialog',
+          'showPlatformDialog<bool>',
+          'showSettingsSingleChoicePicker<_BackupTestMode>',
+          'SettingsFormDialog',
+          'SettingsDialogTextField',
+          'PlatformProgress',
+          'showTopToast',
+        ],
+        'lib/features/settings/account_security_screen.dart': [
+          'showSettingsConfirmationDialog',
+          'showTopToast',
+        ],
+        'lib/features/settings/storage_space_screen.dart': [
+          'showSettingsConfirmationDialog',
+          'PlatformProgress',
+          'showTopToast',
+        ],
+        'lib/features/settings/self_repair_screen.dart': [
+          'showSettingsConfirmationDialog',
+          'PlatformProgress',
+          'showTopToast',
+        ],
+      };
+
+      const forbiddenControls = <String>[
+        'SegmentedButton',
+        'CheckboxListTile(',
+        'RadioListTile<',
+        'DropdownButton<',
+        'ChoiceChip(',
+        'FilterChip(',
+        'ActionChip(',
+        'InputChip(',
+        'SwitchListTile',
+        'TextFormField(',
+        'showDialog<',
+        'showDialog(',
+        'showModalBottomSheet',
+        'AlertDialog(',
+        'MaterialPageRoute<',
+        'LinearProgressIndicator',
+        'CircularProgressIndicator',
+        'PopupMenuButton',
+        'TextButton(',
+        'FilledButton(',
+        'OutlinedButton(',
+        'ElevatedButton(',
+        'ScaffoldMessenger',
+        'SnackBar(',
+      ];
+
+      final rawTextField = RegExp(r'(^|[^A-Za-z0-9_])TextField\s*\(');
+      final violations = <String>[];
+      for (final entry in requiredSeams.entries) {
+        final source = await File(entry.key).readAsString();
+        for (final seam in entry.value) {
+          if (!source.contains(seam)) {
+            violations.add('${entry.key}: missing migrated seam $seam');
+          }
+        }
+        for (final forbidden in forbiddenControls) {
+          if (source.contains(forbidden)) {
+            violations.add(
+              '${entry.key}: forbidden migrated control $forbidden',
+            );
+          }
+        }
+        if (rawTextField.hasMatch(source)) {
+          violations.add('${entry.key}: forbidden raw TextField');
+        }
+      }
+
+      expect(
+        violations,
+        isEmpty,
+        reason: violations.isEmpty
+            ? null
+            : 'Batch D settings subpages must keep high-risk controls on '
+                  'settings/platform seams:\n${violations.join('\n')}',
+      );
+    },
+  );
+
+  test('batch E settings subpages keep migrated controls on seams', () async {
+    const requiredSeams = <String, List<String>>{
+      'lib/features/settings/migration/memoflow_migration_sender_screen.dart': [
+        'SettingsMultiChoiceRow<MemoFlowMigrationConfigType>',
+        'SettingsProgressRow',
+        'buildPlatformPageRoute<void>',
+      ],
+      'lib/features/settings/migration/memoflow_migration_receiver_screen.dart':
+          [
+            'SettingsSingleChoiceList<MemoFlowMigrationReceiveMode>',
+            'SettingsMultiChoiceRow<MemoFlowMigrationConfigType>',
+            'SettingsProgressRow',
+            'buildPlatformPageRoute<void>',
+          ],
+      'lib/features/settings/migration/memoflow_migration_role_screen.dart': [
+        'buildPlatformPageRoute<void>',
+      ],
+      'lib/features/settings/migration/memoflow_migration_send_method_screen.dart':
+          [
+            'showPlatformDialog<_ManualReceiverConnectRequest>',
+            'SettingsFormDialog',
+            'SettingsDialogTextField',
+            'SettingsProgressRow',
+            'buildPlatformPageRoute<String>',
+            'buildPlatformPageRoute<void>',
+          ],
+      'lib/features/settings/local_network_migration_screen.dart': [
+        'buildPlatformPageRoute<void>',
+      ],
+      'lib/features/settings/support_memoflow_screen.dart': ['showTopToast'],
+      'lib/features/settings/user_general_settings_screen.dart': [
+        'showTopToast',
+        'SettingsProgressRow',
+      ],
+      'lib/features/settings/export_logs_screen.dart': [
+        'showSettingsConfirmationDialog',
+        'PlatformTextField',
+        'IconButton',
+      ],
+      'lib/features/settings/export_memos_screen.dart': [
+        'showPlatformAlertDialog<bool>',
+        'PlatformProgress',
+        'showTopToast',
+      ],
+      'lib/features/settings/api_plugins_screen.dart': [
+        'showSettingsSingleChoicePicker<_TokenExpiration>',
+        'showPlatformDialog<void>',
+        'SettingsDialogTextField',
+        'SettingsProgressRow',
+        'PlatformProgress',
+      ],
+      'lib/features/settings/webhooks_settings_screen.dart': [
+        'showPlatformDialog<_WebhookDraft>',
+        'showSettingsConfirmationDialog',
+        'SettingsDialogTextField',
+        'SettingsProgressRow',
+      ],
+      'lib/features/settings/password_lock_screen.dart': [
+        'showPlatformDialog<String?>',
+        'showSettingsSingleChoicePicker<AutoLockTime>',
+        'SettingsDialogTextField',
+        'SettingsFeedbackRow',
+      ],
+      'lib/features/settings/desktop_shortcuts_settings_screen.dart': [
+        'showPlatformDialog<DesktopShortcutBinding>',
+        'SettingsFormDialog',
+        'SettingsFeedbackRow',
+      ],
+    };
+
+    const forbiddenControls = <String>[
+      'SegmentedButton',
+      'CheckboxListTile(',
+      'RadioListTile<',
+      'DropdownButton<',
+      'ChoiceChip(',
+      'FilterChip(',
+      'ActionChip(',
+      'InputChip(',
+      'TextFormField(',
+      'showDialog<',
+      'showModalBottomSheet',
+      'AlertDialog(',
+      'MaterialPageRoute<',
+      'LinearProgressIndicator',
+      'CircularProgressIndicator',
+      'PopupMenuButton',
+      'TextButton(',
+      'FilledButton(',
+      'OutlinedButton(',
+      'ElevatedButton(',
+      'ScaffoldMessenger',
+      'SnackBar(',
+    ];
+
+    final rawTextField = RegExp(r'(^|[^A-Za-z0-9_])TextField\s*\(');
+    final violations = <String>[];
+    for (final entry in requiredSeams.entries) {
+      final source = await File(entry.key).readAsString();
+      for (final seam in entry.value) {
+        if (!source.contains(seam)) {
+          violations.add('${entry.key}: missing migrated seam $seam');
+        }
+      }
+      for (final forbidden in forbiddenControls) {
+        if (source.contains(forbidden)) {
+          violations.add('${entry.key}: forbidden migrated control $forbidden');
+        }
+      }
+      if (rawTextField.hasMatch(source)) {
+        violations.add('${entry.key}: forbidden raw TextField');
+      }
+    }
+
+    expect(
+      violations,
+      isEmpty,
+      reason: violations.isEmpty
+          ? null
+          : 'Batch E settings subpages must keep high-risk controls on '
+                'settings/platform seams:\n${violations.join('\n')}',
+    );
+  });
 }
 
 class _DriftRule {

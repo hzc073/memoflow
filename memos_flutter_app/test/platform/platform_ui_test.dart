@@ -73,6 +73,18 @@ void main() {
     expect(find.byType(CupertinoPageScaffold), findsOneWidget);
     expect(find.byType(CupertinoNavigationBar), findsOneWidget);
     expect(find.text('Body'), findsOneWidget);
+    expect(
+      tester
+          .widget<CupertinoNavigationBar>(find.byType(CupertinoNavigationBar))
+          .transitionBetweenRoutes,
+      isFalse,
+    );
+
+    final bodyTextStyle = DefaultTextStyle.of(
+      tester.element(find.text('Body')),
+    ).style;
+    expect(bodyTextStyle.fontSize, 14);
+    expect(bodyTextStyle.decoration, TextDecoration.none);
   });
 
   testWidgets('builds material fallback on desktop', (tester) async {
@@ -593,7 +605,9 @@ void main() {
     expect(find.byKey(const ValueKey<String>('detail')), findsNothing);
   });
 
-  testWidgets('primary action expands across mobile width', (tester) async {
+  testWidgets('primary action uses cupertino button across mobile width', (
+    tester,
+  ) async {
     setTargetPlatform(TargetPlatform.iOS);
 
     await tester.pumpWidget(
@@ -610,7 +624,9 @@ void main() {
       ),
     );
 
-    expect(tester.getSize(find.byType(FilledButton)).width, 390);
+    expect(find.byType(CupertinoButton), findsOneWidget);
+    expect(find.byType(FilledButton), findsNothing);
+    expect(tester.getSize(find.byType(CupertinoButton)).width, 390);
   });
 
   testWidgets('primary action stays bounded on regular desktop', (

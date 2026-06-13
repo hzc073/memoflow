@@ -25,6 +25,7 @@ import 'package:memos_flutter_app/data/repositories/webdav_settings_repository.d
 import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/features/settings/webdav_sync_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
@@ -470,11 +471,12 @@ class _RecordingPageRouteObserver extends NavigatorObserver {
 Future<AppDatabase> _pumpWebDavScreen(
   WidgetTester tester, {
   required WebDavSettings settings,
-  required NavigatorObserver observer,
+  NavigatorObserver? observer,
+  FakeWebDavSyncService? webDavSyncService,
   FakeWebDavBackupPasswordRepository? passwordRepository,
   LocalLibrary? localLibrary,
 }) async {
-  final webDavSyncService = FakeWebDavSyncService(const <String>[]);
+  final syncService = webDavSyncService ?? FakeWebDavSyncService(const []);
   final webDavBackupService = FakeWebDavBackupService();
   final backupStateRepo = FakeWebDavBackupStateRepository();
   final sessionController = FakeAppSessionController(
@@ -508,7 +510,7 @@ Future<AppDatabase> _pumpWebDavScreen(
           syncCoordinatorProvider.overrideWith((ref) {
             return RecordingSyncCoordinator(
               SyncDependencies(
-                webDavSyncService: webDavSyncService,
+                webDavSyncService: syncService,
                 webDavBackupService: webDavBackupService,
                 webDavBackupStateRepository: backupStateRepo,
                 readWebDavSettings: () => settingsController.state,
@@ -527,7 +529,7 @@ Future<AppDatabase> _pumpWebDavScreen(
           locale: AppLocale.en.flutterLocale,
           supportedLocales: AppLocaleUtils.supportedLocales,
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
-          navigatorObservers: [observer],
+          navigatorObservers: observer == null ? const [] : [observer],
           home: const WebDavSyncScreen(),
         ),
       ),
@@ -538,6 +540,10 @@ Future<AppDatabase> _pumpWebDavScreen(
 }
 
 void main() {
+  tearDown(() {
+    debugPlatformTargetOverride = null;
+  });
+
   testWidgets('top-right action runs manual sync and resolves conflicts', (
     WidgetTester tester,
   ) async {
@@ -630,6 +636,43 @@ void main() {
     expect(webDavSyncService.callCount, 2);
     expect(coordinator?.lastWebDavResolutions, {'preferences.json': true});
     expect(settingsController.state.autoSyncAllowed, isTrue);
+
+    await db.close();
+  });
+
+  testWidgets('WebDAV conflict dialog uses settings seams on iOS', (
+    WidgetTester tester,
+  ) async {
+    LocaleSettings.setLocale(AppLocale.en);
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final conflicts = <String>['preferences.json'];
+    final settings = WebDavSettings.defaults.copyWith(
+      enabled: true,
+      serverUrl: 'https://example.com',
+      username: 'user',
+      password: 'pass',
+      backupEncryptionMode: WebDavBackupEncryptionMode.plain,
+    );
+    final db = await _pumpWebDavScreen(
+      tester,
+      settings: settings,
+      webDavSyncService: FakeWebDavSyncService(conflicts),
+    );
+
+    await tester.tap(find.byTooltip(t.strings.legacy.msg_sync));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(SettingsMultiChoiceRow<String>), findsOneWidget);
+    expect(find.byType(SettingsSingleChoiceList<bool>), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(CheckboxListTile), findsNothing);
+    expect(find.byType(RadioListTile<bool>), findsNothing);
 
     await db.close();
   });
@@ -836,7 +879,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Abandon'));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.widgetWithText(FilledButton, t.strings.legacy.msg_confirm),
+      find.widgetWithText(TextButton, t.strings.legacy.msg_confirm),
     );
     await tester.pumpAndSettle();
 

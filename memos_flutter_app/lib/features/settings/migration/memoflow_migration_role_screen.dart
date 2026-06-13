@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../i18n/strings.g.dart';
+import '../../../platform/platform_route.dart';
 import '../../../state/settings/device_preferences_provider.dart';
 import '../../../state/system/local_library_provider.dart';
 import '../settings_ui.dart';
@@ -50,7 +51,8 @@ class MemoFlowMigrationRoleScreen extends ConsumerWidget {
                   : () {
                       haptic();
                       Navigator.of(context).push(
-                        MaterialPageRoute<void>(
+                        buildPlatformPageRoute<void>(
+                          context: context,
                           builder: (_) => const MemoFlowMigrationSenderScreen(),
                         ),
                       );
@@ -66,7 +68,8 @@ class MemoFlowMigrationRoleScreen extends ConsumerWidget {
               onTap: () {
                 haptic();
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => const MemoFlowMigrationReceiverScreen(),
                   ),
                 );

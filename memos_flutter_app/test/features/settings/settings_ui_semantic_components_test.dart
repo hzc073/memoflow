@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/platform/widgets/platform_list_section.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_primary_action.dart';
 
 void main() {
   void setTargetPlatform(TargetPlatform platform) {
@@ -325,11 +327,16 @@ void main() {
 
     expect(textValue, 'updated');
 
-    final dropdown = tester.widget<DropdownButton<String>>(
-      find.byWidgetPredicate((widget) => widget is DropdownButton<String>),
-    );
-    dropdown.onChanged?.call('two');
-    await tester.pump();
+    expect(find.text('One'), findsOneWidget);
+
+    await tester.tap(find.byType(SettingsMenuRow<String>));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsSingleChoiceList<String>), findsOneWidget);
+    expect(find.text('Two'), findsOneWidget);
+
+    await tester.tap(find.text('Two'));
+    await tester.pumpAndSettle();
 
     expect(selectedValue, 'two');
     expect(find.text('Two'), findsOneWidget);
@@ -339,11 +346,315 @@ void main() {
 
     expect(stepValue, 4);
     expect(find.text('4x'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('4x')).style?.fontSize, 13);
 
     await tester.tap(find.text('Save'));
     await tester.pump();
 
     expect(actionCount, 1);
+  });
+
+  testWidgets('disabled settings menu row does not open picker', (
+    tester,
+  ) async {
+    var selectedValue = 'one';
+    var changeCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SettingsSection(
+            children: [
+              SettingsMenuRow<String>(
+                label: 'Mode',
+                value: selectedValue,
+                values: const ['one', 'two'],
+                labelFor: (value) => value == 'one' ? 'One' : 'Two',
+                enabled: false,
+                onChanged: (value) {
+                  selectedValue = value;
+                  changeCount += 1;
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(SettingsMenuRow<String>));
+    await tester.pumpAndSettle();
+
+    expect(selectedValue, 'one');
+    expect(changeCount, 0);
+    expect(find.text('Two'), findsNothing);
+  });
+
+  testWidgets('settings menu row renders and selects on iOS', (tester) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    var selectedValue = 'one';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return SettingsPage(
+              title: const Text('Settings'),
+              children: [
+                SettingsSection(
+                  children: [
+                    SettingsMenuRow<String>(
+                      label: 'Mode',
+                      value: selectedValue,
+                      values: const ['one', 'two'],
+                      labelFor: (value) => value == 'one' ? 'One' : 'Two',
+                      onChanged: (value) =>
+                          setState(() => selectedValue = value),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('One'), findsOneWidget);
+
+    await tester.tap(find.byType(SettingsMenuRow<String>));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Two'), findsOneWidget);
+
+    await tester.tap(find.text('Two'));
+    await tester.pumpAndSettle();
+
+    expect(selectedValue, 'two');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings option choice row renders and selects on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    var selectedValue = 'one';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return SettingsPage(
+              title: const Text('Settings'),
+              showBackButton: false,
+              children: [
+                SettingsSection(
+                  children: [
+                    SettingsOptionChoiceRow<String>(
+                      label: 'Density',
+                      description: 'Choose how much content each row shows.',
+                      value: selectedValue,
+                      options: const [
+                        SettingsChoiceOption(value: 'one', label: 'Compact'),
+                        SettingsChoiceOption(
+                          value: 'two',
+                          label: 'Comfortable',
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => selectedValue = value),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.text('Compact'), findsOneWidget);
+
+    await tester.tap(find.text('Comfortable'));
+    await tester.pumpAndSettle();
+
+    expect(selectedValue, 'two');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings single and multi choice lists work on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    var singleValue = 'system';
+    var multiValues = <String>{'local'};
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return SettingsPage(
+              title: const Text('Settings'),
+              showBackButton: false,
+              children: [
+                SettingsSection(
+                  children: [
+                    SettingsSingleChoiceList<String>(
+                      value: singleValue,
+                      options: const [
+                        SettingsChoiceOption(
+                          value: 'system',
+                          label: 'System',
+                          description: 'Follow system behavior.',
+                        ),
+                        SettingsChoiceOption(
+                          value: 'manual',
+                          label: 'Manual',
+                          description: 'Keep the chosen value.',
+                        ),
+                      ],
+                      onChanged: (value) => setState(() => singleValue = value),
+                    ),
+                    SettingsMultiChoiceList<String>(
+                      values: multiValues,
+                      options: const [
+                        SettingsChoiceOption(value: 'local', label: 'Local'),
+                        SettingsChoiceOption(value: 'cloud', label: 'Cloud'),
+                      ],
+                      onChanged: (values) =>
+                          setState(() => multiValues = values),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Radio<String>), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+
+    await tester.tap(find.text('Manual'));
+    await tester.pumpAndSettle();
+
+    expect(singleValue, 'manual');
+
+    await tester.tap(find.text('Cloud'));
+    await tester.pumpAndSettle();
+
+    expect(multiValues, contains('cloud'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings action dialog feedback and progress work on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    var actionCount = 0;
+    var confirmed = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return SettingsPage(
+              title: const Text('Settings'),
+              showBackButton: false,
+              children: [
+                SettingsSection(
+                  children: [
+                    const SettingsFeedbackRow(
+                      kind: SettingsFeedbackKind.success,
+                      title: 'Saved',
+                      message: 'Settings were updated.',
+                    ),
+                    const SettingsProgressRow(
+                      label: 'Syncing',
+                      description: 'Updating local settings.',
+                      value: 0.4,
+                    ),
+                    SettingsNavigationRow(
+                      label: 'Open confirmation',
+                      onTap: () async {
+                        confirmed = await showSettingsConfirmationDialog(
+                          context: context,
+                          title: 'Reset settings',
+                          message: 'This cannot be undone.',
+                          confirmLabel: 'Proceed',
+                          destructive: true,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SettingsAction(
+                    label: const Text('Delete'),
+                    variant: PlatformPrimaryActionVariant.destructive,
+                    onPressed: () => actionCount += 1,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CupertinoButton), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('40%'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+
+    expect(actionCount, 1);
+
+    await tester.tap(find.text('Open confirmation'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CupertinoAlertDialog), findsOneWidget);
+
+    await tester.tap(find.text('Proceed'));
+    await tester.pumpAndSettle();
+
+    expect(confirmed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings form dialog text uses compact undecorated body style', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SettingsFormDialog(
+          title: Text('Dialog title'),
+          children: [Text('Plain body text')],
+        ),
+      ),
+    );
+
+    final bodyStyle = DefaultTextStyle.of(
+      tester.element(find.text('Plain body text')),
+    ).style;
+    expect(bodyStyle.fontSize, 14);
+    expect(bodyStyle.decoration, TextDecoration.none);
   });
 }
 

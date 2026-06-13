@@ -8,6 +8,7 @@ import '../../core/top_toast.dart';
 import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/shortcut.dart';
 import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_picker.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../platform/widgets/platform_secondary_task_surface.dart';
 import '../../state/memos/memos_providers.dart';
@@ -114,10 +115,9 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
             _TagPickerSheet(tags: tags, initial: _selectedTags),
       );
     }
-    return showModalBottomSheet<Set<String>>(
+    return showPlatformPicker<Set<String>>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
+      desktopMaxWidth: 520,
       builder: (context) => _TagPickerSheet(tags: tags, initial: _selectedTags),
     );
   }
@@ -268,22 +268,17 @@ class _ShortcutEditorScreenState extends ConsumerState<ShortcutEditorScreen> {
                         surfaceColor: colorScheme.surface,
                         isDark: tokens.isDark,
                       );
-                      return InputChip(
-                        label: Text('#$tag'),
+                      return SettingsRemovableChip(
+                        label: '#$tag',
+                        deleteTooltip: tr.msg_remove,
                         onDeleted: () =>
                             setState(() => _selectedTags.remove(tag)),
                         backgroundColor:
                             colors?.background ?? colorScheme.surface,
-                        deleteIconColor: colors?.text ?? tokens.textMuted,
-                        labelStyle: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: colors?.text ?? tokens.textMain,
-                        ),
-                        side: BorderSide(
-                          color:
-                              colors?.border ??
-                              colorScheme.outlineVariant.withValues(alpha: 0.8),
-                        ),
+                        foregroundColor: colors?.text ?? tokens.textMain,
+                        borderColor:
+                            colors?.border ??
+                            colorScheme.outlineVariant.withValues(alpha: 0.8),
                       );
                     })
                     .toList(growable: false),
@@ -807,8 +802,8 @@ class _SegmentedControl<T> extends StatelessWidget {
         children: [
           for (final option in options)
             Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => onChanged(option.value),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
@@ -855,7 +850,7 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    final colorScheme = Theme.of(context).colorScheme;
+    final tr = context.t.strings.legacy;
 
     return SafeArea(
       child: Column(
@@ -865,34 +860,23 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               children: [
-                TextButton(
+                SettingsDialogAction(
                   onPressed: () => context.safePop(),
-                  child: Text(
-                    context.t.strings.legacy.msg_cancel_2,
-                    style: TextStyle(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  label: Text(tr.msg_cancel_2),
                 ),
                 const Spacer(),
                 Text(
-                  context.t.strings.legacy.msg_select_tags,
+                  tr.msg_select_tags,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: tokens.textMain,
                   ),
                 ),
                 const Spacer(),
-                TextButton(
+                SettingsDialogAction(
                   onPressed: () => context.safePop(_selected),
-                  child: Text(
-                    context.t.strings.legacy.msg_done,
-                    style: TextStyle(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  variant: PlatformPrimaryActionVariant.filled,
+                  label: Text(tr.msg_done),
                 ),
               ],
             ),
@@ -902,44 +886,33 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
                 ? Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      context.t.strings.legacy.msg_no_tags,
+                      tr.msg_no_tags,
                       style: TextStyle(color: tokens.textMuted),
                     ),
                   )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: widget.tags.length,
-                    itemBuilder: (context, index) {
-                      final tag = widget.tags[index];
-                      final selected = _selected.contains(tag.tag);
-                      return CheckboxListTile(
-                        value: selected,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value == true) {
-                              _selected.add(tag.tag);
-                            } else {
-                              _selected.remove(tag.tag);
-                            }
-                          });
-                        },
-                        title: Text(
-                          '#${tag.tag}',
-                          style: TextStyle(
-                            color: tokens.textMain,
-                            fontWeight: FontWeight.w600,
-                          ),
+                : SingleChildScrollView(
+                    child: SettingsSection(
+                      children: [
+                        SettingsMultiChoiceList<String>(
+                          values: _selected,
+                          options: [
+                            for (final tag in widget.tags)
+                              SettingsChoiceOption<String>(
+                                value: tag.tag,
+                                label: '#${tag.tag}',
+                                description: '${tag.count}',
+                              ),
+                          ],
+                          onChanged: (next) {
+                            setState(() {
+                              _selected
+                                ..clear()
+                                ..addAll(next);
+                            });
+                          },
                         ),
-                        subtitle: Text(
-                          '${tag.count}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: tokens.textMuted,
-                          ),
-                        ),
-                        activeColor: colorScheme.primary,
-                      );
-                    },
+                      ],
+                    ),
                   ),
           ),
         ],

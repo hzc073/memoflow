@@ -290,7 +290,10 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
             SettingsStepperRow(
               label: context.t.strings.legacy.msg_size_target,
               value: settings.sizeTarget.value,
-              unit: _sizeUnitLabel(context, settings.sizeTarget.unit),
+              unit: _sizeTargetValueUnitLabel(
+                context,
+                settings.sizeTarget.unit,
+              ),
               enabled: settings.mode == ImageCompressionMode.size,
               onDecrease: () => notifier.setSizeTargetValue(
                 settings.sizeTarget.value - _sizeStep,
@@ -403,5 +406,13 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
     ImageCompressionMaxOutputUnit.mb => context.t.strings.legacy.msg_mb,
     ImageCompressionMaxOutputUnit.percentage =>
       context.t.strings.legacy.msg_percentage,
+  };
+
+  String _sizeTargetValueUnitLabel(
+    BuildContext context,
+    ImageCompressionMaxOutputUnit value,
+  ) => switch (value) {
+    ImageCompressionMaxOutputUnit.percentage => '%',
+    _ => _sizeUnitLabel(context, value),
   };
 }

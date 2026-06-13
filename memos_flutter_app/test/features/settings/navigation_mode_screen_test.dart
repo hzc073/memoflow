@@ -22,7 +22,9 @@ import 'package:memos_flutter_app/data/models/webdav_sync_meta.dart';
 import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
 import 'package:memos_flutter_app/features/settings/bottom_navigation_mode_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/navigation_mode_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
 import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 import 'package:memos_flutter_app/state/sync/sync_coordinator_provider.dart';
@@ -30,6 +32,13 @@ import 'package:memos_flutter_app/state/system/session_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  void setTargetPlatform(TargetPlatform platform) {
+    debugPlatformTargetOverride = platform;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+    });
+  }
 
   testWidgets('bottom navigation selection and detail settings are separated', (
     tester,
@@ -110,16 +119,16 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<HomeRootDestination> &&
-            widget.value == HomeRootDestination.collections,
+            widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+            widget.option.value == HomeRootDestination.collections,
       ),
       findsOneWidget,
     );
 
     final archivedTile = find.byWidgetPredicate(
       (widget) =>
-          widget is RadioListTile<HomeRootDestination> &&
-          widget.value == HomeRootDestination.archived,
+          widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+          widget.option.value == HomeRootDestination.archived,
     );
     await tester.ensureVisible(archivedTile);
     await tester.tap(archivedTile, warnIfMissed: false);
@@ -162,24 +171,24 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<HomeRootDestination> &&
-            widget.value == HomeRootDestination.explore,
+            widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+            widget.option.value == HomeRootDestination.explore,
       ),
       findsNothing,
     );
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<HomeRootDestination> &&
-            widget.value == HomeRootDestination.collections,
+            widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+            widget.option.value == HomeRootDestination.collections,
       ),
       findsOneWidget,
     );
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<HomeRootDestination> &&
-            widget.value == HomeRootDestination.draftBox,
+            widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+            widget.option.value == HomeRootDestination.draftBox,
       ),
       findsOneWidget,
     );
@@ -206,14 +215,62 @@ void main() {
     await tester.tap(find.text('Left Slot 1'));
     await tester.pumpAndSettle();
 
-    final exploreTile = tester.widget<RadioListTile<HomeRootDestination>>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is RadioListTile<HomeRootDestination> &&
-            widget.value == HomeRootDestination.explore,
-      ),
-    );
+    final exploreTile = tester
+        .widget<SettingsSingleChoiceRow<HomeRootDestination>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+                widget.option.value == HomeRootDestination.explore,
+          ),
+        );
     expect(exploreTile.enabled, isFalse);
+  });
+
+  testWidgets('bottom navigation destination picker works on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+    final container = _buildContainer(
+      initial: WorkspacePreferences.defaults.copyWith(
+        homeNavigationPreferences: HomeNavigationPreferences.defaults.copyWith(
+          mode: HomeNavigationMode.bottomBar,
+        ),
+      ),
+      hasAccount: true,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      _buildApp(container, home: const BottomNavigationModeSettingsScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Left Slot 1'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byType(SettingsSingleChoiceRow<HomeRootDestination>),
+      findsWidgets,
+    );
+
+    final noneRow = find.byWidgetPredicate(
+      (widget) =>
+          widget is SettingsSingleChoiceRow<HomeRootDestination> &&
+          widget.option.value == HomeRootDestination.none,
+    );
+    await tester.ensureVisible(noneRow);
+    await tester.tap(noneRow);
+    await tester.pumpAndSettle();
+
+    expect(
+      container
+          .read(currentWorkspacePreferencesProvider)
+          .homeNavigationPreferences
+          .leftPrimary,
+      HomeRootDestination.none,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 

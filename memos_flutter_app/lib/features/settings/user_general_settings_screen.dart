@@ -58,11 +58,7 @@ class _UserGeneralSettingsScreenState
       showTopToast(context, context.t.strings.legacy.msg_settings_updated);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_update_failed(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_update_failed(e: e));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -265,9 +261,10 @@ class _UserGeneralLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 48),
-      child: Center(child: CircularProgressIndicator()),
+    return SettingsSection(
+      children: [
+        SettingsProgressRow(label: context.t.strings.legacy.msg_loading),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/application/maintenance/media_cache_maintenance_models.dart';
 import 'package:memos_flutter_app/application/maintenance/media_cache_maintenance_service.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
+import 'package:memos_flutter_app/core/top_toast.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/device_preferences.dart';
@@ -18,6 +19,10 @@ import 'package:memos_flutter_app/state/system/database_provider.dart';
 import 'settings_test_harness.dart';
 
 void main() {
+  tearDown(() {
+    dismissTopToast();
+  });
+
   testWidgets('self repair no longer shows media cache cleanup UI', (
     tester,
   ) async {
@@ -124,6 +129,8 @@ void main() {
       expect(target.clearCalls, 1);
       expect(find.text('Media cache cleared'), findsOneWidget);
       expect(find.text('0 B'), findsWidgets);
+      dismissTopToast();
+      await tester.pump();
     },
   );
 
@@ -197,6 +204,8 @@ void main() {
       find.text('Media cache cleanup partially completed'),
       findsOneWidget,
     );
+    dismissTopToast();
+    await tester.pump();
   });
 }
 

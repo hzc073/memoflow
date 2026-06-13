@@ -16,6 +16,7 @@ import '../../state/system/database_provider.dart';
 import '../../state/system/reminder_mutation_service.dart';
 import '../../state/system/reminder_scheduler.dart';
 import '../../state/settings/reminder_settings_provider.dart';
+import '../settings/settings_ui.dart';
 import 'reminder_settings_screen.dart';
 import '../../i18n/strings.g.dart';
 
@@ -415,20 +416,19 @@ class _ModeRow extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
             ),
           ),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: Text(context.t.strings.legacy.msg_single),
-                selected: mode == ReminderMode.single,
-                onSelected: (_) => onModeChanged(ReminderMode.single),
+          SettingsOptionChipGroup<ReminderMode>(
+            value: mode,
+            options: [
+              SettingsChoiceOption<ReminderMode>(
+                value: ReminderMode.single,
+                label: context.t.strings.legacy.msg_single,
               ),
-              ChoiceChip(
-                label: Text(context.t.strings.legacy.msg_repeat),
-                selected: mode == ReminderMode.repeat,
-                onSelected: (_) => onModeChanged(ReminderMode.repeat),
+              SettingsChoiceOption<ReminderMode>(
+                value: ReminderMode.repeat,
+                label: context.t.strings.legacy.msg_repeat,
               ),
             ],
+            onChanged: onModeChanged,
           ),
         ],
       ),

@@ -63,7 +63,6 @@ class _LocationSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(locationSettingsProvider);
-    final tokens = settingsPageTokens(context);
 
     return SettingsPage(
       title: Text(context.t.strings.legacy.msg_location),
@@ -155,7 +154,6 @@ class _LocationSettingsScreenState
             _PrecisionRow(
               label: context.t.strings.legacy.msg_location_precision,
               value: settings.precision,
-              tokens: tokens,
               onChanged: (value) {
                 _markDirty();
                 ref.read(locationSettingsProvider.notifier).setPrecision(value);
@@ -180,72 +178,39 @@ class _PrecisionRow extends StatelessWidget {
   const _PrecisionRow({
     required this.label,
     required this.value,
-    required this.tokens,
     required this.onChanged,
   });
 
   final String label;
   final LocationPrecision value;
-  final SettingsPageTokens tokens;
   final ValueChanged<LocationPrecision> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final chipBg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.55);
-    final options = <(LocationPrecision, String)>[
-      (LocationPrecision.province, context.t.strings.legacy.msg_province),
-      (LocationPrecision.city, context.t.strings.legacy.msg_city),
-      (LocationPrecision.district, context.t.strings.legacy.msg_district),
-      (LocationPrecision.street, context.t.strings.legacy.msg_street),
+    final options = <SettingsChoiceOption<LocationPrecision>>[
+      SettingsChoiceOption(
+        value: LocationPrecision.province,
+        label: context.t.strings.legacy.msg_province,
+      ),
+      SettingsChoiceOption(
+        value: LocationPrecision.city,
+        label: context.t.strings.legacy.msg_city,
+      ),
+      SettingsChoiceOption(
+        value: LocationPrecision.district,
+        label: context.t.strings.legacy.msg_district,
+      ),
+      SettingsChoiceOption(
+        value: LocationPrecision.street,
+        label: context.t.strings.legacy.msg_street,
+      ),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SettingsRowTitle(label),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: options
-                .map(
-                  (option) => _buildChip(
-                    precision: option.$1,
-                    text: option.$2,
-                    chipBg: chipBg,
-                    selectedColor: colorScheme.primary,
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChip({
-    required LocationPrecision precision,
-    required String text,
-    required Color chipBg,
-    required Color selectedColor,
-  }) {
-    final selected = precision == value;
-    return ChoiceChip(
-      label: Text(text),
-      selected: selected,
-      onSelected: (_) => onChanged(precision),
-      selectedColor: selectedColor,
-      backgroundColor: chipBg,
-      labelStyle: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: selected ? Colors.white : tokens.textMain,
-      ),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
+    return SettingsOptionChoiceRow<LocationPrecision>(
+      label: label,
+      value: value,
+      options: options,
+      onChanged: onChanged,
     );
   }
 }

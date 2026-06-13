@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/uid.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import 'settings_ui.dart';
 
@@ -18,7 +20,7 @@ class TemplateSettingsScreen extends ConsumerWidget {
     final tokens = settingsPageTokens(context);
 
     Future<void> openTemplateEditor({MemoTemplate? initial}) async {
-      final edited = await showDialog<MemoTemplate>(
+      final edited = await showPlatformDialog<MemoTemplate>(
         context: context,
         builder: (_) => _TemplateEditorDialog(initial: initial),
       );
@@ -27,7 +29,7 @@ class TemplateSettingsScreen extends ConsumerWidget {
     }
 
     Future<void> openVariableSettings() async {
-      final updated = await showDialog<MemoTemplateVariableSettings>(
+      final updated = await showPlatformDialog<MemoTemplateVariableSettings>(
         context: context,
         builder: (_) =>
             _TemplateVariableSettingsDialog(initial: settings.variables),
@@ -37,36 +39,23 @@ class TemplateSettingsScreen extends ConsumerWidget {
     }
 
     Future<void> openVariableDocsDialog() async {
-      await showDialog<void>(
+      await showPlatformDialog<void>(
         context: context,
         builder: (_) => const _VariableDocsDialog(),
       );
     }
 
     Future<void> deleteTemplate(MemoTemplate template) async {
-      final confirmed =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.t.strings.legacy.msg_delete_template),
-              content: Text(
-                context.t.strings.legacy.msg_delete_template_confirm_with_name(
-                  name: template.name,
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(context.t.strings.common.cancel),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(context.t.strings.legacy.msg_delete),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final confirmed = await showSettingsConfirmationDialog(
+        context: context,
+        title: context.t.strings.legacy.msg_delete_template,
+        message: context.t.strings.legacy.msg_delete_template_confirm_with_name(
+          name: template.name,
+        ),
+        confirmLabel: context.t.strings.legacy.msg_delete,
+        cancelLabel: context.t.strings.common.cancel,
+        destructive: true,
+      );
       if (!confirmed) return;
       controller.removeTemplateById(template.id);
     }
@@ -350,103 +339,98 @@ class _VariableDocsDialogState extends State<_VariableDocsDialog> {
       );
     }
 
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 800,
       title: Text(context.t.strings.legacy.msg_available_variable_docs),
-      content: SizedBox(
-        width: 760,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              context.t.strings.legacy.msg_date_time_weather_variable_desc,
-              style: TextStyle(fontSize: 12, color: textMuted, height: 1.35),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: tableHeight,
+      actions: [
+        SettingsDialogAction(
+          onPressed: () => Navigator.of(context).maybePop(),
+          variant: PlatformPrimaryActionVariant.filled,
+          label: Text(context.t.strings.legacy.msg_got_it),
+        ),
+      ],
+      children: [
+        Text(
+          context.t.strings.legacy.msg_date_time_weather_variable_desc,
+          style: TextStyle(fontSize: 12, color: textMuted, height: 1.35),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: tableHeight,
+          child: Scrollbar(
+            controller: _verticalController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _verticalController,
               child: Scrollbar(
-                controller: _verticalController,
+                controller: _horizontalController,
                 thumbVisibility: true,
+                notificationPredicate: (notification) =>
+                    notification.metrics.axis == Axis.horizontal,
                 child: SingleChildScrollView(
-                  controller: _verticalController,
-                  child: Scrollbar(
-                    controller: _horizontalController,
-                    thumbVisibility: true,
-                    notificationPredicate: (notification) =>
-                        notification.metrics.axis == Axis.horizontal,
-                    child: SingleChildScrollView(
-                      controller: _horizontalController,
-                      scrollDirection: Axis.horizontal,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Table(
-                          defaultVerticalAlignment:
-                              TableCellVerticalAlignment.middle,
-                          columnWidths: const <int, TableColumnWidth>{
-                            0: FixedColumnWidth(240),
-                            1: FixedColumnWidth(220),
-                            2: FixedColumnWidth(220),
-                          },
+                  controller: _horizontalController,
+                  scrollDirection: Axis.horizontal,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Table(
+                      defaultVerticalAlignment:
+                          TableCellVerticalAlignment.middle,
+                      columnWidths: const <int, TableColumnWidth>{
+                        0: FixedColumnWidth(240),
+                        1: FixedColumnWidth(220),
+                        2: FixedColumnWidth(220),
+                      },
+                      children: [
+                        TableRow(
                           children: [
-                            TableRow(
-                              children: [
-                                cell(
-                                  text: context.t.strings.legacy.msg_variable,
-                                  isHeader: true,
-                                  width: 240,
-                                ),
-                                cell(
-                                  text: context.t.strings.legacy.msg_meaning,
-                                  isHeader: true,
-                                  width: 220,
-                                ),
-                                cell(
-                                  text: context.t.strings.legacy.msg_example,
-                                  isHeader: true,
-                                  width: 220,
-                                  rightBorder: false,
-                                ),
-                              ],
+                            cell(
+                              text: context.t.strings.legacy.msg_variable,
+                              isHeader: true,
+                              width: 240,
                             ),
-                            ...docs.map(
-                              (item) => TableRow(
-                                children: [
-                                  cell(
-                                    text: item.token,
-                                    isHeader: false,
-                                    width: 240,
-                                    color: tokenColor,
-                                  ),
-                                  cell(
-                                    text: item.meaning,
-                                    isHeader: false,
-                                    width: 220,
-                                  ),
-                                  cell(
-                                    text: item.example,
-                                    isHeader: false,
-                                    width: 220,
-                                    rightBorder: false,
-                                  ),
-                                ],
-                              ),
+                            cell(
+                              text: context.t.strings.legacy.msg_meaning,
+                              isHeader: true,
+                              width: 220,
+                            ),
+                            cell(
+                              text: context.t.strings.legacy.msg_example,
+                              isHeader: true,
+                              width: 220,
+                              rightBorder: false,
                             ),
                           ],
                         ),
-                      ),
+                        ...docs.map(
+                          (item) => TableRow(
+                            children: [
+                              cell(
+                                text: item.token,
+                                isHeader: false,
+                                width: 240,
+                                color: tokenColor,
+                              ),
+                              cell(
+                                text: item.meaning,
+                                isHeader: false,
+                                width: 220,
+                              ),
+                              cell(
+                                text: item.example,
+                                isHeader: false,
+                                width: 220,
+                                rightBorder: false,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          child: Text(context.t.strings.legacy.msg_got_it),
+          ),
         ),
       ],
     );
@@ -509,58 +493,38 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final textMuted = settingsPageTokens(context).textMuted;
-
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 520,
       title: Text(
         widget.initial == null
             ? context.t.strings.legacy.msg_new_template
             : context.t.strings.legacy.msg_edit_template,
       ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              context.t.strings.legacy.msg_template_name,
-              style: TextStyle(fontSize: 12, color: textMuted),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameController,
-              maxLength: 32,
-              decoration: InputDecoration(
-                hintText: context.t.strings.legacy.msg_template_name_example,
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              context.t.strings.legacy.msg_template_content,
-              style: TextStyle(fontSize: 12, color: textMuted),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _contentController,
-              minLines: 4,
-              maxLines: 8,
-              decoration: InputDecoration(
-                hintText: context.t.strings.legacy.msg_template_content_example,
-              ),
-            ),
-          ],
-        ),
-      ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
           onPressed: () => Navigator.of(context).maybePop(),
-          child: Text(context.t.strings.common.cancel),
+          label: Text(context.t.strings.common.cancel),
         ),
-        FilledButton(
+        SettingsDialogAction(
           onPressed: _save,
-          child: Text(context.t.strings.common.save),
+          variant: PlatformPrimaryActionVariant.filled,
+          label: Text(context.t.strings.common.save),
+        ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_template_name,
+          controller: _nameController,
+          hint: context.t.strings.legacy.msg_template_name_example,
+          maxLength: 32,
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_template_content,
+          controller: _contentController,
+          hint: context.t.strings.legacy.msg_template_content_example,
+          minLines: 4,
+          maxLines: 8,
         ),
       ],
     );
@@ -642,100 +606,66 @@ class _TemplateVariableSettingsDialogState
 
   @override
   Widget build(BuildContext context) {
-    final textMuted = settingsPageTokens(context).textMuted;
-
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 560,
       title: Text(context.t.strings.legacy.msg_template_variable_settings),
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                context.t.strings.legacy.msg_date_format_variable,
-                style: TextStyle(color: textMuted),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _dateFormatController,
-                decoration: const InputDecoration(hintText: 'yyyy-MM-dd'),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                context.t.strings.legacy.msg_time_format_variable,
-                style: TextStyle(color: textMuted),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _timeFormatController,
-                decoration: const InputDecoration(hintText: 'HH:mm'),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                context.t.strings.legacy.msg_datetime_format_variable,
-                style: TextStyle(color: textMuted),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _dateTimeFormatController,
-                decoration: const InputDecoration(hintText: 'yyyy-MM-dd HH:mm'),
-              ),
-              const SizedBox(height: 12),
-              _DialogToggleRow(
-                title: context.t.strings.legacy.msg_enable_weather_variables,
-                subtitle: context.t.strings.legacy.msg_weather_variable_tokens,
-                value: _weatherEnabled,
-                onChanged: (value) => setState(() => _weatherEnabled = value),
-              ),
-              if (_weatherEnabled) ...[
-                Text(
-                  context.t.strings.legacy.msg_weather_city_adcode_or_name,
-                  style: TextStyle(color: textMuted),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _weatherCityController,
-                  decoration: InputDecoration(
-                    hintText: context.t.strings.legacy.msg_weather_city_example,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  context.t.strings.legacy.msg_weather_fallback_text,
-                  style: TextStyle(color: textMuted),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _weatherFallbackController,
-                  decoration: const InputDecoration(hintText: '--'),
-                ),
-              ],
-              const SizedBox(height: 8),
-              _DialogToggleRow(
-                title: context.t.strings.legacy.msg_keep_unknown_variables_raw,
-                subtitle: context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_keep_unknown_variables_raw_desc,
-                value: _keepUnknownVariables,
-                onChanged: (value) =>
-                    setState(() => _keepUnknownVariables = value),
-              ),
-            ],
-          ),
-        ),
-      ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
           onPressed: () => Navigator.of(context).maybePop(),
-          child: Text(context.t.strings.common.cancel),
+          label: Text(context.t.strings.common.cancel),
         ),
-        FilledButton(
+        SettingsDialogAction(
           onPressed: _save,
-          child: Text(context.t.strings.common.save),
+          variant: PlatformPrimaryActionVariant.filled,
+          label: Text(context.t.strings.common.save),
+        ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_date_format_variable,
+          controller: _dateFormatController,
+          hint: 'yyyy-MM-dd',
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_time_format_variable,
+          controller: _timeFormatController,
+          hint: 'HH:mm',
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_datetime_format_variable,
+          controller: _dateTimeFormatController,
+          hint: 'yyyy-MM-dd HH:mm',
+        ),
+        const SizedBox(height: 12),
+        _DialogToggleRow(
+          title: context.t.strings.legacy.msg_enable_weather_variables,
+          subtitle: context.t.strings.legacy.msg_weather_variable_tokens,
+          value: _weatherEnabled,
+          onChanged: (value) => setState(() => _weatherEnabled = value),
+        ),
+        if (_weatherEnabled) ...[
+          const SizedBox(height: 12),
+          SettingsDialogTextField(
+            label: context.t.strings.legacy.msg_weather_city_adcode_or_name,
+            controller: _weatherCityController,
+            hint: context.t.strings.legacy.msg_weather_city_example,
+          ),
+          const SizedBox(height: 12),
+          SettingsDialogTextField(
+            label: context.t.strings.legacy.msg_weather_fallback_text,
+            controller: _weatherFallbackController,
+            hint: '--',
+          ),
+        ],
+        const SizedBox(height: 8),
+        _DialogToggleRow(
+          title: context.t.strings.legacy.msg_keep_unknown_variables_raw,
+          subtitle:
+              context.t.strings.legacy.msg_keep_unknown_variables_raw_desc,
+          value: _keepUnknownVariables,
+          onChanged: (value) => setState(() => _keepUnknownVariables = value),
         ),
       ],
     );

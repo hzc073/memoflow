@@ -1,7 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, unused_element
 
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +39,7 @@ import '../../state/webdav/webdav_vault_provider.dart';
 import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_list_tile.dart';
 import '../../platform/widgets/platform_page.dart';
@@ -127,32 +127,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _selectAuthMode(BuildContext sheetContext) async {
-    final selected = await showDialog<WebDavAuthMode>(
+    final selected = await showSettingsSingleChoicePicker<WebDavAuthMode>(
       context: sheetContext,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogContext.t.strings.legacy.msg_auth_mode),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Basic'),
-              trailing: _authMode == WebDavAuthMode.basic
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavAuthMode.basic),
-            ),
-            ListTile(
-              title: const Text('Digest'),
-              trailing: _authMode == WebDavAuthMode.digest
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavAuthMode.digest),
-            ),
-          ],
-        ),
-      ),
+      title: sheetContext.t.strings.legacy.msg_auth_mode,
+      value: _authMode,
+      options: _authModeOptions(sheetContext),
     );
     if (!mounted || selected == null) return;
     setState(() => _authMode = selected);
@@ -161,61 +140,58 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<void> _selectBackupSchedule(BuildContext sheetContext) async {
-    final selected = await showDialog<WebDavBackupSchedule>(
+    final selected = await showSettingsSingleChoicePicker<WebDavBackupSchedule>(
       context: sheetContext,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogContext.t.strings.legacy.msg_backup_schedule),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(dialogContext.t.strings.legacy.msg_manual),
-              trailing: _backupSchedule == WebDavBackupSchedule.manual
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.manual),
-            ),
-            ListTile(
-              title: Text(dialogContext.t.strings.legacy.msg_daily),
-              trailing: _backupSchedule == WebDavBackupSchedule.daily
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.daily),
-            ),
-            ListTile(
-              title: Text(dialogContext.t.strings.legacy.msg_weekly),
-              trailing: _backupSchedule == WebDavBackupSchedule.weekly
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.weekly),
-            ),
-            ListTile(
-              title: Text(dialogContext.tr(zh: '每月', en: 'Monthly')),
-              trailing: _backupSchedule == WebDavBackupSchedule.monthly
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.monthly),
-            ),
-            ListTile(
-              title: Text(dialogContext.tr(zh: '每次打开', en: 'On app open')),
-              trailing: _backupSchedule == WebDavBackupSchedule.onOpen
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.onOpen),
-            ),
-          ],
-        ),
-      ),
+      title: sheetContext.t.strings.legacy.msg_backup_schedule,
+      value: _backupSchedule,
+      options: _backupScheduleOptions(sheetContext),
     );
     if (!mounted || selected == null) return;
     setState(() => _backupSchedule = selected);
     _markDirty();
     ref.read(webDavSettingsProvider.notifier).setBackupSchedule(selected);
+  }
+
+  List<SettingsChoiceOption<WebDavAuthMode>> _authModeOptions(
+    BuildContext context,
+  ) {
+    return const [
+      SettingsChoiceOption<WebDavAuthMode>(
+        value: WebDavAuthMode.basic,
+        label: 'Basic',
+      ),
+      SettingsChoiceOption<WebDavAuthMode>(
+        value: WebDavAuthMode.digest,
+        label: 'Digest',
+      ),
+    ];
+  }
+
+  List<SettingsChoiceOption<WebDavBackupSchedule>> _backupScheduleOptions(
+    BuildContext context,
+  ) {
+    return [
+      SettingsChoiceOption<WebDavBackupSchedule>(
+        value: WebDavBackupSchedule.manual,
+        label: context.t.strings.legacy.msg_manual,
+      ),
+      SettingsChoiceOption<WebDavBackupSchedule>(
+        value: WebDavBackupSchedule.daily,
+        label: context.t.strings.legacy.msg_daily,
+      ),
+      SettingsChoiceOption<WebDavBackupSchedule>(
+        value: WebDavBackupSchedule.weekly,
+        label: context.t.strings.legacy.msg_weekly,
+      ),
+      SettingsChoiceOption<WebDavBackupSchedule>(
+        value: WebDavBackupSchedule.monthly,
+        label: context.tr(zh: '每月', en: 'Monthly'),
+      ),
+      SettingsChoiceOption<WebDavBackupSchedule>(
+        value: WebDavBackupSchedule.onOpen,
+        label: context.tr(zh: '每次打开', en: 'On app open'),
+      ),
+    ];
   }
 
   void _setEnabled(bool value) {
@@ -355,8 +331,8 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     String? title,
     String? hint,
   }) async {
-    var password = '';
-    var confirmPassword = '';
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
     final resolvedTitle =
         title ??
         (_vaultEnabled
@@ -367,81 +343,82 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         (_vaultEnabled
             ? context.tr(zh: '请输入 Vault 密码', en: 'Enter Vault password')
             : context.t.strings.legacy.msg_enter_backup_password);
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(resolvedTitle),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+    try {
+      final confirmed =
+          await showPlatformDialog<bool>(
+            context: context,
+            builder: (dialogContext) => SettingsFormDialog(
+              title: Text(resolvedTitle),
+              actions: [
+                SettingsDialogAction(
+                  onPressed: () {
+                    FocusScope.of(dialogContext).unfocus();
+                    dialogContext.safePop(false);
+                  },
+                  label: Text(context.t.strings.legacy.msg_cancel_2),
+                ),
+                SettingsDialogAction(
+                  onPressed: () {
+                    FocusScope.of(dialogContext).unfocus();
+                    dialogContext.safePop(true);
+                  },
+                  label: Text(context.t.strings.legacy.msg_confirm),
+                  variant: PlatformPrimaryActionVariant.filled,
+                ),
+              ],
               children: [
-                TextFormField(
-                  autofocus: true,
+                SettingsDialogTextField(
+                  label: _vaultEnabled
+                      ? context.tr(zh: 'Vault 密码', en: 'Vault password')
+                      : context.t.strings.legacy.msg_backup_password,
+                  controller: passwordController,
+                  hint: resolvedHint,
                   obscureText: true,
                   textInputAction: confirm
                       ? TextInputAction.next
                       : TextInputAction.done,
-                  decoration: InputDecoration(hintText: resolvedHint),
-                  onChanged: (value) => password = value,
-                  onFieldSubmitted: (_) {
+                  onSubmitted: (_) {
                     if (!confirm) {
-                      FocusScope.of(context).unfocus();
-                      context.safePop(true);
+                      FocusScope.of(dialogContext).unfocus();
+                      dialogContext.safePop(true);
+                    } else {
+                      FocusScope.of(dialogContext).nextFocus();
                     }
                   },
                 ),
                 if (confirm) ...[
                   const SizedBox(height: 12),
-                  TextFormField(
+                  SettingsDialogTextField(
+                    label: context.t.strings.legacy.msg_confirm_password_2,
+                    controller: confirmController,
                     obscureText: true,
                     textInputAction: TextInputAction.done,
-                    decoration: InputDecoration(
-                      hintText: context.t.strings.legacy.msg_confirm_password_2,
-                    ),
-                    onChanged: (value) => confirmPassword = value,
-                    onFieldSubmitted: (_) {
-                      FocusScope.of(context).unfocus();
-                      context.safePop(true);
+                    onSubmitted: (_) {
+                      FocusScope.of(dialogContext).unfocus();
+                      dialogContext.safePop(true);
                     },
                   ),
                 ],
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                  context.safePop(false);
-                },
-                child: Text(context.t.strings.legacy.msg_cancel_2),
-              ),
-              FilledButton(
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                  context.safePop(true);
-                },
-                child: Text(context.t.strings.legacy.msg_confirm),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+          ) ??
+          false;
 
-    password = password.trim();
-    confirmPassword = confirmPassword.trim();
+      final password = passwordController.text.trim();
+      final confirmPassword = confirmController.text.trim();
 
-    if (!confirmed) return null;
-    if (password.isEmpty) return null;
-    if (confirm && password != confirmPassword) {
-      if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_passwords_not_match),
-        ),
-      );
-      return null;
+      if (!confirmed) return null;
+      if (password.isEmpty) return null;
+      if (confirm && password != confirmPassword) {
+        if (!mounted) return null;
+        showTopToast(context, context.t.strings.legacy.msg_passwords_not_match);
+        return null;
+      }
+      return password;
+    } finally {
+      passwordController.dispose();
+      confirmController.dispose();
     }
-    return password;
   }
 
   Future<bool> _setupBackupPassword() async {
@@ -510,9 +487,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     }
 
@@ -546,9 +521,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     }
 
@@ -567,9 +540,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     }
 
@@ -591,46 +562,28 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   }
 
   Future<_VaultExistingAction?> _promptExistingVaultAction() async {
-    return showDialog<_VaultExistingAction>(
+    return showSettingsSingleChoicePicker<_VaultExistingAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          context.tr(zh: '检测到已有 Vault', en: 'Existing Vault detected'),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                context.tr(zh: '验证 Vault 密码', en: 'Verify Vault password'),
-              ),
-              subtitle: Text(
-                context.tr(
-                  zh: '使用已有密码解锁',
-                  en: 'Use existing password to unlock',
-                ),
-              ),
-              onTap: () => dialogContext.safePop(_VaultExistingAction.verify),
-            ),
-            ListTile(
-              title: Text(context.tr(zh: '使用恢复码', en: 'Use recovery code')),
-              subtitle: Text(
-                context.tr(
-                  zh: '通过恢复码重置密码',
-                  en: 'Reset password using recovery code',
-                ),
-              ),
-              onTap: () => dialogContext.safePop(_VaultExistingAction.recover),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => dialogContext.safePop(),
-            child: Text(context.tr(zh: '取消', en: 'Cancel')),
+      title: context.tr(zh: '检测到已有 Vault', en: 'Existing Vault detected'),
+      value: null,
+      options: [
+        SettingsChoiceOption<_VaultExistingAction>(
+          value: _VaultExistingAction.verify,
+          label: context.tr(zh: '验证 Vault 密码', en: 'Verify Vault password'),
+          description: context.tr(
+            zh: '使用已有密码解锁',
+            en: 'Use existing password to unlock',
           ),
-        ],
-      ),
+        ),
+        SettingsChoiceOption<_VaultExistingAction>(
+          value: _VaultExistingAction.recover,
+          label: context.tr(zh: '使用恢复码', en: 'Use recovery code'),
+          description: context.tr(
+            zh: '通过恢复码重置密码',
+            en: 'Reset password using recovery code',
+          ),
+        ),
+      ],
     );
   }
 
@@ -638,78 +591,69 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     var copied = false;
     var saved = false;
     final confirmed =
-        await showDialog<bool>(
+        await showPlatformDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (dialogContext) {
             return StatefulBuilder(
               builder: (context, setState) {
                 final canContinue = copied && saved;
-                return AlertDialog(
+                return SettingsFormDialog(
                   title: Text(
                     context.tr(zh: 'Vault 恢复码', en: 'Vault recovery code'),
                   ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        context.tr(
-                          zh: '请复制并保存恢复码。丢失密码时只能用恢复码找回。',
-                          en: 'Copy and save the recovery code. It is required if you lose the password.',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SelectableText(
-                        code,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      CheckboxListTile(
-                        value: saved,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          context.tr(
-                            zh: '我已保存恢复码',
-                            en: 'I have saved the recovery code',
-                          ),
-                        ),
-                        onChanged: (value) {
-                          setState(() => saved = value ?? false);
-                        },
-                      ),
-                    ],
-                  ),
                   actions: [
-                    TextButton(
+                    SettingsDialogAction(
                       onPressed: () async {
                         await Clipboard.setData(ClipboardData(text: code));
                         if (!dialogContext.mounted) return;
                         setState(() => copied = true);
-                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              context.tr(
-                                zh: '恢复码已复制',
-                                en: 'Recovery code copied',
-                              ),
-                            ),
-                          ),
+                        showTopToast(
+                          dialogContext,
+                          context.tr(zh: '恢复码已复制', en: 'Recovery code copied'),
                         );
                       },
-                      child: Text(context.t.strings.legacy.msg_copy),
+                      icon: const Icon(Icons.copy),
+                      label: Text(context.t.strings.legacy.msg_copy),
                     ),
-                    FilledButton(
+                    SettingsDialogAction(
                       onPressed: canContinue
                           ? () => dialogContext.safePop(true)
                           : null,
-                      child: Text(context.t.strings.legacy.msg_continue),
+                      label: Text(context.t.strings.legacy.msg_continue),
+                      variant: PlatformPrimaryActionVariant.filled,
+                    ),
+                  ],
+                  children: [
+                    Text(
+                      context.tr(
+                        zh: '请复制并保存恢复码。丢失密码时只能用恢复码找回。',
+                        en: 'Copy and save the recovery code. It is required if you lose the password.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      code,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SettingsMultiChoiceRow<String>(
+                      option: SettingsChoiceOption<String>(
+                        value: 'saved',
+                        label: context.tr(
+                          zh: '我已保存恢复码',
+                          en: 'I have saved the recovery code',
+                        ),
+                      ),
+                      selected: saved,
+                      onChanged: (value) {
+                        setState(() => saved = value);
+                      },
                     ),
                   ],
                 );
@@ -789,9 +733,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     }
   }
@@ -799,85 +741,80 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   Future<({String recoveryCode, String password})?> _promptRecoveryReset({
     String? title,
   }) async {
-    var recoveryCode = '';
-    var password = '';
-    var confirmPassword = '';
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(
-              title ?? context.t.strings.legacy.webdav.recover_password_title,
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+    final recoveryController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    try {
+      final confirmed =
+          await showPlatformDialog<bool>(
+            context: context,
+            builder: (dialogContext) => SettingsFormDialog(
+              title: Text(
+                title ?? context.t.strings.legacy.webdav.recover_password_title,
+              ),
+              actions: [
+                SettingsDialogAction(
+                  onPressed: () => dialogContext.safePop(false),
+                  label: Text(context.t.strings.legacy.msg_cancel_2),
+                ),
+                SettingsDialogAction(
+                  onPressed: () => dialogContext.safePop(true),
+                  label: Text(context.t.strings.legacy.msg_confirm),
+                  variant: PlatformPrimaryActionVariant.filled,
+                ),
+              ],
               children: [
-                TextFormField(
-                  autofocus: true,
+                SettingsDialogTextField(
+                  label: context.t.strings.legacy.webdav.recovery_code_title,
+                  controller: recoveryController,
+                  hint: context.t.strings.legacy.webdav.recovery_code_enter,
                   textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    hintText:
-                        context.t.strings.legacy.webdav.recovery_code_enter,
-                  ),
-                  onChanged: (value) => recoveryCode = value,
+                  onSubmitted: (_) => FocusScope.of(dialogContext).nextFocus(),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                SettingsDialogTextField(
+                  label: context
+                      .t
+                      .strings
+                      .legacy
+                      .webdav
+                      .recovery_code_enter_new_password,
+                  controller: passwordController,
                   obscureText: true,
                   textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    hintText: context
-                        .t
-                        .strings
-                        .legacy
-                        .webdav
-                        .recovery_code_enter_new_password,
-                  ),
-                  onChanged: (value) => password = value,
+                  onSubmitted: (_) => FocusScope.of(dialogContext).nextFocus(),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                SettingsDialogTextField(
+                  label: context.t.strings.legacy.msg_confirm_password_2,
+                  controller: confirmController,
                   obscureText: true,
                   textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    hintText: context.t.strings.legacy.msg_confirm_password_2,
-                  ),
-                  onChanged: (value) => confirmPassword = value,
-                  onFieldSubmitted: (_) {
+                  onSubmitted: (_) {
                     FocusScope.of(dialogContext).unfocus();
                     dialogContext.safePop(true);
                   },
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => dialogContext.safePop(false),
-                child: Text(context.t.strings.legacy.msg_cancel_2),
-              ),
-              FilledButton(
-                onPressed: () => dialogContext.safePop(true),
-                child: Text(context.t.strings.legacy.msg_confirm),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return null;
-    recoveryCode = recoveryCode.trim();
-    password = password.trim();
-    confirmPassword = confirmPassword.trim();
-    if (recoveryCode.isEmpty || password.isEmpty) return null;
-    if (password != confirmPassword) {
-      if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_passwords_not_match),
-        ),
-      );
-      return null;
+          ) ??
+          false;
+      if (!confirmed) return null;
+      final recoveryCode = recoveryController.text.trim();
+      final password = passwordController.text.trim();
+      final confirmPassword = confirmController.text.trim();
+      if (recoveryCode.isEmpty || password.isEmpty) return null;
+      if (password != confirmPassword) {
+        if (!mounted) return null;
+        showTopToast(context, context.t.strings.legacy.msg_passwords_not_match);
+        return null;
+      }
+      return (recoveryCode: recoveryCode, password: password);
+    } finally {
+      recoveryController.dispose();
+      passwordController.dispose();
+      confirmController.dispose();
     }
-    return (recoveryCode: recoveryCode, password: password);
   }
 
   Future<void> _showRecoveryCodeDialog(
@@ -885,48 +822,43 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     required bool reset,
     required String message,
   }) async {
-    await showDialog<void>(
+    await showPlatformDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => SettingsFormDialog(
         title: Text(context.t.strings.legacy.webdav.recovery_code_title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 12),
-            SelectableText(
-              code,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ],
-        ),
         actions: [
-          TextButton(
+          SettingsDialogAction(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: code));
               if (!dialogContext.mounted) return;
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    context.t.strings.legacy.webdav.recovery_code_copied,
-                  ),
-                ),
+              showTopToast(
+                dialogContext,
+                context.t.strings.legacy.webdav.recovery_code_copied,
               );
             },
-            child: Text(context.t.strings.legacy.msg_copy),
+            icon: const Icon(Icons.copy),
+            label: Text(context.t.strings.legacy.msg_copy),
+            variant: PlatformPrimaryActionVariant.filled,
           ),
-          FilledButton(
+          SettingsDialogAction(
             onPressed: () => dialogContext.safePop(),
-            child: Text(
+            label: Text(
               reset
                   ? context.t.strings.legacy.msg_saved_2
                   : context.t.strings.legacy.msg_ok,
+            ),
+          ),
+        ],
+        children: [
+          Text(message),
+          const SizedBox(height: 12),
+          SelectableText(
+            code,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -978,9 +910,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
     }
   }
 
@@ -1029,9 +959,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     } catch (e) {
       if (!mounted) return false;
       final message = _formatBackupError(e);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     }
   }
@@ -1074,60 +1002,63 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
         : '${issue.memoUid}/${issue.attachmentFilename ?? ''}';
     final errorText = _formatBackupError(issue.error);
     final choice =
-        await showDialog<
+        await showPlatformDialog<
           ({WebDavBackupExportAction action, bool applyToRemaining})
         >(
           context: context,
           builder: (dialogContext) {
             return StatefulBuilder(
               builder: (context, setState) {
-                return AlertDialog(
+                return SettingsFormDialog(
                   title: Text(context.t.strings.legacy.msg_backup_failed),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$kindLabel: $targetLabel'),
-                      const SizedBox(height: 8),
-                      Text(errorText),
-                      const SizedBox(height: 12),
-                      CheckboxListTile(
-                        value: applyToRemaining,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          context.tr(
-                            zh: '对后续类似失败应用此操作',
-                            en: 'Apply to subsequent similar failures',
-                          ),
-                        ),
-                        onChanged: (value) {
-                          setState(() => applyToRemaining = value ?? false);
-                        },
-                      ),
-                    ],
-                  ),
                   actions: [
-                    TextButton(
+                    SettingsDialogAction(
                       onPressed: () => dialogContext.safePop((
                         action: WebDavBackupExportAction.abort,
                         applyToRemaining: applyToRemaining,
                       )),
-                      child: Text(context.t.strings.legacy.msg_cancel_2),
+                      label: Text(context.t.strings.legacy.msg_cancel_2),
                     ),
-                    OutlinedButton(
+                    SettingsDialogAction(
                       onPressed: () => dialogContext.safePop((
                         action: WebDavBackupExportAction.skip,
                         applyToRemaining: applyToRemaining,
                       )),
-                      child: Text(context.t.strings.legacy.msg_continue),
+                      label: Text(context.t.strings.legacy.msg_continue),
+                      variant: PlatformPrimaryActionVariant.outlined,
                     ),
-                    FilledButton(
+                    SettingsDialogAction(
                       onPressed: () => dialogContext.safePop((
                         action: WebDavBackupExportAction.retry,
                         applyToRemaining: false,
                       )),
-                      child: Text(context.t.strings.legacy.msg_retry),
+                      label: Text(context.t.strings.legacy.msg_retry),
+                      variant: PlatformPrimaryActionVariant.filled,
+                    ),
+                  ],
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$kindLabel: $targetLabel'),
+                        const SizedBox(height: 8),
+                        Text(errorText),
+                        const SizedBox(height: 12),
+                        SettingsMultiChoiceRow<String>(
+                          option: SettingsChoiceOption<String>(
+                            value: 'apply',
+                            label: context.tr(
+                              zh: '对后续类似失败应用此操作',
+                              en: 'Apply to subsequent similar failures',
+                            ),
+                          ),
+                          selected: applyToRemaining,
+                          onChanged: (value) {
+                            setState(() => applyToRemaining = value);
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 );
@@ -1151,11 +1082,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     final usesServerMode = session?.currentAccount != null;
     if (!usesServerMode && localLibrary == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_local_library_only),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_local_library_only);
       return;
     }
     LocalLibrary? exportLibrary;
@@ -1197,13 +1124,10 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                 );
           showTopToast(context, completedMessage);
           if (missingAttachments > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context.t.strings.legacy.msg_restore_missing_attachments(
-                    count: missingAttachments,
-                  ),
-                ),
+            showTopToast(
+              context,
+              context.t.strings.legacy.msg_restore_missing_attachments(
+                count: missingAttachments,
               ),
             );
           }
@@ -1212,15 +1136,11 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           final message = reason == null
               ? context.t.strings.legacy.msg_restore_failed(e: '')
               : _formatBackupError(reason);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
+          showTopToast(context, message);
           return false;
         case WebDavRestoreFailure(:final error):
           final message = _formatBackupError(error);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
+          showTopToast(context, message);
           return false;
         case WebDavRestoreConflict(:final conflicts):
           final decisions = await _resolveLocalScanConflicts(conflicts);
@@ -1232,27 +1152,13 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
 
     try {
       if (usesServerMode) {
-        final confirmed =
-            await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: Text(context.t.strings.legacy.msg_restore_backup),
-                content: Text(
-                  context.t.strings.legacy.msg_restore_export_only_notice,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => context.safePop(false),
-                    child: Text(context.t.strings.legacy.msg_cancel_2),
-                  ),
-                  FilledButton(
-                    onPressed: () => context.safePop(true),
-                    child: Text(context.t.strings.legacy.msg_confirm),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
+        final confirmed = await showSettingsConfirmationDialog(
+          context: context,
+          title: context.t.strings.legacy.msg_restore_backup,
+          message: context.t.strings.legacy.msg_restore_export_only_notice,
+          confirmLabel: context.t.strings.legacy.msg_confirm,
+          cancelLabel: context.t.strings.legacy.msg_cancel_2,
+        );
         if (!mounted || !confirmed) return;
         final target = await _createManagedRestoreWorkspace();
         if (!mounted || target == null) return;
@@ -1263,31 +1169,18 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
 
       if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
         if (!usesServerMode) {
-          final confirmed =
-              await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text(context.t.strings.legacy.msg_restore_backup),
-                  content: Text(
-                    context
-                        .t
-                        .strings
-                        .legacy
-                        .msg_restoring_overwrite_local_library_files_rebuild,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => context.safePop(false),
-                      child: Text(context.t.strings.legacy.msg_cancel_2),
-                    ),
-                    FilledButton(
-                      onPressed: () => context.safePop(true),
-                      child: Text(context.t.strings.legacy.msg_confirm),
-                    ),
-                  ],
-                ),
-              ) ??
-              false;
+          final confirmed = await showSettingsConfirmationDialog(
+            context: context,
+            title: context.t.strings.legacy.msg_restore_backup,
+            message: context
+                .t
+                .strings
+                .legacy
+                .msg_restoring_overwrite_local_library_files_rebuild,
+            confirmLabel: context.t.strings.legacy.msg_confirm,
+            cancelLabel: context.t.strings.legacy.msg_cancel_2,
+            destructive: true,
+          );
           if (!mounted || !confirmed) return;
           final result = await coordinator.restoreWebDavPlainBackup(
             settings: settings,
@@ -1347,91 +1240,30 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
       } catch (e) {
         if (!mounted) return;
         final message = _formatBackupError(e);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        showTopToast(context, message);
         return;
       }
       if (!mounted) return;
       if (snapshots.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_no_backups_found),
-          ),
-        );
+        showTopToast(context, context.t.strings.legacy.msg_no_backups_found);
         return;
       }
 
-      final selected = await showDialog<WebDavBackupSnapshotInfo>(
+      final selected = await showSettingsSingleChoicePicker<WebDavBackupSnapshotInfo>(
         context: context,
-        builder: (dialogContext) {
-          final media = MediaQuery.of(dialogContext);
-          final dialogWidth = math.min(media.size.width - 48, 360.0);
-          final dialogHeight = math.min(
-            media.size.height * 0.6,
-            media.size.height - 48,
-          );
-          return Dialog(
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 24,
+        title: context.t.strings.legacy.msg_select_backup,
+        value: null,
+        maxHeightFactor: 0.6,
+        options: [
+          for (final item in snapshots)
+            SettingsChoiceOption<WebDavBackupSnapshotInfo>(
+              value: item,
+              label: _formatTime(DateTime.tryParse(item.createdAt)),
+              description:
+                  '${item.memosCount} ${context.t.strings.legacy.msg_memo} · '
+                  '${item.fileCount} ${context.t.strings.legacy.msg_attachments}',
             ),
-            child: SizedBox(
-              width: dialogWidth,
-              height: dialogHeight,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text(
-                      context.t.strings.legacy.msg_select_backup,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: snapshots.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final item = snapshots[index];
-                        return ListTile(
-                          title: Text(
-                            _formatTime(DateTime.tryParse(item.createdAt)),
-                          ),
-                          subtitle: Text(
-                            '${item.memosCount} ${context.t.strings.legacy.msg_memo} · ${item.fileCount} ${context.t.strings.legacy.msg_attachments}',
-                          ),
-                          onTap: () => dialogContext.safePop(item),
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    child: Row(
-                      children: [
-                        TextButton(
-                          onPressed: () => dialogContext.safePop(),
-                          child: Text(context.t.strings.legacy.msg_cancel_2),
-                        ),
-                        const Spacer(),
-                        FilledButton(
-                          onPressed: () =>
-                              dialogContext.safePop(snapshots.first),
-                          child: Text(context.t.strings.legacy.msg_restore),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+        ],
       );
       if (!mounted || selected == null) return;
 
@@ -1494,37 +1326,19 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   ) async {
     final decisions = <String, bool>{};
     for (final conflict in conflicts) {
-      final useDisk =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.t.strings.legacy.msg_resolve_conflict),
-              content: Text(
-                conflict.isDeletion
-                    ? context
-                          .t
-                          .strings
-                          .legacy
-                          .msg_memo_missing_disk_but_has_local
-                    : context
-                          .t
-                          .strings
-                          .legacy
-                          .msg_disk_content_conflicts_local_pending_changes,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.t.strings.legacy.msg_keep_local),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.t.strings.legacy.msg_use_disk),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final useDisk = await showSettingsConfirmationDialog(
+        context: context,
+        title: context.t.strings.legacy.msg_resolve_conflict,
+        message: conflict.isDeletion
+            ? context.t.strings.legacy.msg_memo_missing_disk_but_has_local
+            : context
+                  .t
+                  .strings
+                  .legacy
+                  .msg_disk_content_conflicts_local_pending_changes,
+        confirmLabel: context.t.strings.legacy.msg_use_disk,
+        cancelLabel: context.t.strings.legacy.msg_keep_local,
+      );
       decisions[conflict.memoUid] = useDisk;
     }
     return decisions;
@@ -1534,7 +1348,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     List<String> conflicts,
   ) async {
     if (conflicts.isEmpty) return null;
-    return showDialog<Map<String, bool>>(
+    return showPlatformDialog<Map<String, bool>>(
       context: context,
       builder: (context) => _WebDavConflictDialog(conflicts: conflicts),
     );
@@ -1547,48 +1361,45 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
     final options = candidates.toList(growable: false);
     var selected = options.toSet();
     final result =
-        await showDialog<Set<WebDavBackupConfigType>>(
+        await showPlatformDialog<Set<WebDavBackupConfigType>>(
           context: context,
           builder: (dialogContext) => StatefulBuilder(
-            builder: (context, setState) => AlertDialog(
+            builder: (context, setState) => SettingsFormDialog(
               title: Text(
                 context.t.strings.legacy.msg_restore_config_confirm_title,
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    context.t.strings.legacy.msg_restore_config_confirm_hint,
-                  ),
-                  const SizedBox(height: 12),
-                  for (final item in options)
-                    CheckboxListTile(
-                      value: selected.contains(item),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(_backupConfigTypeLabel(item)),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value == true) {
-                            selected.add(item);
-                          } else {
-                            selected.remove(item);
-                          }
-                        });
-                      },
-                    ),
-                ],
-              ),
               actions: [
-                TextButton(
+                SettingsDialogAction(
                   onPressed: () =>
                       dialogContext.safePop(const <WebDavBackupConfigType>{}),
-                  child: Text(context.t.strings.legacy.msg_skip),
+                  label: Text(context.t.strings.legacy.msg_skip),
                 ),
-                FilledButton(
+                SettingsDialogAction(
                   onPressed: () => dialogContext.safePop(selected),
-                  child: Text(context.t.strings.legacy.msg_confirm),
+                  label: Text(context.t.strings.legacy.msg_confirm),
+                  variant: PlatformPrimaryActionVariant.filled,
                 ),
+              ],
+              children: [
+                Text(context.t.strings.legacy.msg_restore_config_confirm_hint),
+                const SizedBox(height: 12),
+                for (final item in options)
+                  SettingsMultiChoiceRow<WebDavBackupConfigType>(
+                    option: SettingsChoiceOption<WebDavBackupConfigType>(
+                      value: item,
+                      label: _backupConfigTypeLabel(item),
+                    ),
+                    selected: selected.contains(item),
+                    onChanged: (value) {
+                      setState(() {
+                        if (value) {
+                          selected.add(item);
+                        } else {
+                          selected.remove(item);
+                        }
+                      });
+                    },
+                  ),
               ],
             ),
           ),
@@ -1651,28 +1462,22 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
   Future<void> _openVaultSecurityStatus() async {
     if (_backupEncryptionMode == WebDavBackupEncryptionMode.plain) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '\u5b89\u5168\u72b6\u6001\u68c0\u67e5\u4ec5\u9002\u7528\u4e8e\u52a0\u5bc6\u5907\u4efd\u3002',
-              en: 'Vault security status is available for encrypted backup only.',
-            ),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '\u5b89\u5168\u72b6\u6001\u68c0\u67e5\u4ec5\u9002\u7528\u4e8e\u52a0\u5bc6\u5907\u4efd\u3002',
+          en: 'Vault security status is available for encrypted backup only.',
         ),
       );
       return;
     }
     if (!_vaultEnabled) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr(
-              zh: '\u8bf7\u5148\u5728\u5907\u4efd\u7b56\u7565\u8bbe\u7f6e\u4e2d\u542f\u7528\u5e76\u8bbe\u7f6e Vault \u5bc6\u7801\u3002',
-              en: 'Enable and set a Vault password in Backup strategy settings first.',
-            ),
-          ),
+      showTopToast(
+        context,
+        context.tr(
+          zh: '\u8bf7\u5148\u5728\u5907\u4efd\u7b56\u7565\u8bbe\u7f6e\u4e2d\u542f\u7528\u5e76\u8bbe\u7f6e Vault \u5bc6\u7801\u3002',
+          en: 'Enable and set a Vault password in Backup strategy settings first.',
         ),
       );
       return;
@@ -1937,10 +1742,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
           tooltip: context.t.strings.legacy.msg_sync,
           onPressed: (!_enabled || syncStatus.running) ? null : _syncNow,
           icon: syncStatus.running
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+              ? const SizedBox.square(dimension: 18, child: PlatformProgress())
               : const Icon(Icons.sync),
         ),
       ],
@@ -2016,7 +1818,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               icon: backupStatus.running
                   ? const SizedBox.square(
                       dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: PlatformProgress(),
                     )
                   : const Icon(Icons.backup_outlined, size: 18),
               onPressed: (!_enabled || backupBusy) ? null : _backupNow,
@@ -2031,7 +1833,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
               icon: _backupRestoring
                   ? const SizedBox.square(
                       dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: PlatformProgress(),
                     )
                   : const Icon(Icons.cloud_download_outlined, size: 18),
               onPressed: (!_enabled || backupBusy) ? null : _restoreBackup,
@@ -2079,14 +1881,9 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: LinearProgressIndicator(
-                            value: snapshot.progress,
-                            minHeight: 6,
-                            backgroundColor: tokens.textMuted.withValues(
-                              alpha: 0.15,
-                            ),
-                          ),
+                        SizedBox.square(
+                          dimension: 18,
+                          child: PlatformProgress(value: snapshot.progress),
                         ),
                         const SizedBox(width: 10),
                         Text(
@@ -2151,7 +1948,7 @@ class _WebDavSyncScreenState extends ConsumerState<WebDavSyncScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            FilledButton(
+                            PlatformPrimaryAction(
                               onPressed: () => ref
                                   .read(webDavBackupProgressTrackerProvider)
                                   .resume(),
@@ -2215,131 +2012,83 @@ class _WebDavConflictDialogState extends State<_WebDavConflictDialog> {
   @override
   Widget build(BuildContext context) {
     final language = context.appLanguage;
-    return AlertDialog(
+    final useLocalLabel = trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_use_local',
+    );
+    final useRemoteLabel = trByLanguageKey(
+      language: language,
+      key: 'legacy.msg_use_remote',
+    );
+    final sourceOptions = [
+      SettingsChoiceOption<bool>(value: true, label: useLocalLabel),
+      SettingsChoiceOption<bool>(value: false, label: useRemoteLabel),
+    ];
+
+    return SettingsFormDialog(
       title: Text(context.tr(zh: '设置备份冲突', en: 'Settings backup conflicts')),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                trByLanguageKey(
-                  language: language,
-                  key:
-                      'legacy.msg_these_settings_changed_locally_remotely_choose',
-                ),
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _applyToAll,
-                onChanged: _toggleApplyAll,
-                title: Text(
-                  trByLanguageKey(
-                    language: language,
-                    key: 'legacy.msg_apply_all',
-                  ),
-                ),
-              ),
-              if (_applyToAll)
-                RadioGroup<bool>(
-                  groupValue: _useLocalForAll,
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() {
-                      _useLocalForAll = value;
-                      for (final name in widget.conflicts) {
-                        _choices[name] = value;
-                      }
-                    });
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<bool>(
-                          contentPadding: EdgeInsets.zero,
-                          value: true,
-                          title: Text(
-                            trByLanguageKey(
-                              language: language,
-                              key: 'legacy.msg_use_local',
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<bool>(
-                          contentPadding: EdgeInsets.zero,
-                          value: false,
-                          title: Text(
-                            trByLanguageKey(
-                              language: language,
-                              key: 'legacy.msg_use_remote',
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (!_applyToAll)
-                ...widget.conflicts.map(
-                  (name) => RadioGroup<bool>(
-                    groupValue: _choices[name],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _choices[name] = value);
-                    },
-                    child: Column(
-                      children: [
-                        const Divider(height: 12),
-                        Text(
-                          name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        RadioListTile<bool>(
-                          contentPadding: EdgeInsets.zero,
-                          value: true,
-                          title: Text(
-                            trByLanguageKey(
-                              language: language,
-                              key: 'legacy.msg_use_local',
-                            ),
-                          ),
-                        ),
-                        RadioListTile<bool>(
-                          contentPadding: EdgeInsets.zero,
-                          value: false,
-                          title: Text(
-                            trByLanguageKey(
-                              language: language,
-                              key: 'legacy.msg_use_remote',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      maxWidth: 300,
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(
+        SettingsDialogAction(
+          onPressed: () => context.safePop(),
+          label: Text(
             trByLanguageKey(language: language, key: 'legacy.msg_cancel_2'),
           ),
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_choices),
-          child: Text(
+        SettingsDialogAction(
+          onPressed: () => context.safePop(_choices),
+          label: Text(
             trByLanguageKey(language: language, key: 'legacy.msg_apply'),
           ),
+          variant: PlatformPrimaryActionVariant.filled,
         ),
+      ],
+      children: [
+        Text(
+          trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_these_settings_changed_locally_remotely_choose',
+          ),
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        SettingsMultiChoiceRow<String>(
+          option: SettingsChoiceOption<String>(
+            value: 'apply_all',
+            label: trByLanguageKey(
+              language: language,
+              key: 'legacy.msg_apply_all',
+            ),
+          ),
+          selected: _applyToAll,
+          onChanged: _toggleApplyAll,
+        ),
+        if (_applyToAll) ...[
+          const SizedBox(height: 12),
+          SettingsSingleChoiceList<bool>(
+            value: _useLocalForAll,
+            options: sourceOptions,
+            onChanged: (value) {
+              setState(() {
+                _useLocalForAll = value;
+                for (final name in widget.conflicts) {
+                  _choices[name] = value;
+                }
+              });
+            },
+          ),
+        ],
+        if (!_applyToAll)
+          for (final name in widget.conflicts) ...[
+            const Divider(height: 20),
+            SettingsRowTitle(name),
+            const SizedBox(height: 8),
+            SettingsSingleChoiceList<bool>(
+              value: _choices[name],
+              options: sourceOptions,
+              onChanged: (value) => setState(() => _choices[name] = value),
+            ),
+          ],
       ],
     );
   }
@@ -2492,14 +2241,16 @@ class _SyncStatusLine extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            minHeight: 4,
-            value: syncing ? null : 1,
-            backgroundColor: textMuted.withValues(alpha: 0.2),
+        if (syncing)
+          const SizedBox(width: 18, height: 18, child: PlatformProgress())
+        else
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: ColoredBox(
+              color: textMuted.withValues(alpha: 0.2),
+              child: const SizedBox(height: 4, width: double.infinity),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -2824,32 +2575,20 @@ class _WebDavConnectionScreenState
   }
 
   Future<void> _pickAuthMode() async {
-    final selected = await showDialog<WebDavAuthMode>(
+    final selected = await showSettingsSingleChoicePicker<WebDavAuthMode>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(dialogContext.t.strings.legacy.msg_auth_mode),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Basic'),
-              trailing: _authMode == WebDavAuthMode.basic
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavAuthMode.basic),
-            ),
-            ListTile(
-              title: const Text('Digest'),
-              trailing: _authMode == WebDavAuthMode.digest
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavAuthMode.digest),
-            ),
-          ],
+      title: context.t.strings.legacy.msg_auth_mode,
+      value: _authMode,
+      options: const [
+        SettingsChoiceOption<WebDavAuthMode>(
+          value: WebDavAuthMode.basic,
+          label: 'Basic',
         ),
-      ),
+        SettingsChoiceOption<WebDavAuthMode>(
+          value: WebDavAuthMode.digest,
+          label: 'Digest',
+        ),
+      ],
     );
     if (selected == null) return;
     setState(() {
@@ -2904,12 +2643,7 @@ class _WebDavConnectionScreenState
     });
     final message = _connectionTestMessage(context, result);
     if (message == null || message.trim().isEmpty) return;
-    final shown = showTopToast(context, message);
-    if (!shown) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-    }
+    showTopToast(context, message);
   }
 
   @override
@@ -2948,7 +2682,7 @@ class _WebDavConnectionScreenState
                 icon: _testingConnection
                     ? const SizedBox.square(
                         dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: PlatformProgress(),
                       )
                     : const Icon(Icons.network_check_rounded, size: 20),
               ),
@@ -3177,67 +2911,92 @@ class _WebDavBackupSettingsScreenState
     widget.onBackupContentMemosChanged(value);
   }
 
+  Future<void> _pickBackupConfigScope() async {
+    final selected =
+        await showSettingsSingleChoicePicker<WebDavBackupConfigScope>(
+          context: context,
+          title: context.tr(zh: '配置内容', en: 'Config scope'),
+          value: _configScope,
+          options: [
+            SettingsChoiceOption<WebDavBackupConfigScope>(
+              value: WebDavBackupConfigScope.safe,
+              label: context.t.strings.legacy.msg_backup_config_safe,
+            ),
+            SettingsChoiceOption<WebDavBackupConfigScope>(
+              value: WebDavBackupConfigScope.full,
+              label: context.t.strings.legacy.msg_backup_config_full,
+              description:
+                  _encryptionMode == WebDavBackupEncryptionMode.encrypted
+                  ? context.t.strings.legacy.msg_backup_config_full_desc
+                  : context
+                        .t
+                        .strings
+                        .legacy
+                        .msg_backup_config_full_requires_encryption,
+            ),
+          ],
+        );
+    if (selected == null) return;
+    if (selected == WebDavBackupConfigScope.full &&
+        _encryptionMode != WebDavBackupEncryptionMode.encrypted) {
+      await _showFullConfigRequiresEncryptionDialog();
+      return;
+    }
+    _handleBackupConfigScope(selected);
+  }
+
+  String _configScopeLabel(WebDavBackupConfigScope scope) {
+    return switch (scope) {
+      WebDavBackupConfigScope.safe =>
+        context.t.strings.legacy.msg_backup_config_safe,
+      WebDavBackupConfigScope.full =>
+        context.t.strings.legacy.msg_backup_config_full,
+      WebDavBackupConfigScope.none =>
+        context.t.strings.legacy.msg_backup_config_none_desc,
+    };
+  }
+
   Future<void> _showFullConfigRequiresEncryptionDialog() async {
-    await showDialog<void>(
+    await showPlatformAlertDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(context.tr(zh: '需要加密', en: 'Encryption required')),
-        content: Text(
-          context.tr(
-            zh: '“全部配置（敏感）”仅支持加密备份，请先切换为加密模式并设置密码。',
-            en: '"Full config (sensitive)" requires encrypted backup. Switch to encrypted mode and set a password first.',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => dialogContext.safePop(),
-            child: Text(context.t.strings.legacy.msg_ok),
-          ),
-        ],
+      title: context.tr(zh: '需要加密', en: 'Encryption required'),
+      message: context.tr(
+        zh: '“全部配置（敏感）”仅支持加密备份，请先切换为加密模式并设置密码。',
+        en: '"Full config (sensitive)" requires encrypted backup. Switch to encrypted mode and set a password first.',
       ),
+      actions: [
+        PlatformDialogAction<bool>(
+          value: true,
+          label: context.t.strings.legacy.msg_ok,
+          isDefault: true,
+        ),
+      ],
     );
   }
 
   Future<void> _pickBackupEncryptionMode() async {
-    final selected = await showDialog<WebDavBackupEncryptionMode>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(context.tr(zh: '备份方式', en: 'Backup mode')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                _encryptionModeLabel(
-                  WebDavBackupEncryptionMode.encrypted,
-                  dialogContext,
-                ),
+    final selected =
+        await showSettingsSingleChoicePicker<WebDavBackupEncryptionMode>(
+          context: context,
+          title: context.tr(zh: '备份方式', en: 'Backup mode'),
+          value: _encryptionMode,
+          options: [
+            SettingsChoiceOption<WebDavBackupEncryptionMode>(
+              value: WebDavBackupEncryptionMode.encrypted,
+              label: _encryptionModeLabel(
+                WebDavBackupEncryptionMode.encrypted,
+                context,
               ),
-              trailing: _encryptionMode == WebDavBackupEncryptionMode.encrypted
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () => Navigator.of(
-                dialogContext,
-              ).pop(WebDavBackupEncryptionMode.encrypted),
             ),
-            ListTile(
-              title: Text(
-                _encryptionModeLabel(
-                  WebDavBackupEncryptionMode.plain,
-                  dialogContext,
-                ),
+            SettingsChoiceOption<WebDavBackupEncryptionMode>(
+              value: WebDavBackupEncryptionMode.plain,
+              label: _encryptionModeLabel(
+                WebDavBackupEncryptionMode.plain,
+                context,
               ),
-              trailing: _encryptionMode == WebDavBackupEncryptionMode.plain
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () => Navigator.of(
-                dialogContext,
-              ).pop(WebDavBackupEncryptionMode.plain),
             ),
           ],
-        ),
-      ),
-    );
+        );
     if (!mounted || selected == null) return;
     if (selected == WebDavBackupEncryptionMode.plain) {
       final confirmed = await _confirmPlainBackupRisk();
@@ -3262,38 +3021,31 @@ class _WebDavBackupSettingsScreenState
         _backupPasswordSet) {
       return true;
     }
-    final action = await showDialog<_BackupPasswordExitAction>(
+    final action = await showPlatformAlertDialog<_BackupPasswordExitAction>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          widget.vaultEnabled
-              ? context.tr(zh: 'Vault 密码未设置', en: 'Vault password missing')
-              : context.tr(zh: '备份密码未设置', en: 'Backup password missing'),
+      title: widget.vaultEnabled
+          ? context.tr(zh: 'Vault 密码未设置', en: 'Vault password missing')
+          : context.tr(zh: '备份密码未设置', en: 'Backup password missing'),
+      message: widget.vaultEnabled
+          ? context.tr(
+              zh: '加密备份需要设置 Vault 密码，是否现在设置？',
+              en: 'Encrypted backup requires a Vault password. Set it now?',
+            )
+          : context.tr(
+              zh: '加密备份需要设置密码，是否现在设置？',
+              en: 'Encrypted backup requires a password. Set it now?',
+            ),
+      actions: [
+        PlatformDialogAction<_BackupPasswordExitAction>(
+          value: _BackupPasswordExitAction.abandon,
+          label: context.tr(zh: '放弃设置', en: 'Abandon'),
         ),
-        content: Text(
-          widget.vaultEnabled
-              ? context.tr(
-                  zh: '加密备份需要设置 Vault 密码，是否现在设置？',
-                  en: 'Encrypted backup requires a Vault password. Set it now?',
-                )
-              : context.tr(
-                  zh: '加密备份需要设置密码，是否现在设置？',
-                  en: 'Encrypted backup requires a password. Set it now?',
-                ),
+        PlatformDialogAction<_BackupPasswordExitAction>(
+          value: _BackupPasswordExitAction.setup,
+          label: context.tr(zh: '去设置', en: 'Set now'),
+          isDefault: true,
         ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_BackupPasswordExitAction.abandon),
-            child: Text(context.tr(zh: '放弃设置', en: 'Abandon')),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_BackupPasswordExitAction.setup),
-            child: Text(context.tr(zh: '去设置', en: 'Set now')),
-          ),
-        ],
-      ),
+      ],
     );
     if (!mounted || action == null) return false;
     if (action == _BackupPasswordExitAction.setup) {
@@ -3323,79 +3075,28 @@ class _WebDavBackupSettingsScreenState
   }
 
   Future<bool> _confirmPlainBackupRisk() async {
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(context.t.strings.legacy.msg_backup_plain_risk_title),
-            content: Text(context.t.strings.legacy.msg_backup_plain_risk_body),
-            actions: [
-              TextButton(
-                onPressed: () => dialogContext.safePop(false),
-                child: Text(context.t.strings.legacy.msg_cancel_2),
-              ),
-              FilledButton(
-                onPressed: () => dialogContext.safePop(true),
-                child: Text(context.t.strings.legacy.msg_confirm),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    return confirmed;
+    return showSettingsConfirmationDialog(
+      context: context,
+      title: context.t.strings.legacy.msg_backup_plain_risk_title,
+      message: context.t.strings.legacy.msg_backup_plain_risk_body,
+      confirmLabel: context.t.strings.legacy.msg_confirm,
+      cancelLabel: context.t.strings.legacy.msg_cancel_2,
+      destructive: true,
+    );
   }
 
   Future<void> _pickSchedule() async {
-    final selected = await showDialog<WebDavBackupSchedule>(
+    final selected = await showSettingsSingleChoicePicker<WebDavBackupSchedule>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(context.t.strings.legacy.msg_backup_schedule),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(context.t.strings.legacy.msg_manual),
-              trailing: _schedule == WebDavBackupSchedule.manual
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.manual),
-            ),
-            ListTile(
-              title: Text(context.t.strings.legacy.msg_daily),
-              trailing: _schedule == WebDavBackupSchedule.daily
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.daily),
-            ),
-            ListTile(
-              title: Text(context.t.strings.legacy.msg_weekly),
-              trailing: _schedule == WebDavBackupSchedule.weekly
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.weekly),
-            ),
-            ListTile(
-              title: Text(dialogContext.tr(zh: '每月', en: 'Monthly')),
-              trailing: _schedule == WebDavBackupSchedule.monthly
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.monthly),
-            ),
-            ListTile(
-              title: Text(dialogContext.tr(zh: '每次打开', en: 'On app open')),
-              trailing: _schedule == WebDavBackupSchedule.onOpen
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () =>
-                  Navigator.of(dialogContext).pop(WebDavBackupSchedule.onOpen),
-            ),
-          ],
-        ),
-      ),
+      title: context.t.strings.legacy.msg_backup_schedule,
+      value: _schedule,
+      options: [
+        for (final schedule in WebDavBackupSchedule.values)
+          SettingsChoiceOption<WebDavBackupSchedule>(
+            value: schedule,
+            label: _scheduleLabel(schedule, context),
+          ),
+      ],
     );
     if (selected == null) return;
     setState(() => _schedule = selected);
@@ -3499,54 +3200,12 @@ class _WebDavBackupSettingsScreenState
                 ),
                 if (_configScope != WebDavBackupConfigScope.none) ...[
                   const Divider(height: 1),
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    title: Text(
-                      context.tr(zh: '配置内容', en: 'Config scope'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: tokens.textMain,
-                      ),
-                    ),
-                    trailing: DropdownButtonHideUnderline(
-                      child: DropdownButton<WebDavBackupConfigScope>(
-                        value: _configScope,
-                        isDense: true,
-                        borderRadius: BorderRadius.circular(12),
-                        icon: Icon(Icons.expand_more, color: tokens.textMuted),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: tokens.textMain,
-                        ),
-                        onChanged: busy
-                            ? null
-                            : (value) async {
-                                if (value == null) return;
-                                if (value == WebDavBackupConfigScope.full &&
-                                    _encryptionMode !=
-                                        WebDavBackupEncryptionMode.encrypted) {
-                                  await _showFullConfigRequiresEncryptionDialog();
-                                  return;
-                                }
-                                _handleBackupConfigScope(value);
-                              },
-                        items: [
-                          DropdownMenuItem(
-                            value: WebDavBackupConfigScope.safe,
-                            child: Text(
-                              context.t.strings.legacy.msg_backup_config_safe,
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: WebDavBackupConfigScope.full,
-                            child: Text(
-                              context.t.strings.legacy.msg_backup_config_full,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _SelectRow(
+                    label: context.tr(zh: '配置内容', en: 'Config scope'),
+                    value: _configScopeLabel(_configScope),
+                    textMain: tokens.textMain,
+                    textMuted: tokens.textMuted,
+                    onTap: busy ? null : _pickBackupConfigScope,
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -3747,17 +3406,17 @@ class _WebDavLogsScreenState extends ConsumerState<WebDavLogsScreen> {
       if (entry.error != null && entry.error!.trim().isNotEmpty)
         'Error: ${entry.error}',
     ];
-    showDialog<void>(
+    showPlatformDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => SettingsFormDialog(
         title: Text(entry.label),
-        content: SingleChildScrollView(child: SelectableText(lines.join('\n'))),
         actions: [
-          TextButton(
+          SettingsDialogAction(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(context.t.strings.legacy.msg_close),
+            label: Text(context.t.strings.legacy.msg_close),
           ),
         ],
+        children: [SelectableText(lines.join('\n'))],
       ),
     );
   }
@@ -3769,7 +3428,7 @@ class _WebDavLogsScreenState extends ConsumerState<WebDavLogsScreen> {
 
     Widget body;
     if (_loading && items.isEmpty) {
-      body = const Center(child: CircularProgressIndicator());
+      body = const Center(child: PlatformProgress());
     } else if (items.isEmpty) {
       body = Center(
         child: Text(

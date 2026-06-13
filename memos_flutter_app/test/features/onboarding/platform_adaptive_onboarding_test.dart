@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/application/sync/local_library_import_migration_service.dart';
 import 'package:memos_flutter_app/application/sync/sync_coordinator.dart';
 import 'package:memos_flutter_app/application/sync/sync_error.dart';
 import 'package:memos_flutter_app/application/sync/sync_request.dart';
@@ -406,6 +407,7 @@ class _TestLocalLibrariesController extends LocalLibrariesController {
     : super(
         _TestLocalLibraryRepository(),
         ref,
+        migrationService: LocalLibraryImportMigrationService(),
         onLoaded: () =>
             ref.read(localLibrariesLoadedProvider.notifier).state = true,
       );

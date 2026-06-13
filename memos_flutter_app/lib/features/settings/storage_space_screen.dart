@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/maintenance/storage_space_summary_models.dart';
-import '../../platform/widgets/platform_primary_action.dart';
+import '../../core/top_toast.dart';
+import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_list_section.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/maintenance/storage_space_controller.dart';
 import '../../i18n/strings.g.dart';
 import 'settings_ui.dart';
@@ -14,41 +16,26 @@ class StorageSpaceScreen extends ConsumerWidget {
   final bool showBackButton;
 
   Future<void> _clearCache(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSettingsConfirmationDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.t.strings.legacy.msg_confirm_clear_media_cache),
-        content: Text(
-          context.t.strings.legacy.msg_clear_media_cache_confirm_message,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(context.t.strings.common.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(context.t.strings.common.confirm),
-          ),
-        ],
-      ),
+      title: context.t.strings.legacy.msg_confirm_clear_media_cache,
+      message: context.t.strings.legacy.msg_clear_media_cache_confirm_message,
+      confirmLabel: context.t.strings.common.confirm,
+      cancelLabel: context.t.strings.common.cancel,
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       final result = await ref
           .read(storageSpaceControllerProvider.notifier)
           .clearCache();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_clearResultMessage(context, result))),
-      );
+      showTopToast(context, _clearResultMessage(context, result));
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_action_failed(e: error)),
-        ),
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_action_failed(e: error),
       );
     }
   }
@@ -121,7 +108,7 @@ class _StorageSummaryHeader extends StatelessWidget {
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: PlatformProgress(),
                         )
                       : null
                 : Text(
@@ -201,14 +188,7 @@ class _StorageCategoryRow extends StatelessWidget {
           if (isCache) ...[
             const SizedBox(width: 12),
             if (clearing)
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: tokens.textMuted,
-                ),
-              )
+              const SizedBox(width: 18, height: 18, child: PlatformProgress())
             else
               SettingsAction(
                 label: Text(context.t.strings.legacy.msg_clear),

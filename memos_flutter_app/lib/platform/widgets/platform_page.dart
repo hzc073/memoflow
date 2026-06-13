@@ -49,22 +49,49 @@ class PlatformPage extends StatelessWidget {
     final bodyWidget = safeArea ? SafeArea(child: body) : body;
 
     if (target == PlatformTarget.iPhone || target == PlatformTarget.iPad) {
+      final appleBodyTextStyle = TextStyle(
+        color: CupertinoDynamicColor.resolve(CupertinoColors.label, context),
+        fontSize: 14,
+        height: 1.35,
+        decoration: TextDecoration.none,
+      );
+      final appleChromeTextStyle = appleBodyTextStyle.copyWith(
+        fontSize: 17,
+        height: 1.2,
+      );
       return CupertinoPageScaffold(
         backgroundColor: backgroundColor,
         navigationBar:
             title == null && leading == null && (actions?.isEmpty ?? true)
             ? null
             : CupertinoNavigationBar(
+                transitionBetweenRoutes: false,
                 middle: title,
-                leading: leading,
+                leading: leading == null
+                    ? null
+                    : DefaultTextStyle.merge(
+                        style: appleChromeTextStyle,
+                        child: leading!,
+                      ),
                 trailing: actions == null
                     ? null
-                    : Row(mainAxisSize: MainAxisSize.min, children: actions!),
+                    : DefaultTextStyle.merge(
+                        style: appleChromeTextStyle,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: actions!,
+                        ),
+                      ),
               ),
         child: Column(
           children: [
             if (toolbar != null) toolbar!,
-            Expanded(child: bodyWidget),
+            Expanded(
+              child: DefaultTextStyle.merge(
+                style: appleBodyTextStyle,
+                child: bodyWidget,
+              ),
+            ),
             if (bottomBar != null) bottomBar!,
           ],
         ),

@@ -17,6 +17,7 @@ import 'package:memos_flutter_app/core/desktop_runtime_role.dart';
 import 'package:memos_flutter_app/core/desktop_sync_channel.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/application/desktop/desktop_settings_window.dart';
+import 'package:memos_flutter_app/application/sync/local_library_import_migration_service.dart';
 import 'package:memos_flutter_app/application/sync/desktop_remote_sync_facade.dart';
 import 'package:memos_flutter_app/application/sync/sync_coordinator.dart';
 import 'package:memos_flutter_app/application/sync/sync_error.dart';
@@ -55,6 +56,8 @@ import 'package:memos_flutter_app/state/system/database_provider.dart';
 import 'package:memos_flutter_app/state/system/local_library_provider.dart';
 import 'package:memos_flutter_app/state/system/session_provider.dart';
 import 'package:memos_flutter_app/state/webdav/webdav_backup_provider.dart';
+
+import '../../test_support.dart';
 
 const MethodChannel _windowManagerChannel = MethodChannel('window_manager');
 const MethodChannel _multiWindowChannel = MethodChannel(
@@ -201,6 +204,12 @@ class _TestLocalLibraryRepository extends LocalLibraryRepository {
   }
 }
 
+class _NoopLocalLibraryImportMigrationService
+    extends LocalLibraryImportMigrationService {
+  @override
+  Future<LocalLibrary> migrateIfNeeded(LocalLibrary library) async => library;
+}
+
 class _MemoryAiSettingsRepository extends AiSettingsRepository {
   _MemoryAiSettingsRepository(this._value)
     : super(const FlutterSecureStorage(), accountKey: 'test-account');
@@ -292,8 +301,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final windowManagerCalls = <String>[];
+  late TestSupport support;
 
-  setUp(() {
+  setUp(() async {
+    support = await initializeTestSupport();
     windowManagerCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_windowManagerChannel, (call) async {
@@ -332,13 +343,14 @@ void main() {
         });
   });
 
-  tearDown(() {
+  tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_windowManagerChannel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_multiWindowChannel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_multiWindowEventChannel, null);
+    await support.dispose();
   });
 
   testWidgets(
@@ -1301,6 +1313,9 @@ void main() {
           localLibraryRepositoryProvider.overrideWith(
             (ref) => localLibraryRepo,
           ),
+          localLibraryImportMigrationServiceProvider.overrideWith(
+            (ref) => _NoopLocalLibraryImportMigrationService(),
+          ),
           appPreferencesProvider.overrideWith(
             (ref) => _TestAppPreferencesController(ref),
           ),
@@ -1386,6 +1401,9 @@ void main() {
           appSessionProvider.overrideWith((ref) => sessionController),
           localLibraryRepositoryProvider.overrideWith(
             (ref) => localLibraryRepo,
+          ),
+          localLibraryImportMigrationServiceProvider.overrideWith(
+            (ref) => _NoopLocalLibraryImportMigrationService(),
           ),
           appPreferencesProvider.overrideWith(
             (ref) => _TestAppPreferencesController(ref),
@@ -1489,6 +1507,9 @@ void main() {
           appSessionProvider.overrideWith((ref) => sessionController),
           localLibraryRepositoryProvider.overrideWith(
             (ref) => localLibraryRepo,
+          ),
+          localLibraryImportMigrationServiceProvider.overrideWith(
+            (ref) => _NoopLocalLibraryImportMigrationService(),
           ),
           appPreferencesProvider.overrideWith(
             (ref) => _TestAppPreferencesController(ref),

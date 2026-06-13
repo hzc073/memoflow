@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../i18n/strings.g.dart';
+import '../../platform/platform_route.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import 'migration/memoflow_migration_role_screen.dart';
 import 'memoflow_bridge_screen.dart';
@@ -56,7 +57,8 @@ class LocalNetworkMigrationScreen extends ConsumerWidget {
               onTap: () {
                 haptic();
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => const MemoFlowMigrationRoleScreen(),
                   ),
                 );
@@ -73,7 +75,8 @@ class LocalNetworkMigrationScreen extends ConsumerWidget {
               onTap: () {
                 haptic();
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => const MemoFlowBridgeScreen(),
                   ),
                 );

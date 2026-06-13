@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
+import '../../../platform/platform_route.dart';
+import '../../../platform/widgets/platform_dialog.dart';
 import '../../../platform/widgets/platform_primary_action.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_state.dart';
@@ -92,7 +94,8 @@ class _MemoFlowMigrationSendMethodScreenState
             child: SettingsAction(
               onPressed: () async {
                 final raw = await Navigator.of(context).push<String>(
-                  MaterialPageRoute<String>(
+                  buildPlatformPageRoute<String>(
+                    context: context,
                     builder: (_) => MemoFlowPairQrScanScreen(
                       titleText: tr.msg_memoflow_migration_scan_title,
                       hintText: tr.msg_memoflow_migration_scan_hint,
@@ -113,10 +116,11 @@ class _MemoFlowMigrationSendMethodScreenState
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SettingsAction(
               onPressed: () async {
-                final request = await showDialog<_ManualReceiverConnectRequest>(
-                  context: context,
-                  builder: (_) => const _ManualReceiverConnectDialog(),
-                );
+                final request =
+                    await showPlatformDialog<_ManualReceiverConnectRequest>(
+                      context: context,
+                      builder: (_) => const _ManualReceiverConnectDialog(),
+                    );
                 if (request != null && context.mounted) {
                   await controller.connectManually(
                     host: request.host,
@@ -148,14 +152,13 @@ class _MemoFlowMigrationSendMethodScreenState
           const SizedBox(height: 14),
           SettingsSection(
             children: [
-              SettingsInfoRow(description: state.statusMessage ?? ''),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: LinearProgressIndicator(
-                  value: state.phase == MemoFlowMigrationSenderPhase.uploading
-                      ? state.uploadProgress
-                      : null,
-                ),
+              SettingsProgressRow(
+                label: state.statusMessage?.trim().isNotEmpty == true
+                    ? state.statusMessage!.trim()
+                    : tr.msg_memoflow_migration_send_method,
+                value: state.phase == MemoFlowMigrationSenderPhase.uploading
+                    ? state.uploadProgress
+                    : null,
               ),
             ],
           ),
@@ -181,7 +184,8 @@ class _MemoFlowMigrationSendMethodScreenState
             child: SettingsAction(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => MemoFlowMigrationResultScreen(
                       result: state.result!,
                       title: tr.msg_memoflow_migration_result,
@@ -237,13 +241,15 @@ class _ManualReceiverConnectDialog extends StatefulWidget {
 
 class _ManualReceiverConnectDialogState
     extends State<_ManualReceiverConnectDialog> {
-  final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
   final _portController = TextEditingController();
   final _pairCodeController = TextEditingController();
   final _hostFocusNode = FocusNode();
   final _portFocusNode = FocusNode();
   final _pairCodeFocusNode = FocusNode();
+  String? _hostError;
+  String? _portError;
+  String? _pairCodeError;
 
   @override
   void dispose() {
@@ -257,19 +263,36 @@ class _ManualReceiverConnectDialogState
   }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) {
+    final strings = context.t.strings;
+    final tr = strings.legacy;
+    final parsed = _parseHostAndPort(_hostController.text);
+    final portText = _portController.text.trim();
+    final effectivePort = int.tryParse(
+      portText.isNotEmpty ? portText : parsed.port?.toString() ?? '',
+    );
+    final hostError = parsed.host.trim().isEmpty
+        ? tr.msg_bridge_input_host_required
+        : null;
+    final portError =
+        effectivePort == null || effectivePort <= 0 || effectivePort > 65535
+        ? tr.msg_bridge_input_port_invalid
+        : null;
+    final pairCodeError = _pairCodeController.text.trim().isEmpty
+        ? tr.msg_bridge_input_pair_code_required
+        : null;
+    setState(() {
+      _hostError = hostError;
+      _portError = portError;
+      _pairCodeError = pairCodeError;
+    });
+    if (hostError != null || portError != null || pairCodeError != null) {
       return;
     }
-    final parsed = _parseHostAndPort(_hostController.text);
     final host = parsed.host.trim();
-    final portText = _portController.text.trim();
-    final port = int.parse(
-      portText.isNotEmpty ? portText : parsed.port!.toString(),
-    );
     Navigator.of(context).pop(
       _ManualReceiverConnectRequest(
         host: host,
-        port: port,
+        port: effectivePort!,
         pairingCode: _pairCodeController.text.trim(),
       ),
     );
@@ -280,97 +303,60 @@ class _ManualReceiverConnectDialogState
     final strings = context.t.strings;
     final tr = strings.legacy;
 
-    return AlertDialog(
+    return SettingsFormDialog(
       title: Text(tr.msg_manual),
-      content: Form(
-        key: _formKey,
-        child: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _hostController,
-                focusNode: _hostFocusNode,
-                keyboardType: TextInputType.url,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: strings.aiProxy.host,
-                  hintText: '192.168.1.10:4224',
-                ),
-                onFieldSubmitted: (_) {
-                  final parsed = _parseHostAndPort(_hostController.text);
-                  if (parsed.port != null &&
-                      _portController.text.trim().isEmpty) {
-                    _pairCodeFocusNode.requestFocus();
-                    return;
-                  }
-                  _portFocusNode.requestFocus();
-                },
-                validator: (value) {
-                  final parsed = _parseHostAndPort(value ?? '');
-                  if (parsed.host.isEmpty) {
-                    return tr.msg_bridge_input_host_required;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _portController,
-                focusNode: _portFocusNode,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: strings.aiProxy.port,
-                  hintText: '4224',
-                ),
-                onFieldSubmitted: (_) => _pairCodeFocusNode.requestFocus(),
-                validator: (value) {
-                  final parsed = _parseHostAndPort(_hostController.text);
-                  final portText = (value ?? '').trim();
-                  final effectivePort = int.tryParse(
-                    portText.isNotEmpty
-                        ? portText
-                        : parsed.port?.toString() ?? '',
-                  );
-                  if (effectivePort == null ||
-                      effectivePort <= 0 ||
-                      effectivePort > 65535) {
-                    return tr.msg_bridge_input_port_invalid;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _pairCodeController,
-                focusNode: _pairCodeFocusNode,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: tr.msg_bridge_pair_code_label,
-                  hintText: '123456',
-                ),
-                onFieldSubmitted: (_) => _submit(),
-                validator: (value) {
-                  if ((value ?? '').trim().isEmpty) {
-                    return tr.msg_bridge_input_pair_code_required;
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(tr.msg_cancel),
+          label: Text(tr.msg_cancel),
         ),
-        FilledButton(
+        SettingsDialogAction(
           onPressed: _submit,
-          child: Text(tr.msg_bridge_action_confirm_pair),
+          label: Text(tr.msg_bridge_action_confirm_pair),
+          variant: PlatformPrimaryActionVariant.filled,
+        ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: strings.aiProxy.host,
+          controller: _hostController,
+          focusNode: _hostFocusNode,
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.next,
+          hint: '192.168.1.10:4224',
+          errorText: _hostError,
+          onChanged: (_) => setState(() => _hostError = null),
+          onSubmitted: (_) {
+            final parsed = _parseHostAndPort(_hostController.text);
+            if (parsed.port != null && _portController.text.trim().isEmpty) {
+              _pairCodeFocusNode.requestFocus();
+              return;
+            }
+            _portFocusNode.requestFocus();
+          },
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: strings.aiProxy.port,
+          controller: _portController,
+          focusNode: _portFocusNode,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+          hint: '4224',
+          errorText: _portError,
+          onChanged: (_) => setState(() => _portError = null),
+          onSubmitted: (_) => _pairCodeFocusNode.requestFocus(),
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: tr.msg_bridge_pair_code_label,
+          controller: _pairCodeController,
+          focusNode: _pairCodeFocusNode,
+          textInputAction: TextInputAction.done,
+          hint: '123456',
+          errorText: _pairCodeError,
+          onChanged: (_) => setState(() => _pairCodeError = null),
+          onSubmitted: (_) => _submit(),
         ),
       ],
     );

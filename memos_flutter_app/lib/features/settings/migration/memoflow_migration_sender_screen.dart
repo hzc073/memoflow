@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../application/sync/migration/memoflow_migration_models.dart';
 import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
+import '../../../platform/platform_route.dart';
 import '../../../platform/widgets/platform_primary_action.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_sender_controller.dart';
@@ -30,7 +31,8 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
     final nextState = ref.read(memoFlowMigrationSenderControllerProvider);
     if (nextState.packageResult == null) return;
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      buildPlatformPageRoute<void>(
+        context: context,
         builder: (_) => MemoFlowMigrationSendMethodScreen(
           initialReceiverQrPayload: initialReceiverQrPayload,
         ),
@@ -62,22 +64,26 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
         SettingsSection(
           header: Text(tr.msg_memoflow_migration_select_content),
           children: [
-            CheckboxListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              title: Text(tr.msg_memoflow_migration_notes),
-              subtitle: Text(tr.msg_memoflow_migration_notes_desc),
-              value: state.includeMemos,
-              onChanged: state.isLocalLibraryMode
-                  ? (value) => controller.setIncludeMemos(value ?? false)
-                  : null,
+            SettingsMultiChoiceRow<String>(
+              option: SettingsChoiceOption<String>(
+                value: 'memos',
+                label: tr.msg_memoflow_migration_notes,
+                description: tr.msg_memoflow_migration_notes_desc,
+                disabledDescription:
+                    tr.msg_memoflow_migration_sender_only_local_mode,
+              ),
+              selected: state.includeMemos,
+              enabled: state.isLocalLibraryMode,
+              onChanged: controller.setIncludeMemos,
             ),
-            CheckboxListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              title: Text(tr.msg_memoflow_migration_settings),
-              subtitle: Text(tr.msg_memoflow_migration_settings_desc),
-              value: state.includeSettings,
-              onChanged: (value) =>
-                  controller.setIncludeSettings(value ?? false),
+            SettingsMultiChoiceRow<String>(
+              option: SettingsChoiceOption<String>(
+                value: 'settings',
+                label: tr.msg_memoflow_migration_settings,
+                description: tr.msg_memoflow_migration_settings_desc,
+              ),
+              selected: state.includeSettings,
+              onChanged: controller.setIncludeSettings,
             ),
           ],
         ),
@@ -87,13 +93,14 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
             header: Text(tr.msg_memoflow_migration_safe_config),
             children: [
               ...memoFlowMigrationSafeConfigDefaults.map(
-                (type) => CheckboxListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(_configTypeLabel(context, type)),
-                  value: state.selectedConfigTypes.contains(type),
+                (type) => SettingsMultiChoiceRow<MemoFlowMigrationConfigType>(
+                  option: SettingsChoiceOption<MemoFlowMigrationConfigType>(
+                    value: type,
+                    label: _configTypeLabel(context, type),
+                  ),
+                  selected: state.selectedConfigTypes.contains(type),
                   onChanged: (value) =>
-                      controller.toggleConfigType(type, value ?? false),
+                      controller.toggleConfigType(type, value),
                 ),
               ),
             ],
@@ -103,13 +110,14 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
             header: Text(tr.msg_memoflow_migration_sensitive_config),
             children: [
               ...memoFlowMigrationSensitiveConfigDefaults.map(
-                (type) => CheckboxListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  title: Text(_configTypeLabel(context, type)),
-                  value: state.selectedConfigTypes.contains(type),
+                (type) => SettingsMultiChoiceRow<MemoFlowMigrationConfigType>(
+                  option: SettingsChoiceOption<MemoFlowMigrationConfigType>(
+                    value: type,
+                    label: _configTypeLabel(context, type),
+                  ),
+                  selected: state.selectedConfigTypes.contains(type),
                   onChanged: (value) =>
-                      controller.toggleConfigType(type, value ?? false),
+                      controller.toggleConfigType(type, value),
                 ),
               ),
             ],
@@ -130,10 +138,10 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
           const SizedBox(height: 14),
           SettingsSection(
             children: [
-              SettingsInfoRow(description: state.statusMessage ?? ''),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: LinearProgressIndicator(),
+              SettingsProgressRow(
+                label: state.statusMessage?.trim().isNotEmpty == true
+                    ? state.statusMessage!.trim()
+                    : tr.msg_memoflow_migration_prepare_send,
               ),
             ],
           ),
@@ -159,7 +167,8 @@ class MemoFlowMigrationSenderScreen extends ConsumerWidget {
             child: SettingsAction(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => MemoFlowMigrationResultScreen(
                       result: state.result!,
                       title: tr.msg_memoflow_migration_result,

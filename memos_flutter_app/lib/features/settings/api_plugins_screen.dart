@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
-import '../../core/windows_adaptive_surface.dart';
 import '../../data/models/personal_access_token.dart';
+import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/personal_access_token_repository_provider.dart';
 import '../../state/system/session_provider.dart';
@@ -41,12 +43,12 @@ class ApiPluginsScreen extends ConsumerStatefulWidget {
 }
 
 class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   var _expiration = _TokenExpiration.d30;
   var _creating = false;
   var _refreshing = false;
   String? _listError;
+  String? _descriptionError;
   List<PersonalAccessToken> _tokens = const [];
   Map<String, String> _tokenValues = const {};
 
@@ -146,125 +148,90 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
   }
 
   Future<_TokenExpiration?> _showExpirationPicker(BuildContext context) {
-    Widget expirationContent(BuildContext context) {
-      return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            for (final v in _TokenExpiration.values)
-              ListTile(
-                title: Text(v.label(context)),
-                trailing: v == _expiration ? const Icon(Icons.check) : null,
-                onTap: () => context.safePop(v),
-              ),
-            const SizedBox(height: 10),
-          ],
-        ),
-      );
-    }
-
-    if (shouldUseWindowsAdaptiveSurface(context)) {
-      return showWindowsAdaptiveSurface<_TokenExpiration>(
-        context: context,
-        kind: WindowsAdaptiveSurfaceKind.popover,
-        maxWidth: 420,
-        builder: expirationContent,
-      );
-    }
-    return showModalBottomSheet<_TokenExpiration>(
+    return showSettingsSingleChoicePicker<_TokenExpiration>(
       context: context,
-      showDragHandle: true,
-      builder: expirationContent,
+      title: context.t.strings.legacy.msg_expiration,
+      value: _expiration,
+      options: [
+        for (final value in _TokenExpiration.values)
+          SettingsChoiceOption<_TokenExpiration>(
+            value: value,
+            label: value.label(context),
+          ),
+      ],
     );
   }
 
   Future<void> _showTokenSheet(String token) {
-    Widget tokenContent(BuildContext context) {
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 8),
-              SettingsContentHeader(
-                title: context.t.strings.legacy.msg_token_created,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                context.t.strings.legacy.msg_shown_only_once_copy_keep_safe,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SelectableText(token),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: token));
-                        if (!context.mounted) return;
-                        showTopToast(
-                          context,
-                          context.t.strings.legacy.msg_copied_clipboard,
-                        );
-                      },
-                      icon: const Icon(Icons.copy),
-                      label: Text(context.t.strings.legacy.msg_copy),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => context.safePop(),
-                      child: Text(context.t.strings.legacy.msg_done),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (shouldUseWindowsAdaptiveSurface(context)) {
-      return showWindowsAdaptiveSurface<void>(
-        context: context,
-        maxWidth: 560,
-        builder: tokenContent,
-      );
-    }
-    return showModalBottomSheet<void>(
+    return showPlatformDialog<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: tokenContent,
+      builder: (dialogContext) {
+        final tokens = settingsPageTokens(dialogContext);
+        return SettingsFormDialog(
+          title: Text(dialogContext.t.strings.legacy.msg_token_created),
+          actions: [
+            SettingsDialogAction(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: token));
+                if (!dialogContext.mounted) return;
+                showTopToast(
+                  dialogContext,
+                  dialogContext.t.strings.legacy.msg_copied_clipboard,
+                );
+              },
+              icon: const Icon(Icons.copy),
+              label: Text(dialogContext.t.strings.legacy.msg_copy),
+              variant: PlatformPrimaryActionVariant.filled,
+            ),
+            SettingsDialogAction(
+              onPressed: () => dialogContext.safePop(),
+              label: Text(dialogContext.t.strings.legacy.msg_done),
+            ),
+          ],
+          children: [
+            SettingsRowDescription(
+              dialogContext.t.strings.legacy.msg_shown_only_once_copy_keep_safe,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: tokens.valueSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: tokens.valueBorder),
+              ),
+              child: SelectableText(token),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  bool _validateDescription() {
+    final error = _descriptionController.text.trim().isEmpty
+        ? context.t.strings.legacy.msg_enter_token_name
+        : null;
+    if (_descriptionError != error) {
+      setState(() => _descriptionError = error);
+    }
+    return error == null;
+  }
+
+  void _handleDescriptionChanged(String _) {
+    if (_descriptionError != null) {
+      setState(() => _descriptionError = null);
+    }
   }
 
   Future<void> _createToken() async {
     if (_creating) return;
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!_validateDescription()) return;
 
     final account = ref.read(appSessionProvider).valueOrNull?.currentAccount;
     if (account == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t.strings.legacy.msg_not_signed)),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_not_signed);
       return;
     }
 
@@ -297,13 +264,10 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
       await _refreshTokens();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_create_failed(
-              formatError_e_context: _formatError(e, context),
-            ),
-          ),
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_create_failed(
+          formatError_e_context: _formatError(e, context),
         ),
       );
     } finally {
@@ -367,30 +331,23 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
       showBackButton: widget.showBackButton,
       onRefresh: _refreshTokens,
       children: [
-        Form(
-          key: _formKey,
-          child: SettingsSection(
-            header: Text(context.t.strings.legacy.msg_create_token),
-            children: [
-              _TokenDescriptionRow(
-                controller: _descriptionController,
-                enabled: !_creating,
-                validator: (v) {
-                  if ((v ?? '').trim().isEmpty) {
-                    return context.t.strings.legacy.msg_enter_token_name;
-                  }
-                  return null;
-                },
-              ),
-              SettingsValueRow(
-                label: context.t.strings.legacy.msg_expiration,
-                value: _expiration.label(context),
-                icon: Icons.keyboard_arrow_down_rounded,
-                enabled: !_creating,
-                onTap: _selectExpiration,
-              ),
-            ],
-          ),
+        SettingsSection(
+          header: Text(context.t.strings.legacy.msg_create_token),
+          children: [
+            _TokenDescriptionRow(
+              controller: _descriptionController,
+              enabled: !_creating,
+              errorText: _descriptionError,
+              onChanged: _handleDescriptionChanged,
+            ),
+            SettingsValueRow(
+              label: context.t.strings.legacy.msg_expiration,
+              value: _expiration.label(context),
+              icon: Icons.keyboard_arrow_down_rounded,
+              enabled: !_creating,
+              onTap: _selectExpiration,
+            ),
+          ],
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
@@ -399,7 +356,7 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
             icon: _creating
                 ? const SizedBox.square(
                     dimension: 18,
-                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                    child: PlatformProgress(),
                   )
                 : const Icon(Icons.add),
             label: Text(context.t.strings.legacy.msg_create_token_2),
@@ -425,21 +382,17 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
       return [
         PlatformListSectionRow(
           title: SettingsRowDescription(_listError!),
-          trailing: TextButton(
+          trailing: IconButton(
+            tooltip: context.t.strings.legacy.msg_retry,
             onPressed: _refreshTokens,
-            child: Text(context.t.strings.legacy.msg_retry),
+            icon: const Icon(Icons.refresh_rounded),
           ),
           denseOnDesktop: false,
         ),
       ];
     }
     if (_refreshing && _tokens.isEmpty) {
-      return [
-        const PlatformListSectionRow(
-          title: Center(child: CircularProgressIndicator.adaptive()),
-          denseOnDesktop: false,
-        ),
-      ];
+      return [SettingsProgressRow(label: context.t.strings.legacy.msg_loading)];
     }
     if (_tokens.isEmpty) {
       return [
@@ -465,37 +418,29 @@ class _TokenDescriptionRow extends StatelessWidget {
   const _TokenDescriptionRow({
     required this.controller,
     required this.enabled,
-    required this.validator,
+    required this.errorText,
+    required this.onChanged,
   });
 
   final TextEditingController controller;
   final bool enabled;
-  final FormFieldValidator<String> validator;
+  final String? errorText;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
     return Opacity(
       opacity: enabled ? 1 : 0.55,
       child: PlatformListSectionRow(
-        title: SettingsRowTitle(context.t.strings.legacy.msg_token_name),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: TextFormField(
+        title: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: SettingsDialogTextField(
+            label: context.t.strings.legacy.msg_token_name,
             controller: controller,
             enabled: enabled,
-            style: TextStyle(
-              color: tokens.textMain,
-              fontWeight: FontWeight.w600,
-            ),
-            decoration: InputDecoration(
-              hintText: context.t.strings.legacy.msg_enter_token_description,
-              hintStyle: TextStyle(color: tokens.textMuted),
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-            validator: validator,
+            hint: context.t.strings.legacy.msg_enter_token_description,
+            errorText: errorText,
+            onChanged: onChanged,
           ),
         ),
         denseOnDesktop: false,

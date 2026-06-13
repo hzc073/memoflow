@@ -22,6 +22,8 @@ import '../../data/models/app_preferences.dart';
 import '../../data/models/local_memo.dart';
 import '../../data/models/memo_clip_card_metadata.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/database_provider.dart';
 import '../../state/system/session_provider.dart';
@@ -192,8 +194,6 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
   Future<void> _export() async {
     if (_exporting) return;
     setState(() => _exporting = true);
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
     showTopToast(
       context,
       context.t.strings.legacy.msg_exporting,
@@ -357,41 +357,29 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
 
       if (!mounted) return;
       setState(() => _lastExportPath = outPath);
-      messenger.hideCurrentSnackBar();
-      await showDialog<void>(
+      await showPlatformAlertDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(context.t.strings.legacy.msg_export_finished),
-            content: Text(
-              context.t.strings.legacy.msg_memos_skipped_attachments_skipped(
-                exportedMemoCount: exportedMemoCount,
-                skippedMemoCount: skippedMemoCount,
-                exportedAttachmentCount: exportedAttachmentCount,
-                skippedAttachmentCount: skippedAttachmentCount,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(context.t.strings.legacy.msg_ok),
-              ),
-            ],
-          );
-        },
+        title: context.t.strings.legacy.msg_export_finished,
+        message: context.t.strings.legacy.msg_memos_skipped_attachments_skipped(
+          exportedMemoCount: exportedMemoCount,
+          skippedMemoCount: skippedMemoCount,
+          exportedAttachmentCount: exportedAttachmentCount,
+          skippedAttachmentCount: skippedAttachmentCount,
+        ),
+        actions: [
+          PlatformDialogAction<bool>(
+            value: true,
+            label: context.t.strings.legacy.msg_ok,
+            isDefault: true,
+          ),
+        ],
       );
     } catch (e) {
       if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_export_failed(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_export_failed(e: e));
     } finally {
       if (mounted) {
-        messenger.hideCurrentSnackBar();
         setState(() => _exporting = false);
       }
     }
@@ -472,7 +460,7 @@ class _ExportMemosScreenState extends ConsumerState<ExportMemosScreen> {
             icon: _exporting
                 ? const SizedBox.square(
                     dimension: 18,
-                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                    child: PlatformProgress(),
                   )
                 : const Icon(Icons.download_outlined),
             label: Text(context.t.strings.legacy.msg_export),

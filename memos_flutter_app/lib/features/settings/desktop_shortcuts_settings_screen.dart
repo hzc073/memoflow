@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/desktop/shortcuts.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import 'settings_ui.dart';
 
@@ -134,7 +136,7 @@ class DesktopShortcutsSettingsScreen extends ConsumerWidget {
       title: Text(context.t.strings.legacy.msg_shortcuts),
       contentKey: const ValueKey<String>('desktopShortcuts.boundedContent'),
       actions: [
-        TextButton(
+        SettingsAction(
           onPressed: isDesktop
               ? () {
                   ref
@@ -146,7 +148,8 @@ class DesktopShortcutsSettingsScreen extends ConsumerWidget {
                   );
                 }
               : null,
-          child: Text(context.t.strings.legacy.msg_restore_defaults),
+          label: Text(context.t.strings.legacy.msg_restore_defaults),
+          variant: PlatformPrimaryActionVariant.text,
         ),
       ],
       children: [
@@ -200,7 +203,7 @@ class _ShortcutCaptureDialog extends StatefulWidget {
     required DesktopShortcutAction action,
     required DesktopShortcutBinding current,
   }) {
-    return showDialog<DesktopShortcutBinding>(
+    return showPlatformDialog<DesktopShortcutBinding>(
       context: context,
       builder: (_) => _ShortcutCaptureDialog(action: action, current: current),
     );
@@ -256,65 +259,34 @@ class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: KeyboardListener(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _handleKey,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+    return KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: SettingsFormDialog(
+        title: Text(_desktopShortcutActionLabel(context, widget.action)),
+        actions: [
+          SettingsDialogAction(
+            onPressed: () => Navigator.of(context).maybePop(),
+            label: Text(context.t.strings.common.cancel),
+          ),
+        ],
+        children: [
+          SettingsRowDescription(
+            context.t.strings.legacy.msg_current_shortcut(
+              binding: desktopShortcutBindingLabel(widget.current),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SettingsContentHeader(
-                title: _desktopShortcutActionLabel(context, widget.action),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                context.t.strings.legacy.msg_current_shortcut(
-                  binding: desktopShortcutBindingLabel(widget.current),
-                ),
-                style: TextStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                context.t.strings.legacy.msg_press_new_shortcut,
-                style: TextStyle(
-                  color: tokens.textMain,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: Text(context.t.strings.common.cancel),
-                ),
-              ),
-            ],
-          ),
-        ),
+          const SizedBox(height: 10),
+          SettingsRowTitle(context.t.strings.legacy.msg_press_new_shortcut),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            SettingsFeedbackRow(
+              message: _error!,
+              kind: SettingsFeedbackKind.error,
+            ),
+          ],
+        ],
       ),
     );
   }

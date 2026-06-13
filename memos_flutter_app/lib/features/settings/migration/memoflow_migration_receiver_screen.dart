@@ -5,6 +5,7 @@ import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../../../application/sync/migration/memoflow_migration_models.dart';
 import '../../../core/app_localization.dart';
 import '../../../i18n/strings.g.dart';
+import '../../../platform/platform_route.dart';
 import '../../../platform/widgets/platform_primary_action.dart';
 import '../../../state/migration/memoflow_migration_providers.dart';
 import '../../../state/migration/memoflow_migration_state.dart';
@@ -152,32 +153,23 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
                     children: [
                       Text(tr.msg_memoflow_migration_receive_mode),
                       const SizedBox(height: 8),
-                      SegmentedButton<MemoFlowMigrationReceiveMode>(
-                        segments: <ButtonSegment<MemoFlowMigrationReceiveMode>>[
-                          ButtonSegment<MemoFlowMigrationReceiveMode>(
+                      SettingsSingleChoiceList<MemoFlowMigrationReceiveMode>(
+                        value: state.selectedReceiveMode,
+                        options: [
+                          SettingsChoiceOption<MemoFlowMigrationReceiveMode>(
                             value: MemoFlowMigrationReceiveMode.newWorkspace,
-                            label: Text(
-                              tr.msg_memoflow_migration_receive_as_new_workspace,
-                            ),
+                            label: tr
+                                .msg_memoflow_migration_receive_as_new_workspace,
                           ),
                           if (state.canOverwriteCurrentWorkspace)
-                            ButtonSegment<MemoFlowMigrationReceiveMode>(
+                            SettingsChoiceOption<MemoFlowMigrationReceiveMode>(
                               value:
                                   MemoFlowMigrationReceiveMode.overwriteCurrent,
-                              label: Text(
-                                tr.msg_memoflow_migration_overwrite_current_workspace,
-                              ),
+                              label: tr
+                                  .msg_memoflow_migration_overwrite_current_workspace,
                             ),
                         ],
-                        selected: <MemoFlowMigrationReceiveMode>{
-                          state.selectedReceiveMode,
-                        },
-                        onSelectionChanged: (selection) {
-                          final value = selection.isEmpty
-                              ? null
-                              : selection.first;
-                          if (value != null) controller.setReceiveMode(value);
-                        },
+                        onChanged: controller.setReceiveMode,
                       ),
                     ],
                   ),
@@ -190,15 +182,14 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
               header: Text(tr.msg_memoflow_migration_sensitive_config_confirm),
               children: [
                 ...sensitiveTypes.map(
-                  (type) => CheckboxListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    title: Text(_configTypeLabel(context, type)),
-                    value: state.acceptedSensitiveConfigTypes.contains(type),
-                    onChanged: (value) => controller.toggleSensitiveConfigType(
-                      type,
-                      value ?? false,
+                  (type) => SettingsMultiChoiceRow<MemoFlowMigrationConfigType>(
+                    option: SettingsChoiceOption<MemoFlowMigrationConfigType>(
+                      value: type,
+                      label: _configTypeLabel(context, type),
                     ),
+                    selected: state.acceptedSensitiveConfigTypes.contains(type),
+                    onChanged: (value) =>
+                        controller.toggleSensitiveConfigType(type, value),
                   ),
                 ),
               ],
@@ -229,12 +220,11 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
           const SizedBox(height: 14),
           SettingsSection(
             children: [
-              SettingsInfoRow(description: state.latestStatus!.message ?? ''),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: LinearProgressIndicator(
-                  value: _resolveProgress(proposal, state.latestStatus),
-                ),
+              SettingsProgressRow(
+                label: state.latestStatus!.message?.trim().isNotEmpty == true
+                    ? state.latestStatus!.message!.trim()
+                    : tr.msg_memoflow_migration_receiver,
+                value: _resolveProgress(proposal, state.latestStatus),
               ),
               if ((state.latestStatus?.receivedBytes ?? 0) > 0)
                 SettingsInfoRow(
@@ -260,7 +250,8 @@ class MemoFlowMigrationReceiverScreen extends ConsumerWidget {
             child: SettingsAction(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
+                  buildPlatformPageRoute<void>(
+                    context: context,
                     builder: (_) => MemoFlowMigrationResultScreen(
                       result: state.result!,
                       title: tr.msg_memoflow_migration_result,

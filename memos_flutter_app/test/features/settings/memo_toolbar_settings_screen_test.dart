@@ -350,6 +350,52 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('custom toolbar button editor uses settings seams on iOS', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    final container = _createContainer();
+    addTearDown(container.dispose);
+
+    await _pumpToolbarSettingsScreen(tester, container: container);
+
+    await tester.tap(find.byKey(const ValueKey('memo-toolbar-create-custom')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(SettingsDialogTextField), findsNWidgets(2));
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(
+      find.byKey(const ValueKey('memo-toolbar-icon-option-acorn')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('memo-toolbar-icon-group-u-z')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('memo-toolbar-icon-grid-u-z')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('memo-toolbar-icon-option-acorn')),
+      findsNothing,
+    );
+
+    await tester.enterText(find.byType(EditableText).at(0), 'H1');
+    await tester.enterText(find.byType(EditableText).at(1), '# ');
+    await tester.tap(find.byKey(const ValueKey('memo-toolbar-create-save')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final prefs = container
+        .read(currentWorkspacePreferencesProvider)
+        .memoToolbarPreferences;
+    expect(prefs.customButtons, hasLength(1));
+    expect(prefs.customButtons.single.label, 'H1');
+  });
 }
 
 ProviderContainer _createContainer({

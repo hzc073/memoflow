@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/user_setting.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
@@ -31,55 +33,71 @@ class _WebhooksSettingsScreenState
     );
     final urlController = TextEditingController(text: webhook?.url ?? '');
     final isEditing = webhook != null;
+    _WebhookDraft? result;
 
-    final result = await showDialog<_WebhookDraft>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          isEditing
-              ? context.t.strings.legacy.msg_edit_webhook
-              : context.t.strings.legacy.msg_add_webhook,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: context.t.strings.legacy.msg_display_name,
+    try {
+      result = await showPlatformDialog<_WebhookDraft>(
+        context: context,
+        builder: (dialogContext) {
+          String? urlError;
+          return StatefulBuilder(
+            builder: (context, setDialogState) => SettingsFormDialog(
+              title: Text(
+                isEditing
+                    ? context.t.strings.legacy.msg_edit_webhook
+                    : context.t.strings.legacy.msg_add_webhook,
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: urlController,
-              decoration: InputDecoration(
-                labelText: context.t.strings.legacy.msg_url,
-                hintText: 'https://example.com/webhook',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => context.safePop(),
-            child: Text(context.t.strings.legacy.msg_cancel_2),
-          ),
-          FilledButton(
-            onPressed: () {
-              final url = urlController.text.trim();
-              if (url.isEmpty) return;
-              context.safePop(
-                _WebhookDraft(
-                  displayName: nameController.text.trim(),
-                  url: url,
+              actions: [
+                SettingsDialogAction(
+                  onPressed: () => context.safePop(),
+                  label: Text(context.t.strings.legacy.msg_cancel_2),
                 ),
-              );
-            },
-            child: Text(context.t.strings.legacy.msg_save),
-          ),
-        ],
-      ),
-    );
+                SettingsDialogAction(
+                  onPressed: () {
+                    final url = urlController.text.trim();
+                    if (url.isEmpty) {
+                      setDialogState(() {
+                        urlError = context.t.strings.legacy.msg_enter_valid_url;
+                      });
+                      return;
+                    }
+                    context.safePop(
+                      _WebhookDraft(
+                        displayName: nameController.text.trim(),
+                        url: url,
+                      ),
+                    );
+                  },
+                  label: Text(context.t.strings.legacy.msg_save),
+                  variant: PlatformPrimaryActionVariant.filled,
+                ),
+              ],
+              children: [
+                SettingsDialogTextField(
+                  label: context.t.strings.legacy.msg_display_name,
+                  controller: nameController,
+                ),
+                const SizedBox(height: 12),
+                SettingsDialogTextField(
+                  label: context.t.strings.legacy.msg_url,
+                  controller: urlController,
+                  hint: 'https://example.com/webhook',
+                  errorText: urlError,
+                  onChanged: (_) {
+                    if (urlError != null) {
+                      setDialogState(() => urlError = null);
+                    }
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      nameController.dispose();
+      urlController.dispose();
+    }
 
     if (result == null) return;
     await _saveWebhook(
@@ -112,11 +130,7 @@ class _WebhooksSettingsScreenState
       showTopToast(context, context.t.strings.legacy.msg_saved_2);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_save_failed_3(e: e));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -126,27 +140,14 @@ class _WebhooksSettingsScreenState
 
   Future<void> _deleteWebhook(UserWebhook webhook) async {
     if (_saving) return;
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(context.t.strings.legacy.msg_delete_webhook),
-            content: Text(
-              context.t.strings.legacy.msg_sure_want_delete_webhook,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => context.safePop(false),
-                child: Text(context.t.strings.legacy.msg_cancel_2),
-              ),
-              FilledButton(
-                onPressed: () => context.safePop(true),
-                child: Text(context.t.strings.legacy.msg_delete),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final confirmed = await showSettingsConfirmationDialog(
+      context: context,
+      title: context.t.strings.legacy.msg_delete_webhook,
+      message: context.t.strings.legacy.msg_sure_want_delete_webhook,
+      confirmLabel: context.t.strings.legacy.msg_delete,
+      cancelLabel: context.t.strings.legacy.msg_cancel_2,
+      destructive: true,
+    );
     if (!confirmed) return;
 
     setState(() => _saving = true);
@@ -155,11 +156,7 @@ class _WebhooksSettingsScreenState
       ref.invalidate(userWebhooksProvider);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_delete_failed(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_delete_failed(e: e));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -243,10 +240,7 @@ class _WebhooksSettingsScreenState
               ];
             },
             loading: () => [
-              const PlatformListSectionRow(
-                title: Center(child: CircularProgressIndicator.adaptive()),
-                denseOnDesktop: false,
-              ),
+              SettingsProgressRow(label: context.t.strings.legacy.msg_loading),
             ],
             error: (error, _) => [
               PlatformListSectionRow(
@@ -256,9 +250,10 @@ class _WebhooksSettingsScreenState
                 subtitle: SettingsRowDescription(
                   _formatLoadError(context, error),
                 ),
-                trailing: TextButton(
+                trailing: IconButton(
+                  tooltip: context.t.strings.legacy.msg_retry,
                   onPressed: () => ref.invalidate(userWebhooksProvider),
-                  child: Text(context.t.strings.legacy.msg_retry),
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
                 denseOnDesktop: false,
               ),

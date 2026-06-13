@@ -6,12 +6,20 @@ import 'package:memos_flutter_app/data/models/location_settings.dart';
 import 'package:memos_flutter_app/data/repositories/location_settings_repository.dart';
 import 'package:memos_flutter_app/features/settings/location_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_ui.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/platform/widgets/platform_controls.dart';
 import 'package:memos_flutter_app/state/settings/location_settings_provider.dart';
 
 import 'settings_test_harness.dart';
 
 void main() {
+  void setTargetPlatform(TargetPlatform platform) {
+    debugPlatformTargetOverride = platform;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+    });
+  }
+
   testWidgets('location settings uses seams and preserves writes', (
     tester,
   ) async {
@@ -36,6 +44,10 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(SettingsSection), findsNWidgets(2));
     expect(find.byType(SettingsToggleRow), findsOneWidget);
+    expect(
+      find.byType(SettingsOptionChoiceRow<LocationPrecision>),
+      findsOneWidget,
+    );
     expect(
       find.byType(SettingsMenuRow<LocationServiceProvider>),
       findsOneWidget,
@@ -71,6 +83,43 @@ void main() {
     await tester.pump();
 
     expect(controller.state.precision, LocationPrecision.street);
+  });
+
+  testWidgets('location precision choice renders on iOS without ChoiceChip', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    late _FakeLocationSettingsController controller;
+
+    await tester.pumpWidget(
+      buildSettingsTestApp(
+        home: const LocationSettingsScreen(),
+        overrides: [
+          locationSettingsProvider.overrideWith((ref) {
+            controller = _FakeLocationSettingsController(
+              ref,
+              LocationSettings.defaults,
+            );
+            return controller;
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(
+      find.byType(SettingsOptionChoiceRow<LocationPrecision>),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Street'));
+    await tester.pumpAndSettle();
+
+    expect(controller.state.precision, LocationPrecision.street);
+    expect(tester.takeException(), isNull);
   });
 }
 

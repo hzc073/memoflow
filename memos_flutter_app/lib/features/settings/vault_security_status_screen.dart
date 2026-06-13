@@ -68,15 +68,7 @@ class _VaultSecurityStatusScreenState
     final message = error is SyncError
         ? presentSyncError(language: context.appLanguage, error: error)
         : context.tr(zh: 'WebDAV 请求失败', en: 'WebDAV request failed');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: SnackBarAction(
-          label: context.tr(zh: '重试', en: 'Retry'),
-          onPressed: _loadStatus,
-        ),
-      ),
-    );
+    showTopToast(context, message);
   }
 
   void _maybeShowCleanupReminder() {
@@ -90,32 +82,17 @@ class _VaultSecurityStatusScreenState
         _reminderShown = true;
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          final confirm =
-              await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text(
-                    context.tr(zh: '清理远端明文', en: 'Clean remote plaintext'),
-                  ),
-                  content: Text(
-                    context.tr(
-                      zh: '检测到旧明文文件，是否清理？',
-                      en: 'Legacy plaintext files were detected. Clean them now?',
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => context.safePop(false),
-                      child: Text(context.tr(zh: '取消', en: 'Cancel')),
-                    ),
-                    FilledButton(
-                      onPressed: () => context.safePop(true),
-                      child: Text(context.tr(zh: '确认', en: 'Confirm')),
-                    ),
-                  ],
-                ),
-              ) ??
-              false;
+          final confirm = await showSettingsConfirmationDialog(
+            context: context,
+            title: context.tr(zh: '清理远端明文', en: 'Clean remote plaintext'),
+            message: context.tr(
+              zh: '检测到旧明文文件，是否清理？',
+              en: 'Legacy plaintext files were detected. Clean them now?',
+            ),
+            confirmLabel: context.tr(zh: '确认', en: 'Confirm'),
+            cancelLabel: context.tr(zh: '取消', en: 'Cancel'),
+            destructive: true,
+          );
           if (confirm) {
             await _handleCleanRemotePlain();
           }
@@ -133,32 +110,17 @@ class _VaultSecurityStatusScreenState
     _reminderShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final confirm =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(
-                context.tr(zh: '清理导出明文', en: 'Clean export plaintext'),
-              ),
-              content: Text(
-                context.tr(
-                  zh: '检测到旧明文导出，是否清理？',
-                  en: 'Legacy plaintext export was detected. Clean it now?',
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.tr(zh: '取消', en: 'Cancel')),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.tr(zh: '确认', en: 'Confirm')),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final confirm = await showSettingsConfirmationDialog(
+        context: context,
+        title: context.tr(zh: '清理导出明文', en: 'Clean export plaintext'),
+        message: context.tr(
+          zh: '检测到旧明文导出，是否清理？',
+          en: 'Legacy plaintext export was detected. Clean it now?',
+        ),
+        confirmLabel: context.tr(zh: '确认', en: 'Confirm'),
+        cancelLabel: context.tr(zh: '取消', en: 'Cancel'),
+        destructive: true,
+      );
       if (confirm) {
         await _handleCleanExportPlain();
       }
@@ -214,41 +176,47 @@ class _VaultSecurityStatusScreenState
   }
 
   Future<String?> _promptVaultPassword({required String title}) async {
-    var password = '';
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(title),
-            content: TextField(
-              autofocus: true,
-              obscureText: true,
-              decoration: InputDecoration(
-                hintText: context.tr(
-                  zh: '请输入 Vault 密码',
-                  en: 'Enter Vault password',
+    final controller = TextEditingController();
+    try {
+      final confirmed =
+          await showPlatformDialog<bool>(
+            context: context,
+            builder: (dialogContext) => SettingsFormDialog(
+              title: Text(title),
+              actions: [
+                SettingsDialogAction(
+                  onPressed: () => dialogContext.safePop(false),
+                  label: Text(context.tr(zh: '取消', en: 'Cancel')),
                 ),
-              ),
-              onChanged: (value) => password = value,
-              onSubmitted: (_) => dialogContext.safePop(true),
+                SettingsDialogAction(
+                  onPressed: () => dialogContext.safePop(true),
+                  label: Text(context.tr(zh: '确认', en: 'Confirm')),
+                  variant: PlatformPrimaryActionVariant.filled,
+                ),
+              ],
+              children: [
+                SettingsDialogTextField(
+                  label: context.tr(zh: 'Vault 密码', en: 'Vault password'),
+                  controller: controller,
+                  hint: context.tr(
+                    zh: '请输入 Vault 密码',
+                    en: 'Enter Vault password',
+                  ),
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => dialogContext.safePop(true),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => dialogContext.safePop(false),
-                child: Text(context.tr(zh: '取消', en: 'Cancel')),
-              ),
-              FilledButton(
-                onPressed: () => dialogContext.safePop(true),
-                child: Text(context.tr(zh: '确认', en: 'Confirm')),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return null;
-    password = password.trim();
-    if (password.isEmpty) return null;
-    return password;
+          ) ??
+          false;
+      if (!confirmed) return null;
+      final password = controller.text.trim();
+      if (password.isEmpty) return null;
+      return password;
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<bool> _verifyVaultPassword(String password) async {
@@ -270,15 +238,11 @@ class _VaultSecurityStatusScreenState
         language: context.appLanguage,
         error: error,
       );
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showTopToast(context, message);
       return false;
     } catch (e) {
       if (!mounted) return false;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
+      showTopToast(context, e.toString());
       return false;
     }
   }
@@ -306,37 +270,38 @@ class _VaultSecurityStatusScreenState
       return;
     }
 
-    await showDialog<void>(
+    await showPlatformDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => SettingsFormDialog(
         title: Text(context.tr(zh: 'Vault 恢复码', en: 'Vault recovery code')),
-        content: SelectableText(
-          recovery,
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
-        ),
         actions: [
-          TextButton(
+          SettingsDialogAction(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: recovery));
               if (!dialogContext.mounted) return;
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    context.tr(zh: '恢复码已复制', en: 'Recovery code copied'),
-                  ),
-                ),
+              showTopToast(
+                dialogContext,
+                context.tr(zh: '恢复码已复制', en: 'Recovery code copied'),
               );
             },
-            child: Text(context.tr(zh: '复制', en: 'Copy')),
+            icon: const Icon(Icons.copy),
+            label: Text(context.tr(zh: '复制', en: 'Copy')),
+            variant: PlatformPrimaryActionVariant.filled,
           ),
-          FilledButton(
+          SettingsDialogAction(
             onPressed: () => dialogContext.safePop(),
-            child: Text(context.tr(zh: '确定', en: 'OK')),
+            label: Text(context.tr(zh: '确定', en: 'OK')),
+          ),
+        ],
+        children: [
+          SelectableText(
+            recovery,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
           ),
         ],
       ),
@@ -344,38 +309,28 @@ class _VaultSecurityStatusScreenState
   }
 
   Future<void> _handleBackupTest() async {
-    final mode = await showDialog<_BackupTestMode>(
+    final mode = await showSettingsSingleChoicePicker<_BackupTestMode>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.tr(zh: '备份恢复测试', en: 'Backup restore test')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(context.tr(zh: '快速验证', en: 'Quick verify')),
-              subtitle: Text(
-                context.tr(
-                  zh: '解密索引与快照，不落盘',
-                  en: 'Decrypt index and snapshot without writing files',
-                ),
-              ),
-              onTap: () => Navigator.of(context).pop(_BackupTestMode.quick),
-            ),
-            ListTile(
-              title: Text(
-                context.tr(zh: '完整恢复（高级）', en: 'Full restore (advanced)'),
-              ),
-              subtitle: Text(
-                context.tr(
-                  zh: '解密全部对象并执行临时写入',
-                  en: 'Decrypt all objects with temporary writes',
-                ),
-              ),
-              onTap: () => Navigator.of(context).pop(_BackupTestMode.deep),
-            ),
-          ],
+      title: context.tr(zh: '备份恢复测试', en: 'Backup restore test'),
+      value: null,
+      options: [
+        SettingsChoiceOption<_BackupTestMode>(
+          value: _BackupTestMode.quick,
+          label: context.tr(zh: '快速验证', en: 'Quick verify'),
+          description: context.tr(
+            zh: '解密索引与快照，不落盘',
+            en: 'Decrypt index and snapshot without writing files',
+          ),
         ),
-      ),
+        SettingsChoiceOption<_BackupTestMode>(
+          value: _BackupTestMode.deep,
+          label: context.tr(zh: '完整恢复（高级）', en: 'Full restore (advanced)'),
+          description: context.tr(
+            zh: '解密全部对象并执行临时写入',
+            en: 'Decrypt all objects with temporary writes',
+          ),
+        ),
+      ],
     );
     if (!mounted || mode == null) return;
 
@@ -408,9 +363,7 @@ class _VaultSecurityStatusScreenState
       language: context.appLanguage,
       error: error,
     );
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    showTopToast(context, message);
   }
 
   void _setLocalPlainCache(bool value) {
@@ -628,11 +581,7 @@ class _VaultLoadingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PlatformListSectionRow(
-      leading: const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
+      leading: const SizedBox(width: 18, height: 18, child: PlatformProgress()),
       title: SettingsRowDescription(label),
       denseOnDesktop: false,
     );

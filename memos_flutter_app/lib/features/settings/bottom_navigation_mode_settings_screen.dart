@@ -39,67 +39,38 @@ class BottomNavigationModeSettingsScreen extends ConsumerWidget {
         HomeNavigationSlot.rightPrimary => currentResolved.rightPrimary,
         HomeNavigationSlot.rightSecondary => currentResolved.rightSecondary,
       };
-      final selected = await showDialog<HomeRootDestination>(
-        context: context,
-        builder: (dialogContext) {
-          final colorScheme = Theme.of(dialogContext).colorScheme;
-          final selectedSet = <HomeRootDestination>{
-            currentResolved.leftPrimary,
-            currentResolved.leftSecondary,
-            currentResolved.rightPrimary,
-            currentResolved.rightSecondary,
-          }..remove(currentValue);
-          return AlertDialog(
-            backgroundColor: tokens.card,
-            surfaceTintColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            title: Text(_slotLabel(context, slot)),
-            content: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 420,
-                maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.6,
-              ),
-              child: SingleChildScrollView(
-                child: RadioGroup<HomeRootDestination>(
-                  groupValue: currentValue,
-                  onChanged: (value) => Navigator.of(dialogContext).pop(value),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final destination in kHomeRootDestinationPickerOrder)
-                        if (destination == HomeRootDestination.none ||
-                            isHomeRootDestinationAvailable(
-                              destination,
-                              hasAccount: hasAccount,
-                            ))
-                          RadioListTile<HomeRootDestination>(
-                            value: destination,
-                            enabled:
-                                destination == HomeRootDestination.none ||
-                                !selectedSet.contains(destination),
-                            activeColor: colorScheme.primary,
-                            secondary: Icon(
-                              destination == HomeRootDestination.none
-                                  ? Icons.visibility_off_outlined
-                                  : homeRootDestinationDefinition(
-                                      destination,
-                                    )!.icon,
-                            ),
-                            title: Text(
-                              _destinationLabel(dialogContext, destination),
-                            ),
-                          ),
-                    ],
+      final selectedSet = <HomeRootDestination>{
+        currentResolved.leftPrimary,
+        currentResolved.leftSecondary,
+        currentResolved.rightPrimary,
+        currentResolved.rightSecondary,
+      }..remove(currentValue);
+      final selected =
+          await showSettingsSingleChoicePicker<HomeRootDestination>(
+            context: context,
+            title: _slotLabel(context, slot),
+            value: currentValue,
+            maxHeightFactor: 0.6,
+            options: [
+              for (final destination in kHomeRootDestinationPickerOrder)
+                if (destination == HomeRootDestination.none ||
+                    isHomeRootDestinationAvailable(
+                      destination,
+                      hasAccount: hasAccount,
+                    ))
+                  SettingsChoiceOption<HomeRootDestination>(
+                    value: destination,
+                    label: _destinationLabel(context, destination),
+                    icon: destination == HomeRootDestination.none
+                        ? Icons.visibility_off_outlined
+                        : homeRootDestinationDefinition(destination)!.icon,
+                    enabled:
+                        destination == HomeRootDestination.none ||
+                        !selectedSet.contains(destination),
+                    disabledDescription: 'Already used by another slot.',
                   ),
-                ),
-              ),
-            ),
+            ],
           );
-        },
-      );
       if (selected == null || selected == currentValue) return;
       ref
           .read(currentWorkspacePreferencesProvider.notifier)

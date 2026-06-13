@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
-import '../../core/windows_adaptive_surface.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/app_lock_provider.dart';
 import '../../i18n/strings.g.dart';
 import 'settings_ui.dart';
@@ -18,7 +19,7 @@ class PasswordLockScreen extends ConsumerWidget {
     BuildContext context, {
     required bool isChange,
   }) async {
-    final password = await showDialog<String?>(
+    final password = await showPlatformDialog<String?>(
       context: context,
       builder: (context) => _PasswordDialog(isChange: isChange),
     );
@@ -31,58 +32,22 @@ class PasswordLockScreen extends ConsumerWidget {
   Future<void> _selectAutoLockTime(
     BuildContext context,
     WidgetRef ref,
-    AutoLockTime selected, {
-    BuildContext? anchorContext,
-  }) async {
-    Widget buildAutoLockTimeContent(BuildContext surfaceContext) {
-      return SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(surfaceContext.t.strings.legacy.msg_auto_lock_time),
-              ),
-            ),
-            ...AutoLockTime.values.map((v) {
-              final isSelected = v == selected;
-              return ListTile(
-                leading: Icon(
-                  isSelected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(v.labelFor(surfaceContext.appLanguage)),
-                onTap: () {
-                  surfaceContext.safePop();
-                  ref.read(appLockProvider.notifier).setAutoLockTime(v);
-                },
-              );
-            }),
-          ],
-        ),
-      );
-    }
-
-    if (shouldUseWindowsAdaptiveSurface(context)) {
-      await showWindowsAdaptiveSurface<void>(
-        context: context,
-        kind: WindowsAdaptiveSurfaceKind.popover,
-        anchorContext: anchorContext,
-        fallbackAlignment: Alignment.centerRight,
-        maxWidth: 360,
-        builder: buildAutoLockTimeContent,
-      );
-      return;
-    }
-
-    await showModalBottomSheet<void>(
+    AutoLockTime selected,
+  ) async {
+    final next = await showSettingsSingleChoicePicker<AutoLockTime>(
       context: context,
-      showDragHandle: true,
-      builder: buildAutoLockTimeContent,
+      title: context.t.strings.legacy.msg_auto_lock_time,
+      value: selected,
+      options: [
+        for (final value in AutoLockTime.values)
+          SettingsChoiceOption<AutoLockTime>(
+            value: value,
+            label: value.labelFor(context.appLanguage),
+          ),
+      ],
     );
+    if (next == null) return;
+    ref.read(appLockProvider.notifier).setAutoLockTime(next);
   }
 
   @override
@@ -208,66 +173,50 @@ class _PasswordDialogState extends State<_PasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return SettingsFormDialog(
       title: Text(
         widget.isChange
             ? context.t.strings.legacy.msg_change_password
             : context.t.strings.legacy.msg_set_password,
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _pwdController,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            textInputAction: TextInputAction.next,
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: InputDecoration(
-              labelText: context.t.strings.legacy.msg_password_2,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _confirmController,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            textInputAction: TextInputAction.done,
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: InputDecoration(
-              labelText: context.t.strings.legacy.msg_confirm_password,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                _error!,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
           onPressed: () => context.safePop(null),
-          child: Text(context.t.strings.legacy.msg_cancel_2),
+          label: Text(context.t.strings.legacy.msg_cancel_2),
         ),
-        FilledButton(
+        SettingsDialogAction(
           onPressed: _submit,
-          child: Text(context.t.strings.legacy.msg_ok),
+          label: Text(context.t.strings.legacy.msg_ok),
+          variant: PlatformPrimaryActionVariant.filled,
         ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_password_2,
+          controller: _pwdController,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_confirm_password,
+          controller: _confirmController,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          SettingsFeedbackRow(
+            message: _error!,
+            kind: SettingsFeedbackKind.error,
+          ),
+        ],
       ],
     );
   }

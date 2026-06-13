@@ -5,6 +5,8 @@ import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../data/repositories/ai_settings_repository.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'settings_ui.dart';
 
@@ -25,7 +27,6 @@ class AiProviderSettingsScreen extends ConsumerStatefulWidget {
 
 class _AiProviderSettingsScreenState
     extends ConsumerState<AiProviderSettingsScreen> {
-  final _formKey = GlobalKey<FormState>();
   late final TextEditingController _apiUrlController;
   late final TextEditingController _apiKeyController;
   late final TextEditingController _embeddingBaseUrlController;
@@ -37,6 +38,7 @@ class _AiProviderSettingsScreenState
   var _dirty = false;
   var _saving = false;
   var _modelOptions = <String>[];
+  String? _apiUrlError;
 
   bool get _isGenerationMode =>
       widget.mode == AiProviderSettingsMode.generation;
@@ -72,6 +74,7 @@ class _AiProviderSettingsScreenState
       setState(() {
         _model = next.model;
         _modelOptions = List<String>.from(next.modelOptions);
+        _apiUrlError = null;
       });
     });
   }
@@ -90,6 +93,27 @@ class _AiProviderSettingsScreenState
   void _markDirty() {
     if (_dirty) return;
     setState(() => _dirty = true);
+  }
+
+  void _onApiUrlChanged(String _) {
+    if (_apiUrlError != null) {
+      setState(() => _apiUrlError = null);
+    }
+    _markDirty();
+  }
+
+  bool _validateGenerationApiUrl() {
+    final raw = _apiUrlController.text.trim();
+    final uri = Uri.tryParse(raw);
+    final error = raw.isEmpty
+        ? context.t.strings.legacy.msg_enter_api_url
+        : (uri != null && uri.hasScheme && uri.hasAuthority)
+        ? null
+        : context.t.strings.legacy.msg_enter_valid_url;
+    if (_apiUrlError != error) {
+      setState(() => _apiUrlError = error);
+    }
+    return error == null;
   }
 
   bool _isSameModel(String a, String b) {
@@ -142,7 +166,7 @@ class _AiProviderSettingsScreenState
 
   Future<void> _pickModel() async {
     if (_saving) return;
-    final selected = await showDialog<String>(
+    final selected = await showPlatformDialog<String>(
       context: context,
       builder: (dialogContext) {
         var isEditing = false;
@@ -175,75 +199,58 @@ class _AiProviderSettingsScreenState
               syncOptions(next);
             }
 
-            return Dialog(
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 32,
+            return SettingsFormDialog(
+              maxWidth: 420,
+              maxHeightFactor: 0.72,
+              title: Row(
+                children: [
+                  Expanded(child: Text(context.t.strings.legacy.msg_model)),
+                  SettingsActionPill(
+                    label: isEditing
+                        ? context.t.strings.legacy.msg_done
+                        : context.t.strings.legacy.msg_edit,
+                    icon: isEditing ? Icons.check_rounded : Icons.edit_outlined,
+                    onPressed: () =>
+                        setDialogState(() => isEditing = !isEditing),
+                  ),
+                ],
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 420,
-                  maxHeight: 520,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+              children: [
+                SettingsSection(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 14, 8),
-                      child: SettingsContentHeader(
-                        title: context.t.strings.legacy.msg_model,
-                        trailing: TextButton(
-                          onPressed: () =>
-                              setDialogState(() => isEditing = !isEditing),
-                          child: Text(
-                            isEditing
-                                ? context.t.strings.legacy.msg_done
-                                : context.t.strings.legacy.msg_edit,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView(
-                        shrinkWrap: true,
-                        children: [
-                          ...options.map(
-                            (item) => ListTile(
-                              title: Text(item),
-                              trailing: isEditing
-                                  ? IconButton(
-                                      tooltip:
-                                          context.t.strings.legacy.msg_delete,
-                                      icon: const Icon(
-                                        Icons.delete_outline_rounded,
-                                      ),
-                                      onPressed: () => deleteModel(item),
-                                    )
-                                  : (_isSameModel(item, _model)
-                                        ? const Icon(Icons.check_rounded)
-                                        : null),
-                              onTap: isEditing
-                                  ? null
-                                  : () => Navigator.of(dialogContext).pop(item),
+                    if (isEditing)
+                      for (final item in options)
+                        SettingsNavigationRow(
+                          label: item,
+                          trailingIcon: Icons.delete_outline_rounded,
+                          onTap: () => deleteModel(item),
+                        )
+                    else
+                      SettingsSingleChoiceList<String>(
+                        value: _model,
+                        options: [
+                          for (final item in options)
+                            SettingsChoiceOption<String>(
+                              value: item,
+                              label: item,
                             ),
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.add_rounded),
-                            title: Text(
-                              context.t.strings.legacy.msg_add_custom_model,
-                            ),
-                            onTap: addCustomModel,
-                          ),
                         ],
+                        onChanged: (item) =>
+                            Navigator.of(dialogContext).pop(item),
                       ),
-                    ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SettingsAction(
+                    onPressed: addCustomModel,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(context.t.strings.legacy.msg_add_custom_model),
+                    variant: PlatformPrimaryActionVariant.outlined,
+                  ),
+                ),
+              ],
             );
           },
         );
@@ -255,7 +262,7 @@ class _AiProviderSettingsScreenState
   }
 
   Future<String?> _askCustomModel() async {
-    return showDialog<String?>(
+    return showPlatformDialog<String?>(
       context: context,
       builder: (context) => _CustomModelDialog(initialValue: _model),
     );
@@ -263,7 +270,7 @@ class _AiProviderSettingsScreenState
 
   Future<void> _save() async {
     if (_saving) return;
-    if (_isGenerationMode && !(_formKey.currentState?.validate() ?? false)) {
+    if (_isGenerationMode && !_validateGenerationApiUrl()) {
       return;
     }
 
@@ -290,11 +297,7 @@ class _AiProviderSettingsScreenState
       showTopToast(context, context.t.strings.legacy.msg_settings_saved);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_save_failed_3(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_save_failed_3(e: e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -329,95 +332,61 @@ class _AiProviderSettingsScreenState
     Widget buildGenerationCard() {
       return Container(
         decoration: _cardDecoration(card, border),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _FieldBlock(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SettingsDialogTextField(
                 label: isZh ? '接口地址' : 'API URL',
-                textMuted: textMuted,
-                child: TextFormField(
-                  controller: _apiUrlController,
-                  enabled: !_saving,
-                  onChanged: (_) => _markDirty(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  validator: (v) {
-                    final raw = (v ?? '').trim();
-                    if (raw.isEmpty) {
-                      return context.t.strings.legacy.msg_enter_api_url;
-                    }
-                    final uri = Uri.tryParse(raw);
-                    if (uri == null || !(uri.hasScheme && uri.hasAuthority)) {
-                      return context.t.strings.legacy.msg_enter_valid_url;
-                    }
-                    return null;
-                  },
-                ),
+                controller: _apiUrlController,
+                enabled: !_saving,
+                errorText: _apiUrlError,
+                onChanged: _onApiUrlChanged,
               ),
-              Divider(height: 1, color: border),
-              _FieldBlock(
+            ),
+            Divider(height: 1, color: border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SettingsDialogTextField(
                 label: isZh ? '接口密钥' : 'API Key',
-                textMuted: textMuted,
-                child: TextFormField(
-                  controller: _apiKeyController,
-                  enabled: !_saving,
-                  onChanged: (_) => _markDirty(),
-                  obscureText: true,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
+                controller: _apiKeyController,
+                enabled: !_saving,
+                obscureText: true,
+                onChanged: (_) => _markDirty(),
               ),
-              Divider(height: 1, color: border),
-              _FieldBlock(
-                label: isZh ? 'LLM 模型' : 'LLM Model',
-                textMuted: textMuted,
-                helper: isZh
-                    ? '用于总结与结构化生成'
-                    : 'Used for summaries and structured generation.',
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _pickModel,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _model.trim().isEmpty
-                                ? context.t.strings.legacy.msg_select
-                                : _model.trim(),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: textMain,
-                            ),
+            ),
+            Divider(height: 1, color: border),
+            _FieldBlock(
+              label: isZh ? 'LLM 模型' : 'LLM Model',
+              textMuted: textMuted,
+              helper: isZh
+                  ? '用于总结与结构化生成'
+                  : 'Used for summaries and structured generation.',
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _pickModel,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _model.trim().isEmpty
+                              ? context.t.strings.legacy.msg_select
+                              : _model.trim(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: textMain,
                           ),
                         ),
-                        Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: textMuted,
-                        ),
-                      ],
-                    ),
+                      ),
+                      Icon(Icons.keyboard_arrow_down_rounded, color: textMuted),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -425,72 +394,42 @@ class _AiProviderSettingsScreenState
     Widget buildEmbeddingCard() {
       return Container(
         decoration: _cardDecoration(card, border),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _FieldBlock(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SettingsDialogTextField(
                 label: isZh ? '接口地址' : 'API URL',
-                textMuted: textMuted,
-                child: TextFormField(
-                  controller: _embeddingBaseUrlController,
-                  enabled: !_saving,
-                  onChanged: (_) => _markDirty(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
+                controller: _embeddingBaseUrlController,
+                enabled: !_saving,
+                onChanged: (_) => _markDirty(),
               ),
-              Divider(height: 1, color: border),
-              _FieldBlock(
+            ),
+            Divider(height: 1, color: border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SettingsDialogTextField(
                 label: isZh ? '接口密钥' : 'API Key',
-                textMuted: textMuted,
-                child: TextFormField(
-                  controller: _embeddingApiKeyController,
-                  enabled: !_saving,
-                  onChanged: (_) => _markDirty(),
-                  obscureText: true,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
+                controller: _embeddingApiKeyController,
+                enabled: !_saving,
+                obscureText: true,
+                onChanged: (_) => _markDirty(),
               ),
-              Divider(height: 1, color: border),
-              _FieldBlock(
+            ),
+            Divider(height: 1, color: border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SettingsDialogTextField(
                 label: isZh ? '向量模型' : 'Embedding Model',
-                textMuted: textMuted,
-                helper: isZh
+                controller: _embeddingModelController,
+                enabled: !_saving,
+                helperText: isZh
                     ? '用于检索、召回和相似度匹配'
                     : 'Used for retrieval, recall, and similarity matching.',
-                child: TextFormField(
-                  controller: _embeddingModelController,
-                  enabled: !_saving,
-                  onChanged: (_) => _markDirty(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: textMain,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
+                onChanged: (_) => _markDirty(),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -626,23 +565,24 @@ class _CustomModelDialogState extends State<_CustomModelDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return SettingsFormDialog(
       title: Text(context.t.strings.legacy.msg_custom_model),
-      content: TextField(
-        controller: _controller,
-        decoration: InputDecoration(
-          hintText: context.t.strings.legacy.msg_e_g_claude_3_5_sonnet,
-          border: const OutlineInputBorder(),
-        ),
-      ),
       actions: [
-        TextButton(
+        SettingsDialogAction(
           onPressed: () => _close(null),
-          child: Text(context.t.strings.legacy.msg_cancel_2),
+          label: Text(context.t.strings.legacy.msg_cancel_2),
         ),
-        FilledButton(
+        SettingsDialogAction(
           onPressed: () => _close(_controller.text),
-          child: Text(context.t.strings.legacy.msg_ok),
+          label: Text(context.t.strings.legacy.msg_ok),
+          variant: PlatformPrimaryActionVariant.filled,
+        ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_model,
+          controller: _controller,
+          hint: context.t.strings.legacy.msg_e_g_claude_3_5_sonnet,
         ),
       ],
     );

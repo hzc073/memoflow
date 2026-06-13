@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' hide RefreshCallback;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,8 +7,10 @@ import '../../platform/platform_experience.dart';
 import '../../platform/platform_icons.dart';
 import '../../platform/widgets/platform_adaptive_layout.dart';
 import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_page.dart';
+import '../../platform/widgets/platform_picker.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 
 class SettingsPageTokens {
@@ -693,13 +696,15 @@ class SettingsToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rowTap =
+        onTap ?? (onChanged == null ? null : () => onChanged!(!value));
     return PlatformListSectionRow(
       title: SettingsRowTitle(label),
       subtitle: description == null
           ? null
           : SettingsRowDescription(description!),
       trailing: PlatformSwitch(value: value, onChanged: onChanged),
-      onTap: onTap,
+      onTap: rowTap,
       denseOnDesktop: description == null,
     );
   }
@@ -829,33 +834,662 @@ class SettingsMenuRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
+    final selectedLabel = labelFor(value);
+    final maxValueWidth = (MediaQuery.sizeOf(context).width * 0.32)
+        .clamp(96.0, 140.0)
+        .toDouble();
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: PlatformListSectionRow(
+        title: SettingsRowTitle(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        additionalInfo: _SettingsMenuValueLabel(
+          label: selectedLabel,
+          color: tokens.textMuted,
+          maxWidth: maxValueWidth,
+        ),
+        trailing: Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
+        onTap: enabled ? () => _showPicker(context) : null,
+      ),
+    );
+  }
+
+  Future<void> _showPicker(BuildContext context) async {
+    final selected = await showSettingsSingleChoicePicker<T>(
+      context: context,
+      title: label,
+      value: value,
+      options: [
+        for (final option in values)
+          SettingsChoiceOption<T>(value: option, label: labelFor(option)),
+      ],
+    );
+    if (selected != null) onChanged(selected);
+  }
+}
+
+class _SettingsMenuValueLabel extends StatelessWidget {
+  const _SettingsMenuValueLabel({
+    required this.label,
+    required this.color,
+    required this.maxWidth,
+  });
+
+  final String label;
+  final Color color;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.end,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: color,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsChoiceOption<T> {
+  const SettingsChoiceOption({
+    this.key,
+    required this.value,
+    required this.label,
+    this.description,
+    this.disabledDescription,
+    this.icon,
+    this.enabled = true,
+  });
+
+  final Key? key;
+  final T value;
+  final String label;
+  final String? description;
+  final String? disabledDescription;
+  final IconData? icon;
+  final bool enabled;
+}
+
+Future<T?> showSettingsSingleChoicePicker<T>({
+  required BuildContext context,
+  required String title,
+  required T? value,
+  required List<SettingsChoiceOption<T>> options,
+  double maxWidth = 420,
+  double maxHeightFactor = 0.72,
+}) {
+  return showPlatformPicker<T>(
+    context: context,
+    desktopMaxWidth: maxWidth,
+    builder: (pickerContext) {
+      final tokens = settingsPageTokens(pickerContext);
+      final maxHeight =
+          MediaQuery.sizeOf(pickerContext).height *
+          maxHeightFactor.clamp(0.2, 1.0).toDouble();
+      return SafeArea(
+        child: ColoredBox(
+          color: tokens.background,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: SettingsContentHeader(title: title, prominent: true),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: SettingsSection(
+                      children: [
+                        SettingsSingleChoiceList<T>(
+                          value: value,
+                          options: options,
+                          onChanged: (selected) =>
+                              Navigator.of(pickerContext).pop(selected),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class SettingsOptionChoiceRow<T> extends StatelessWidget {
+  const SettingsOptionChoiceRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.description,
+    this.enabled = true,
+  });
+
+  final String label;
+  final T value;
+  final List<SettingsChoiceOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final String? description;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final optionGroup = SettingsOptionChipGroup<T>(
+      value: value,
+      options: options,
+      enabled: enabled,
+      onChanged: onChanged,
+    );
+    final subtitle = description == null
+        ? Padding(padding: const EdgeInsets.only(top: 8), child: optionGroup)
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SettingsRowDescription(description!),
+              const SizedBox(height: 8),
+              optionGroup,
+            ],
+          );
+
     return Opacity(
       opacity: enabled ? 1 : 0.55,
       child: PlatformListSectionRow(
         title: SettingsRowTitle(label),
-        trailing: DropdownButtonHideUnderline(
-          child: DropdownButton<T>(
-            value: value,
-            items: [
-              for (final option in values)
-                DropdownMenuItem<T>(
-                  value: option,
-                  child: Text(labelFor(option)),
-                ),
-            ],
-            onChanged: enabled
-                ? (next) {
-                    if (next != null) onChanged(next);
-                  }
-                : null,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: tokens.textMain,
+        subtitle: subtitle,
+        denseOnDesktop: false,
+      ),
+    );
+  }
+}
+
+class SettingsOptionChipGroup<T> extends StatelessWidget {
+  const SettingsOptionChipGroup({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.enabled = true,
+    this.spacing = 8,
+    this.runSpacing = 8,
+  });
+
+  final T value;
+  final List<SettingsChoiceOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+  final double spacing;
+  final double runSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final experience = resolvePlatformExperience(context);
+    final useCupertino =
+        experience.visualFamily == PlatformVisualFamily.cupertinoMobile;
+    return Wrap(
+      spacing: spacing,
+      runSpacing: runSpacing,
+      children: [
+        for (final option in options)
+          _SettingsChoiceChip<T>(
+            key: option.key,
+            option: option,
+            selected: option.value == value,
+            enabled: enabled && option.enabled,
+            useCupertino: useCupertino,
+            onSelected: onChanged,
+          ),
+      ],
+    );
+  }
+}
+
+class SettingsSingleChoiceList<T> extends StatelessWidget {
+  const SettingsSingleChoiceList({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final T? value;
+  final List<SettingsChoiceOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final option in options)
+          SettingsSingleChoiceRow<T>(
+            option: option,
+            selected: option.value == value,
+            enabled: enabled && option.enabled,
+            onChanged: onChanged,
+          ),
+      ],
+    );
+  }
+}
+
+class SettingsSingleChoiceRow<T> extends StatelessWidget {
+  const SettingsSingleChoiceRow({
+    super.key,
+    required this.option,
+    required this.selected,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final SettingsChoiceOption<T> option;
+  final bool selected;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = option.enabled
+        ? option.description
+        : option.disabledDescription ?? option.description;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: PlatformListSectionRow(
+        leading: option.icon == null
+            ? null
+            : Icon(
+                option.icon,
+                size: 20,
+                color: settingsPageTokens(context).textMuted,
+              ),
+        title: SettingsRowTitle(option.label),
+        subtitle: description == null
+            ? null
+            : SettingsRowDescription(description),
+        trailing: _SettingsSelectionMark(selected: selected),
+        onTap: enabled ? () => onChanged(option.value) : null,
+        denseOnDesktop: description == null,
+      ),
+    );
+  }
+}
+
+class SettingsMultiChoiceList<T> extends StatelessWidget {
+  const SettingsMultiChoiceList({
+    super.key,
+    required this.values,
+    required this.options,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final Set<T> values;
+  final List<SettingsChoiceOption<T>> options;
+  final ValueChanged<Set<T>> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final option in options)
+          SettingsMultiChoiceRow<T>(
+            option: option,
+            selected: values.contains(option.value),
+            enabled: enabled && option.enabled,
+            onChanged: (selected) {
+              final next = Set<T>.of(values);
+              if (selected) {
+                next.add(option.value);
+              } else {
+                next.remove(option.value);
+              }
+              onChanged(next);
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class SettingsMultiChoiceRow<T> extends StatelessWidget {
+  const SettingsMultiChoiceRow({
+    super.key,
+    required this.option,
+    required this.selected,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final SettingsChoiceOption<T> option;
+  final bool selected;
+  final ValueChanged<bool> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = option.enabled
+        ? option.description
+        : option.disabledDescription ?? option.description;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: PlatformListSectionRow(
+        leading: option.icon == null
+            ? null
+            : Icon(
+                option.icon,
+                size: 20,
+                color: settingsPageTokens(context).textMuted,
+              ),
+        title: SettingsRowTitle(option.label),
+        subtitle: description == null
+            ? null
+            : SettingsRowDescription(description),
+        trailing: _SettingsSelectionMark(selected: selected, boxed: true),
+        onTap: enabled ? () => onChanged(!selected) : null,
+        denseOnDesktop: description == null,
+      ),
+    );
+  }
+}
+
+class _SettingsChoiceChip<T> extends StatelessWidget {
+  const _SettingsChoiceChip({
+    super.key,
+    required this.option,
+    required this.selected,
+    required this.enabled,
+    required this.useCupertino,
+    required this.onSelected,
+  });
+
+  final SettingsChoiceOption<T> option;
+  final bool selected;
+  final bool enabled;
+  final bool useCupertino;
+  final ValueChanged<T> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (useCupertino) {
+      return _SettingsCupertinoChoicePill(
+        label: option.label,
+        icon: option.icon,
+        selected: selected,
+        enabled: enabled,
+        onTap: enabled ? () => onSelected(option.value) : null,
+      );
+    }
+
+    return ChoiceChip(
+      label: Text(option.label),
+      avatar: option.icon == null ? null : Icon(option.icon, size: 18),
+      selected: selected,
+      onSelected: enabled ? (_) => onSelected(option.value) : null,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+}
+
+class SettingsRemovableChip extends StatelessWidget {
+  const SettingsRemovableChip({
+    super.key,
+    required this.label,
+    required this.onDeleted,
+    this.backgroundColor,
+    this.borderColor,
+    this.foregroundColor,
+    this.deleteTooltip,
+  });
+
+  final String label;
+  final VoidCallback? onDeleted;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? foregroundColor;
+  final String? deleteTooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final foreground = foregroundColor ?? tokens.textMain;
+    final border = borderColor ?? tokens.valueBorder;
+    final background = backgroundColor ?? tokens.valueSurface;
+    final deleteButton = Semantics(
+      button: true,
+      label: deleteTooltip,
+      enabled: onDeleted != null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onDeleted,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.only(start: 6),
+          child: Icon(Icons.close_rounded, size: 16, color: foreground),
+        ),
+      ),
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 7, 8, 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: foreground),
+            ),
+            deleteTooltip == null
+                ? deleteButton
+                : Tooltip(message: deleteTooltip!, child: deleteButton),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsActionPill extends StatelessWidget {
+  const SettingsActionPill({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.selected = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool selected;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final primary = Theme.of(context).colorScheme.primary;
+    final foreground = selected ? primary : tokens.textMain;
+    final borderColor = selected
+        ? primary.withValues(alpha: 0.62)
+        : tokens.valueBorder;
+    final background = selected
+        ? primary.withValues(alpha: tokens.isDark ? 0.18 : 0.1)
+        : tokens.valueSurface;
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        enabled: enabled && onPressed != null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: enabled ? onPressed : null,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: borderColor),
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final iconWidth = icon == null ? 0.0 : 22.0;
+                final maxLabelWidth = constraints.hasBoundedWidth
+                    ? (constraints.maxWidth - iconWidth)
+                          .clamp(48.0, constraints.maxWidth)
+                          .toDouble()
+                    : 360.0;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 16, color: foreground),
+                      const SizedBox(width: 6),
+                    ],
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxLabelWidth),
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: foreground,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _SettingsCupertinoChoicePill extends StatelessWidget {
+  const _SettingsCupertinoChoicePill({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    this.icon,
+    this.onTap,
+  });
+
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final primary = CupertinoTheme.of(context).primaryColor;
+    final foreground = selected ? primary : tokens.textMain;
+    final borderColor = selected
+        ? primary.withValues(alpha: 0.58)
+        : tokens.valueBorder;
+    final background = selected
+        ? primary.withValues(alpha: tokens.isDark ? 0.18 : 0.1)
+        : tokens.valueSurface;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: foreground),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: foreground.withValues(alpha: enabled ? 1 : 0.62),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsSelectionMark extends StatelessWidget {
+  const _SettingsSelectionMark({required this.selected, this.boxed = false});
+
+  final bool selected;
+  final bool boxed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final color = selected
+        ? Theme.of(context).colorScheme.primary
+        : tokens.textMuted.withValues(alpha: 0.62);
+    final icon = boxed
+        ? selected
+              ? Icons.check_box
+              : Icons.check_box_outline_blank
+        : selected
+        ? CupertinoIcons.check_mark
+        : Icons.radio_button_unchecked;
+    return Icon(icon, size: boxed ? 20 : 18, color: color);
   }
 }
 
@@ -885,7 +1519,7 @@ class SettingsStepperRow extends StatelessWidget {
     Widget buildButton(IconData icon, VoidCallback onPressed) {
       return IconButton(
         visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+        constraints: const BoxConstraints.tightFor(width: 26, height: 30),
         padding: EdgeInsets.zero,
         iconSize: 16,
         color: tokens.textMuted,
@@ -897,7 +1531,11 @@ class SettingsStepperRow extends StatelessWidget {
     return Opacity(
       opacity: enabled ? 1 : 0.55,
       child: PlatformListSectionRow(
-        title: SettingsRowTitle(label),
+        title: SettingsRowTitle(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: DecoratedBox(
           decoration: BoxDecoration(
             color: tokens.valueSurface,
@@ -910,20 +1548,22 @@ class SettingsStepperRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 buildButton(Icons.remove, onDecrease),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 44),
+                  constraints: const BoxConstraints(minWidth: 34),
                   child: Text(
                     valueLabel,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
+                      fontSize: 13,
                       color: tokens.textMain,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 buildButton(Icons.add, onIncrease),
               ],
             ),
@@ -953,6 +1593,102 @@ class SettingsWarningRow extends StatelessWidget {
       denseOnDesktop: false,
     );
   }
+}
+
+enum SettingsFeedbackKind { info, success, warning, error }
+
+class SettingsFeedbackRow extends StatelessWidget {
+  const SettingsFeedbackRow({
+    super.key,
+    required this.message,
+    this.title,
+    this.kind = SettingsFeedbackKind.info,
+  });
+
+  final String message;
+  final String? title;
+  final SettingsFeedbackKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _settingsFeedbackData(context, kind);
+    return PlatformListSectionRow(
+      leading: Icon(data.icon, size: 18, color: data.color),
+      title: title == null
+          ? SettingsRowDescription(message)
+          : SettingsRowTitle(title!, color: data.color),
+      subtitle: title == null ? null : SettingsRowDescription(message),
+      denseOnDesktop: title == null,
+    );
+  }
+}
+
+class SettingsProgressRow extends StatelessWidget {
+  const SettingsProgressRow({
+    super.key,
+    required this.label,
+    this.description,
+    this.value,
+  });
+
+  final String label;
+  final String? description;
+  final double? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final progressValue = value?.clamp(0, 1).toDouble();
+    final valueLabel = progressValue == null
+        ? null
+        : '${(progressValue * 100).round()}%';
+    return PlatformListSectionRow(
+      leading: SizedBox.square(
+        dimension: 20,
+        child: PlatformProgress(value: progressValue),
+      ),
+      title: SettingsRowTitle(label),
+      subtitle: description == null
+          ? null
+          : SettingsRowDescription(description!),
+      additionalInfo: valueLabel == null
+          ? null
+          : _SettingsRowValueText(valueLabel, maxWidth: 56),
+      denseOnDesktop: description == null,
+    );
+  }
+}
+
+class _SettingsFeedbackData {
+  const _SettingsFeedbackData({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+}
+
+_SettingsFeedbackData _settingsFeedbackData(
+  BuildContext context,
+  SettingsFeedbackKind kind,
+) {
+  final tokens = settingsPageTokens(context);
+  final colorScheme = Theme.of(context).colorScheme;
+  return switch (kind) {
+    SettingsFeedbackKind.info => _SettingsFeedbackData(
+      icon: Icons.info_outline,
+      color: colorScheme.primary,
+    ),
+    SettingsFeedbackKind.success => _SettingsFeedbackData(
+      icon: Icons.check_circle_outline,
+      color: tokens.isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32),
+    ),
+    SettingsFeedbackKind.warning => _SettingsFeedbackData(
+      icon: Icons.warning_amber_outlined,
+      color: tokens.isDark ? const Color(0xFFFFD54F) : const Color(0xFFF9A825),
+    ),
+    SettingsFeedbackKind.error => _SettingsFeedbackData(
+      icon: Icons.error_outline,
+      color: colorScheme.error,
+    ),
+  };
 }
 
 class SettingsHomeProfileEntry extends StatelessWidget {
@@ -1416,6 +2152,301 @@ _SettingsFeatureStatusData _statusData(
   };
 }
 
+class SettingsFormDialog extends StatelessWidget {
+  const SettingsFormDialog({
+    super.key,
+    required this.title,
+    required this.children,
+    this.actions = const [],
+    this.maxWidth = 480,
+    this.maxHeightFactor = 0.86,
+  });
+
+  final Widget title;
+  final List<Widget> children;
+  final List<Widget> actions;
+  final double maxWidth;
+  final double maxHeightFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final media = MediaQuery.of(context);
+    final maxHeight =
+        media.size.height * maxHeightFactor.clamp(0.2, 1.0).toDouble();
+    final isAppleMobile =
+        resolvePlatformExperience(context).visualFamily ==
+        PlatformVisualFamily.cupertinoMobile;
+    final borderRadius = BorderRadius.circular(isAppleMobile ? 18 : 28);
+    final bodyStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: tokens.textMain,
+      fontSize: 14,
+      height: 1.35,
+      decoration: TextDecoration.none,
+    );
+    final surface = DefaultTextStyle.merge(
+      style:
+          bodyStyle ??
+          TextStyle(
+            color: tokens.textMain,
+            fontSize: 14,
+            height: 1.35,
+            decoration: TextDecoration.none,
+          ),
+      child: IconTheme.merge(
+        data: IconThemeData(color: tokens.textMuted),
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.sectionBackground,
+              border: Border.all(color: tokens.border),
+              borderRadius: borderRadius,
+              boxShadow: [
+                if (!isAppleMobile)
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 32,
+                    offset: const Offset(0, 18),
+                  ),
+              ],
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxWidth,
+                maxHeight: maxHeight,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 10),
+                    child: DefaultTextStyle.merge(
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: tokens.textMain,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.none,
+                      ),
+                      child: title,
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(22, 8, 22, 18),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: children,
+                      ),
+                    ),
+                  ),
+                  if (actions.isNotEmpty) ...[
+                    Divider(height: 1, color: tokens.divider),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: _SettingsFormDialogActions(
+                        appleMobile: isAppleMobile,
+                        actions: actions,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding:
+          media.viewInsets +
+          const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Center(
+        child: isAppleMobile
+            ? surface
+            : Material(type: MaterialType.transparency, child: surface),
+      ),
+    );
+  }
+}
+
+class _SettingsFormDialogActions extends StatelessWidget {
+  const _SettingsFormDialogActions({
+    required this.appleMobile,
+    required this.actions,
+  });
+
+  final bool appleMobile;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (appleMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var index = 0; index < actions.length; index++) ...[
+            if (index > 0) const SizedBox(height: 8),
+            actions[index],
+          ],
+        ],
+      );
+    }
+
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 8,
+      runSpacing: 8,
+      children: actions,
+    );
+  }
+}
+
+class SettingsDialogAction extends StatelessWidget {
+  const SettingsDialogAction({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.variant = PlatformPrimaryActionVariant.text,
+  });
+
+  final Widget label;
+  final VoidCallback? onPressed;
+  final Widget? icon;
+  final PlatformPrimaryActionVariant variant;
+
+  @override
+  Widget build(BuildContext context) {
+    return PlatformPrimaryAction(
+      onPressed: onPressed,
+      icon: icon,
+      variant: variant,
+      desktopMinWidth: 96,
+      desktopMaxWidth: 220,
+      expandOnNarrowDesktop: false,
+      child: label,
+    );
+  }
+}
+
+class SettingsDialogTextField extends StatelessWidget {
+  const SettingsDialogTextField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.hint,
+    this.helperText,
+    this.errorText,
+    this.inputFormatters,
+    this.keyboardType,
+    this.focusNode,
+    this.textInputAction,
+    this.enabled = true,
+    this.obscureText = false,
+    this.suffixIcon,
+    this.minLines,
+    this.maxLines = 1,
+    this.maxLength,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String? hint;
+  final String? helperText;
+  final String? errorText;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final bool enabled;
+  final bool obscureText;
+  final Widget? suffixIcon;
+  final int? minLines;
+  final int? maxLines;
+  final int? maxLength;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final error = errorText?.trim();
+    final helper = helperText?.trim();
+    final borderColor = error != null && error.isNotEmpty
+        ? colorScheme.error
+        : tokens.valueBorder;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: tokens.textMuted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        PlatformTextField(
+          controller: controller,
+          focusNode: focusNode,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          enabled: enabled,
+          obscureText: obscureText,
+          inputFormatters: inputFormatters,
+          minLines: minLines,
+          maxLines: maxLines,
+          maxLength: maxLength,
+          onChanged: onChanged,
+          onSubmitted: onSubmitted,
+          style: TextStyle(fontWeight: FontWeight.w600, color: tokens.textMain),
+          decoration: InputDecoration(
+            hintText: hint,
+            suffixIcon: suffixIcon,
+            counterText: '',
+            filled: true,
+            fillColor: tokens.valueSurface,
+            hintStyle: TextStyle(color: tokens.textMuted),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 11,
+            ),
+          ),
+        ),
+        if (error != null && error.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Text(error, style: TextStyle(fontSize: 12, color: colorScheme.error)),
+        ] else if (helper != null && helper.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          SettingsRowDescription(helper),
+        ],
+      ],
+    );
+  }
+}
+
 class SettingsRowTitle extends StatelessWidget {
   const SettingsRowTitle(
     this.label, {
@@ -1438,8 +2469,10 @@ class SettingsRowTitle extends StatelessWidget {
       maxLines: maxLines,
       overflow: overflow,
       style: TextStyle(
+        fontSize: 14,
         fontWeight: FontWeight.w600,
         color: color ?? tokens.textMain,
+        decoration: TextDecoration.none,
       ),
     );
   }
@@ -1455,7 +2488,12 @@ class SettingsRowDescription extends StatelessWidget {
     final tokens = settingsPageTokens(context);
     return Text(
       label,
-      style: TextStyle(fontSize: 12, color: tokens.textMuted, height: 1.3),
+      style: TextStyle(
+        fontSize: 12,
+        color: tokens.textMuted,
+        height: 1.3,
+        decoration: TextDecoration.none,
+      ),
     );
   }
 }
@@ -1483,4 +2521,29 @@ class SettingsAction extends StatelessWidget {
       child: label,
     );
   }
+}
+
+Future<bool> showSettingsConfirmationDialog({
+  required BuildContext context,
+  required String title,
+  required String message,
+  String confirmLabel = 'OK',
+  String cancelLabel = 'Cancel',
+  bool destructive = false,
+}) async {
+  final result = await showPlatformAlertDialog<bool>(
+    context: context,
+    title: title,
+    message: message,
+    actions: [
+      PlatformDialogAction<bool>(value: false, label: cancelLabel),
+      PlatformDialogAction<bool>(
+        value: true,
+        label: confirmLabel,
+        isDefault: !destructive,
+        isDestructive: destructive,
+      ),
+    ],
+  );
+  return result ?? false;
 }

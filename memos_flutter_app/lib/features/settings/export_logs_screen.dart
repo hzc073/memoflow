@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/top_toast.dart';
+import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_list_section.dart';
 import '../../state/system/debug_log_provider.dart';
 import '../../state/system/logging_provider.dart';
@@ -121,11 +122,7 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_failed_generate(e: e)),
-        ),
-      );
+      showTopToast(context, context.t.strings.legacy.msg_failed_generate(e: e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -133,26 +130,15 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
 
   Future<void> _clearAllLogs() async {
     if (_busy || _clearing) return;
-    final confirm = await showDialog<bool>(
+    final confirm = await showSettingsConfirmationDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(context.t.strings.legacy.msg_clear_logs),
-          content: Text(context.t.strings.legacy.msg_clear_all_logs),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(context.t.strings.legacy.msg_cancel_2),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(context.t.strings.legacy.msg_clear),
-            ),
-          ],
-        );
-      },
+      title: context.t.strings.legacy.msg_clear_logs,
+      message: context.t.strings.legacy.msg_clear_all_logs,
+      confirmLabel: context.t.strings.legacy.msg_clear,
+      cancelLabel: context.t.strings.legacy.msg_cancel_2,
+      destructive: true,
     );
-    if (confirm != true) return;
+    if (!confirm) return;
     setState(() => _clearing = true);
     try {
       final logManager = ref.read(logManagerProvider);
@@ -257,7 +243,8 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
             children: [
               PlatformListSectionRow(
                 title: SettingsRowDescription(_lastPath!),
-                trailing: TextButton(
+                trailing: IconButton(
+                  tooltip: context.t.strings.legacy.msg_copy_path,
                   onPressed: () async {
                     haptic();
                     await Clipboard.setData(ClipboardData(text: _lastPath!));
@@ -267,7 +254,7 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
                       context.t.strings.legacy.msg_path_copied,
                     );
                   },
-                  child: Text(context.t.strings.legacy.msg_copy_path),
+                  icon: const Icon(Icons.copy_rounded),
                 ),
                 denseOnDesktop: false,
               ),
@@ -339,7 +326,7 @@ class _NotesRow extends StatelessWidget {
     return PlatformListSectionRow(
       title: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: TextField(
+        child: PlatformTextField(
           controller: controller,
           minLines: 3,
           maxLines: 5,

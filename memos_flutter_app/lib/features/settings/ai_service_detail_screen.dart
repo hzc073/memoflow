@@ -10,6 +10,8 @@ import '../../core/top_toast.dart';
 import '../../data/repositories/ai_settings_repository.dart';
 import '../../i18n/strings.g.dart';
 import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../platform/widgets/platform_secondary_task_surface.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
@@ -262,19 +264,15 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                 ],
               ),
               const SizedBox(height: 18),
-              TextFormField(
+              SettingsDialogTextField(
+                label: isZh ? '服务名称' : 'Service Name',
                 controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: isZh ? '服务名称' : 'Service Name',
-                ),
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              SettingsDialogTextField(
+                label: 'Base URL',
                 controller: _baseUrlController,
-                decoration: InputDecoration(
-                  labelText: 'Base URL',
-                  helperText: _endpointPreview(service),
-                ),
+                helperText: _endpointPreview(service),
               ),
               const SizedBox(height: 12),
               if (template?.requiresApiKey ?? true)
@@ -282,39 +280,37 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: TextFormField(
+                      child: SettingsDialogTextField(
+                        label: 'API Key',
                         controller: _apiKeyController,
                         obscureText: _obscureApiKey,
-                        decoration: InputDecoration(
-                          labelText: 'API Key',
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _ValidationIcon(
-                                status: service.lastValidationStatus,
-                                checking: _isCheckingConnection,
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _ValidationIcon(
+                              status: service.lastValidationStatus,
+                              checking: _isCheckingConnection,
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _obscureApiKey = !_obscureApiKey;
+                                });
+                              },
+                              icon: Icon(
+                                _obscureApiKey
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                               ),
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _obscureApiKey = !_obscureApiKey;
-                                  });
-                                },
-                                icon: Icon(
-                                  _obscureApiKey
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: FilledButton.tonalIcon(
+                      child: SettingsAction(
                         onPressed: _isCheckingConnection
                             ? null
                             : _checkConnection,
@@ -337,6 +333,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                               ? (isZh ? '检查中' : 'Checking')
                               : (isZh ? '检查' : 'Check'),
                         ),
+                        variant: PlatformPrimaryActionVariant.tonal,
                       ),
                     ),
                   ],
@@ -352,7 +349,7 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                         style: TextStyle(color: textMuted),
                       ),
                     ),
-                    FilledButton.tonalIcon(
+                    SettingsAction(
                       onPressed: _isCheckingConnection
                           ? null
                           : _checkConnection,
@@ -369,38 +366,34 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                                   : Icons.bolt_rounded,
                             ),
                       label: Text(isZh ? '检查连接' : 'Check Connection'),
+                      variant: PlatformPrimaryActionVariant.tonal,
                     ),
                   ],
                 ),
               const SizedBox(height: 12),
-              TextFormField(
+              SettingsDialogTextField(
+                label: isZh ? '额外 Headers' : 'Extra Headers',
                 controller: _headersController,
                 minLines: 3,
                 maxLines: 6,
-                decoration: InputDecoration(
-                  labelText: isZh ? '额外 Headers' : 'Extra Headers',
-                  helperText: isZh
-                      ? '\u6bcf\u884c\u4e00\u4e2a\uff0c\u683c\u5f0f key:value\uff0c\u9ed8\u8ba4\u4e3a\u7a7a\u53ef\u4e0d\u586b\u5199'
-                      : 'One header per line, formatted as key:value. Optional; leave empty if unused.',
-                ),
+                helperText: isZh
+                    ? '\u6bcf\u884c\u4e00\u4e2a\uff0c\u683c\u5f0f key:value\uff0c\u9ed8\u8ba4\u4e3a\u7a7a\u53ef\u4e0d\u586b\u5199'
+                    : 'One header per line, formatted as key:value. Optional; leave empty if unused.',
               ),
               const SizedBox(height: 12),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
+              SettingsToggleRow(
                 value: _enabled,
                 onChanged: (value) => setState(() => _enabled = value),
-                title: Text(isZh ? '启用服务' : 'Enable Service'),
+                label: isZh ? '启用服务' : 'Enable Service',
               ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
+              SettingsToggleRow(
                 value: _usesSharedProxy,
                 onChanged: (value) {
                   setState(() => _usesSharedProxy = value);
                 },
-                title: Text(context.t.strings.aiProxy.useSharedProxy),
-                subtitle: Text(
-                  context.t.strings.aiProxy.useSharedProxyDescription,
-                ),
+                label: context.t.strings.aiProxy.useSharedProxy,
+                description:
+                    context.t.strings.aiProxy.useSharedProxyDescription,
               ),
               if (_usesSharedProxy && !proxyConfigured) ...[
                 const SizedBox(height: 8),
@@ -409,7 +402,8 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                   actionLabel: context.t.strings.aiProxy.openSettings,
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute<void>(
+                      buildPlatformPageRoute<void>(
+                        context: context,
                         builder: (_) => const AiProxySettingsScreen(),
                       ),
                     );
@@ -420,10 +414,11 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
                 const SizedBox(height: 4),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
+                  child: SettingsAction(
                     onPressed: () => _openDocs(template!.docsUrl),
                     icon: const Icon(Icons.open_in_new_rounded),
                     label: Text(isZh ? '打开官方文档' : 'Open documentation'),
+                    variant: PlatformPrimaryActionVariant.text,
                   ),
                 ),
               ],
@@ -510,9 +505,10 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
       title: Text(titleText),
       contentKey: const ValueKey<String>('ai-service-detail-scroll-view'),
       actions: [
-        TextButton(
+        SettingsAction(
           onPressed: _isSaving ? null : () => _save(showSavedToast: true),
-          child: Text(isZh ? '保存' : 'Save'),
+          label: Text(isZh ? '保存' : 'Save'),
+          variant: PlatformPrimaryActionVariant.text,
         ),
       ],
       children: bodyChildren,
@@ -532,11 +528,12 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
               onClose: _requestClose,
               backgroundColor: bg,
               actions: [
-                TextButton(
+                SettingsAction(
                   onPressed: _isSaving
                       ? null
                       : () => _save(showSavedToast: true),
-                  child: Text(isZh ? '保存' : 'Save'),
+                  label: Text(isZh ? '保存' : 'Save'),
+                  variant: PlatformPrimaryActionVariant.text,
                 ),
               ],
               body: body,
@@ -657,36 +654,28 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
   Future<_AiServiceUnsavedCloseAction?> _confirmUnsavedClose() {
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
-    return showDialog<_AiServiceUnsavedCloseAction>(
+    return showPlatformAlertDialog<_AiServiceUnsavedCloseAction>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(isZh ? '保存更改？' : 'Save changes?'),
-        content: Text(
-          isZh
-              ? '此 AI 服务有未保存的修改。你可以保存后关闭、放弃修改，或继续编辑。'
-              : 'This AI service has unsaved changes. Save before closing, discard them, or continue editing.',
+      title: isZh ? '保存更改？' : 'Save changes?',
+      message: isZh
+          ? '此 AI 服务有未保存的修改。你可以保存后关闭、放弃修改，或继续编辑。'
+          : 'This AI service has unsaved changes. Save before closing, discard them, or continue editing.',
+      actions: [
+        PlatformDialogAction<_AiServiceUnsavedCloseAction>(
+          value: _AiServiceUnsavedCloseAction.continueEditing,
+          label: isZh ? '继续编辑' : 'Continue editing',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(
-              dialogContext,
-            ).pop(_AiServiceUnsavedCloseAction.continueEditing),
-            child: Text(isZh ? '继续编辑' : 'Continue editing'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(
-              dialogContext,
-            ).pop(_AiServiceUnsavedCloseAction.discard),
-            child: Text(isZh ? '放弃修改' : 'Discard'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(
-              dialogContext,
-            ).pop(_AiServiceUnsavedCloseAction.save),
-            child: Text(isZh ? '保存并关闭' : 'Save and close'),
-          ),
-        ],
-      ),
+        PlatformDialogAction<_AiServiceUnsavedCloseAction>(
+          value: _AiServiceUnsavedCloseAction.discard,
+          label: isZh ? '放弃修改' : 'Discard',
+          isDestructive: true,
+        ),
+        PlatformDialogAction<_AiServiceUnsavedCloseAction>(
+          value: _AiServiceUnsavedCloseAction.save,
+          label: isZh ? '保存并关闭' : 'Save and close',
+          isDefault: true,
+        ),
+      ],
     );
   }
 
@@ -828,30 +817,19 @@ class _AiServiceDetailScreenState extends ConsumerState<AiServiceDetailScreen> {
         .toList(growable: false);
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSettingsConfirmationDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isZh ? '删除服务？' : 'Delete service?'),
-        content: Text(
-          impactedRoutes.isEmpty
-              ? (isZh ? '此操作不可撤销。' : 'This cannot be undone.')
-              : (isZh
-                    ? '会影响以下默认用途：${impactedRoutes.join('、')}'
-                    : 'This will affect routes: ${impactedRoutes.join(', ')}'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(isZh ? '取消' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(isZh ? '删除' : 'Delete'),
-          ),
-        ],
-      ),
+      title: isZh ? '删除服务？' : 'Delete service?',
+      message: impactedRoutes.isEmpty
+          ? (isZh ? '此操作不可撤销。' : 'This cannot be undone.')
+          : (isZh
+                ? '会影响以下默认用途：${impactedRoutes.join('、')}'
+                : 'This will affect routes: ${impactedRoutes.join(', ')}'),
+      confirmLabel: isZh ? '删除' : 'Delete',
+      cancelLabel: isZh ? '取消' : 'Cancel',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await ref.read(aiSettingsProvider.notifier).deleteService(widget.serviceId);
     if (!mounted) return;
     context.safePop();
@@ -981,7 +959,11 @@ class _ProxyWarningCard extends StatelessWidget {
               children: [
                 Text(message),
                 const SizedBox(height: 8),
-                TextButton(onPressed: onTap, child: Text(actionLabel)),
+                SettingsAction(
+                  onPressed: onTap,
+                  label: Text(actionLabel),
+                  variant: PlatformPrimaryActionVariant.text,
+                ),
               ],
             ),
           ),

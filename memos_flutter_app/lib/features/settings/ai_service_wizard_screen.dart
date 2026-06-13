@@ -9,7 +9,10 @@ import '../../core/uid.dart';
 import '../../data/repositories/ai_settings_repository.dart';
 import '../../i18n/strings.g.dart';
 import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_page.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../platform/widgets/platform_secondary_task_surface.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'ai_provider_logo.dart';
@@ -103,266 +106,285 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
       title: widget.embeddedTaskSurface
           ? null
           : Text(isZh ? '添加服务' : 'Add Service'),
-      body: Stepper(
-        currentStep: _step,
-        onStepTapped: _handleStepTapped,
-        onStepContinue: _continue,
-        onStepCancel: _cancel,
-        controlsBuilder: (context, details) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              children: [
-                FilledButton(
-                  onPressed: details.onStepContinue,
-                  child: Text(
-                    _step == 2
-                        ? (isZh ? '创建服务' : 'Create Service')
-                        : (isZh ? '下一步' : 'Next'),
+      body: Material(
+        type: MaterialType.transparency,
+        child: Stepper(
+          currentStep: _step,
+          onStepTapped: _handleStepTapped,
+          onStepContinue: _continue,
+          onStepCancel: _cancel,
+          controlsBuilder: (context, details) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  SettingsAction(
+                    onPressed: details.onStepContinue,
+                    label: Text(
+                      _step == 2
+                          ? (isZh ? '创建服务' : 'Create Service')
+                          : (isZh ? '下一步' : 'Next'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                TextButton(
-                  onPressed: details.onStepCancel,
-                  child: Text(isZh ? '上一步' : 'Back'),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  SettingsAction(
+                    onPressed: details.onStepCancel,
+                    label: Text(isZh ? '上一步' : 'Back'),
+                    variant: PlatformPrimaryActionVariant.text,
+                  ),
+                ],
+              ),
+            );
+          },
+          steps: [
+            Step(
+              title: Text(isZh ? '选择模板' : 'Choose Template'),
+              isActive: _step >= 0,
+              state: _step > 0 ? StepState.complete : StepState.indexed,
+              content: _TemplatePicker(
+                searchController: _templateSearchController,
+                searchQuery: _templateSearchController.text,
+                selectedTemplateId: _selectedTemplate?.templateId,
+                onSelected: (template) => _selectTemplate(template, isZh: isZh),
+                onCustomRequested: _showCustomTemplateDialog,
+              ),
             ),
-          );
-        },
-        steps: [
-          Step(
-            title: Text(isZh ? '选择模板' : 'Choose Template'),
-            isActive: _step >= 0,
-            state: _step > 0 ? StepState.complete : StepState.indexed,
-            content: _TemplatePicker(
-              searchController: _templateSearchController,
-              searchQuery: _templateSearchController.text,
-              selectedTemplateId: _selectedTemplate?.templateId,
-              onSelected: (template) => _selectTemplate(template, isZh: isZh),
-              onCustomRequested: _showCustomTemplateDialog,
-            ),
-          ),
-          Step(
-            title: Text(isZh ? '服务配置' : 'Configure Service'),
-            isActive: _step >= 1,
-            state: _step > 1 ? StepState.complete : StepState.indexed,
-            content: Container(
-              key: _serviceConfigKey,
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: isZh ? '服务名称' : 'Service Name',
+            Step(
+              title: Text(isZh ? '服务配置' : 'Configure Service'),
+              isActive: _step >= 1,
+              state: _step > 1 ? StepState.complete : StepState.indexed,
+              content: Container(
+                key: _serviceConfigKey,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      SettingsDialogTextField(
+                        label: isZh ? '服务名称' : 'Service Name',
+                        controller: _nameController,
                       ),
-                      validator: (value) =>
-                          (value ?? '').trim().isEmpty ? '' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _baseUrlController,
-                      decoration: const InputDecoration(labelText: 'Base URL'),
-                    ),
-                    if ((_selectedTemplate?.docsUrl.trim().isNotEmpty ??
-                        false)) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              _openDocs(_selectedTemplate!.docsUrl),
-                          icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                          label: Text(
-                            isZh
-                                ? '打开 ${localizedAiProviderTemplateDisplayName(_selectedTemplate!, isZh: isZh)} 官方文档'
-                                : 'Open ${localizedAiProviderTemplateDisplayName(_selectedTemplate!, isZh: isZh)} documentation',
+                      const SizedBox(height: 12),
+                      SettingsDialogTextField(
+                        label: 'Base URL',
+                        controller: _baseUrlController,
+                      ),
+                      if ((_selectedTemplate?.docsUrl.trim().isNotEmpty ??
+                          false)) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: SettingsAction(
+                            onPressed: () =>
+                                _openDocs(_selectedTemplate!.docsUrl),
+                            icon: const Icon(
+                              Icons.open_in_new_rounded,
+                              size: 18,
+                            ),
+                            variant: PlatformPrimaryActionVariant.text,
+                            label: Text(
+                              isZh
+                                  ? '打开 ${localizedAiProviderTemplateDisplayName(_selectedTemplate!, isZh: isZh)} 官方文档'
+                                  : 'Open ${localizedAiProviderTemplateDisplayName(_selectedTemplate!, isZh: isZh)} documentation',
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                    if (_selectedTemplate?.requiresApiKey ?? true) ...[
+                      ],
+                      if (_selectedTemplate?.requiresApiKey ?? true) ...[
+                        const SizedBox(height: 12),
+                        SettingsDialogTextField(
+                          label: 'API Key',
+                          controller: _apiKeyController,
+                          obscureText: true,
+                        ),
+                      ],
                       const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _apiKeyController,
-                        obscureText: true,
-                        decoration: const InputDecoration(labelText: 'API Key'),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _headersController,
-                      minLines: 3,
-                      maxLines: 6,
-                      decoration: InputDecoration(
-                        labelText: isZh ? '额外 Headers' : 'Extra Headers',
+                      SettingsDialogTextField(
+                        label: isZh ? '额外 Headers' : 'Extra Headers',
+                        controller: _headersController,
+                        minLines: 3,
+                        maxLines: 6,
                         helperText: isZh
                             ? '\u6bcf\u884c\u4e00\u4e2a\uff0c\u683c\u5f0f key:value\uff0c\u9ed8\u8ba4\u4e3a\u7a7a\u53ef\u4e0d\u586b\u5199'
                             : 'One header per line, formatted as key:value. Optional; leave empty if unused.',
                       ),
+                      const SizedBox(height: 12),
+                      SettingsToggleRow(
+                        label: context.t.strings.aiProxy.useSharedProxy,
+                        description:
+                            context.t.strings.aiProxy.useSharedProxyDescription,
+                        value: _usesSharedProxy,
+                        onChanged: (value) {
+                          setState(() => _usesSharedProxy = value);
+                        },
+                        onTap: () => setState(
+                          () => _usesSharedProxy = !_usesSharedProxy,
+                        ),
+                      ),
+                      if (_usesSharedProxy && !proxyConfigured) ...[
+                        const SizedBox(height: 12),
+                        _ProxyWarningCard(
+                          message: context.t.strings.aiProxy.incompleteWarning,
+                          actionLabel: context.t.strings.aiProxy.openSettings,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              buildPlatformPageRoute<void>(
+                                context: context,
+                                builder: (_) => const AiProxySettingsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Step(
+              title: Text(isZh ? '模型与用途' : 'Model & Routes'),
+              isActive: _step >= 2,
+              content: Container(
+                key: _modelConfigKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_selectedTemplate != null &&
+                        builtinModelPresetsForTemplate(
+                          _selectedTemplate!,
+                        ).isNotEmpty) ...[
+                      SettingsSectionHeader(
+                        title: isZh ? '内置模型' : 'Built-in Models',
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children:
+                            builtinModelPresetsForTemplate(_selectedTemplate!)
+                                .take(6)
+                                .map(
+                                  (preset) => SettingsActionPill(
+                                    label: preset.displayName,
+                                    onPressed: () => _applyPreset(preset),
+                                  ),
+                                )
+                                .toList(growable: false),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    SettingsDialogTextField(
+                      label: isZh ? '模型显示名' : 'Model Display Name',
+                      controller: _modelNameController,
                     ),
                     const SizedBox(height: 12),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _usesSharedProxy,
-                      onChanged: (value) {
-                        setState(() => _usesSharedProxy = value);
-                      },
-                      title: Text(context.t.strings.aiProxy.useSharedProxy),
-                      subtitle: Text(
-                        context.t.strings.aiProxy.useSharedProxyDescription,
+                    SettingsDialogTextField(
+                      label:
+                          _selectedTemplate?.templateId == aiTemplateAzureOpenAi
+                          ? (isZh ? 'Deployment 名称' : 'Deployment Name')
+                          : (isZh ? '模型 Key' : 'Model Key'),
+                      controller: _modelKeyController,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      isZh ? '能力标签' : 'Capabilities',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    SettingsSection(
+                      children: [
+                        SettingsMultiChoiceList<AiCapability>(
+                          values: {
+                            if (_chat) AiCapability.chat,
+                            if (_embedding) AiCapability.embedding,
+                          },
+                          options: const [
+                            SettingsChoiceOption<AiCapability>(
+                              value: AiCapability.chat,
+                              label: 'Chat',
+                            ),
+                            SettingsChoiceOption<AiCapability>(
+                              value: AiCapability.embedding,
+                              label: 'Embedding',
+                            ),
+                          ],
+                          onChanged: (values) {
+                            setState(() {
+                              _chat = values.contains(AiCapability.chat);
+                              _embedding = values.contains(
+                                AiCapability.embedding,
+                              );
+                              if (!_chat) _useGenerationDefault = false;
+                              if (!_embedding) _useEmbeddingDefault = false;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SettingsToggleRow(
+                      label: isZh ? '设为生成默认' : 'Use as generation default',
+                      value: _useGenerationDefault,
+                      onChanged: _chat
+                          ? (value) =>
+                                setState(() => _useGenerationDefault = value)
+                          : null,
+                      onTap: _chat
+                          ? () => setState(
+                              () => _useGenerationDefault =
+                                  !_useGenerationDefault,
+                            )
+                          : null,
+                    ),
+                    SettingsToggleRow(
+                      label: isZh
+                          ? '设为 Embedding 默认'
+                          : 'Use as embedding default',
+                      value: _useEmbeddingDefault,
+                      onChanged: _embedding
+                          ? (value) =>
+                                setState(() => _useEmbeddingDefault = value)
+                          : null,
+                      onTap: _embedding
+                          ? () => setState(
+                              () =>
+                                  _useEmbeddingDefault = !_useEmbeddingDefault,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SettingsAction(
+                        onPressed: () => _addDraftModel(isZh: isZh),
+                        icon: const Icon(Icons.add_rounded),
+                        variant: PlatformPrimaryActionVariant.outlined,
+                        label: Text(isZh ? '增加模型' : 'Add Model'),
                       ),
                     ),
-                    if (_usesSharedProxy && !proxyConfigured) ...[
-                      const SizedBox(height: 12),
-                      _ProxyWarningCard(
-                        message: context.t.strings.aiProxy.incompleteWarning,
-                        actionLabel: context.t.strings.aiProxy.openSettings,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const AiProxySettingsScreen(),
-                            ),
-                          );
-                        },
+                    if (_draftModels.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        isZh ? '待创建模型' : 'Models to create',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._draftModels.map(
+                        (draft) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _QueuedModelCard(
+                            draft: draft,
+                            isZh: isZh,
+                            onRemove: () => _removeDraftModel(draft),
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
             ),
-          ),
-          Step(
-            title: Text(isZh ? '模型与用途' : 'Model & Routes'),
-            isActive: _step >= 2,
-            content: Container(
-              key: _modelConfigKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_selectedTemplate != null &&
-                      builtinModelPresetsForTemplate(
-                        _selectedTemplate!,
-                      ).isNotEmpty) ...[
-                    SettingsSectionHeader(
-                      title: isZh ? '内置模型' : 'Built-in Models',
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children:
-                          builtinModelPresetsForTemplate(_selectedTemplate!)
-                              .take(6)
-                              .map(
-                                (preset) => ActionChip(
-                                  label: Text(preset.displayName),
-                                  onPressed: () => _applyPreset(preset),
-                                ),
-                              )
-                              .toList(growable: false),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  TextField(
-                    controller: _modelNameController,
-                    decoration: InputDecoration(
-                      labelText: isZh ? '模型显示名' : 'Model Display Name',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _modelKeyController,
-                    decoration: InputDecoration(
-                      labelText:
-                          _selectedTemplate?.templateId == aiTemplateAzureOpenAi
-                          ? (isZh ? 'Deployment 名称' : 'Deployment Name')
-                          : (isZh ? '模型 Key' : 'Model Key'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    isZh ? '能力标签' : 'Capabilities',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilterChip(
-                        selected: _chat,
-                        label: const Text('Chat'),
-                        onSelected: (value) => setState(() {
-                          _chat = value;
-                          if (!_chat) _useGenerationDefault = false;
-                        }),
-                      ),
-                      FilterChip(
-                        selected: _embedding,
-                        label: const Text('Embedding'),
-                        onSelected: (value) => setState(() {
-                          _embedding = value;
-                          if (!_embedding) _useEmbeddingDefault = false;
-                        }),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: _useGenerationDefault,
-                    onChanged: _chat
-                        ? (value) =>
-                              setState(() => _useGenerationDefault = value)
-                        : null,
-                    title: Text(isZh ? '设为生成默认' : 'Use as generation default'),
-                  ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: _useEmbeddingDefault,
-                    onChanged: _embedding
-                        ? (value) =>
-                              setState(() => _useEmbeddingDefault = value)
-                        : null,
-                    title: Text(
-                      isZh ? '设为 Embedding 默认' : 'Use as embedding default',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _addDraftModel(isZh: isZh),
-                      icon: const Icon(Icons.add_rounded),
-                      label: Text(isZh ? '增加模型' : 'Add Model'),
-                    ),
-                  ),
-                  if (_draftModels.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      isZh ? '待创建模型' : 'Models to create',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    ..._draftModels.map(
-                      (draft) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _QueuedModelCard(
-                          draft: draft,
-                          isZh: isZh,
-                          onRemove: () => _removeDraftModel(draft),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -420,7 +442,7 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
   }
 
   Future<void> _showCustomTemplateDialog() async {
-    final template = await showDialog<AiProviderTemplate>(
+    final template = await showPlatformDialog<AiProviderTemplate>(
       context: context,
       builder: (context) => const _CustomTemplateTypeDialog(),
     );
@@ -440,7 +462,15 @@ class _AiServiceWizardScreenState extends ConsumerState<AiServiceWizardScreen> {
       return;
     }
     if (_step == 1) {
-      if (!(_formKey.currentState?.validate() ?? true)) return;
+      if (_nameController.text.trim().isEmpty) {
+        showTopToast(
+          context,
+          isZh
+              ? '\u8bf7\u8f93\u5165\u670d\u52a1\u540d\u79f0\u3002'
+              : 'Enter a service name.',
+        );
+        return;
+      }
       setState(() => _step = 2);
       _scrollToKey(_modelConfigKey);
       return;
@@ -871,7 +901,11 @@ class _ProxyWarningCard extends StatelessWidget {
               children: [
                 Text(message),
                 const SizedBox(height: 8),
-                TextButton(onPressed: onTap, child: Text(actionLabel)),
+                SettingsAction(
+                  onPressed: onTap,
+                  label: Text(actionLabel),
+                  variant: PlatformPrimaryActionVariant.text,
+                ),
               ],
             ),
           ),
@@ -1072,7 +1106,7 @@ class _TemplatePicker extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
+            PlatformTextField(
               controller: searchController,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded),
@@ -1312,51 +1346,40 @@ class _CustomTemplateTypeDialog extends StatelessWidget {
       ),
     ];
 
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 500,
       title: Text(isZh ? '选择自定义协议类型' : 'Choose Custom Provider Type'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      actions: [
+        SettingsDialogAction(
+          onPressed: () => Navigator.of(context).pop(),
+          label: Text(isZh ? '取消' : 'Cancel'),
+        ),
+      ],
+      children: [
+        Text(
+          isZh
+              ? '先确定协议类型，下一步再配置 URL、API Key、Headers 和模型。'
+              : 'Pick a protocol first. You can configure URL, API key, headers, and models in the next steps.',
+        ),
+        const SizedBox(height: 12),
+        SettingsSection(
           children: [
-            Text(
-              isZh
-                  ? '先确定协议类型，下一步再配置 URL、API Key、Headers 和模型。'
-                  : 'Pick a protocol first. You can configure URL, API key, headers, and models in the next steps.',
-            ),
-            const SizedBox(height: 12),
-            for (final option in options)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  tileColor: Theme.of(context).colorScheme.surfaceContainerLow,
-                  leading: AiProviderLogo(
-                    template: option.template,
-                    size: 40,
-                    iconSize: 22,
-                  ),
-                  title: Text(
-                    localizedAiProviderTemplateDisplayName(
+            SettingsSingleChoiceList<AiProviderTemplate>(
+              value: null,
+              options: [
+                for (final option in options)
+                  SettingsChoiceOption<AiProviderTemplate>(
+                    value: option.template,
+                    label: localizedAiProviderTemplateDisplayName(
                       option.template,
                       isZh: isZh,
                     ),
+                    description: option.description,
                   ),
-                  subtitle: Text(option.description),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).pop(option.template),
-                ),
-              ),
+              ],
+              onChanged: (template) => Navigator.of(context).pop(template),
+            ),
           ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(isZh ? '取消' : 'Cancel'),
         ),
       ],
     );

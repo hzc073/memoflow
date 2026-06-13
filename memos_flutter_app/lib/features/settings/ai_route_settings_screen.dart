@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/top_toast.dart';
-import '../../core/windows_adaptive_surface.dart';
 import '../../data/ai/ai_route_config.dart';
 import '../../data/repositories/ai_settings_repository.dart';
 import '../../state/settings/ai_settings_provider.dart';
@@ -13,8 +12,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final generationTileKey = GlobalKey();
-    final embeddingTileKey = GlobalKey();
     final settings = ref.watch(aiSettingsProvider);
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
@@ -37,7 +34,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
         SettingsSection(
           children: [
             SettingsValueRow(
-              key: generationTileKey,
               label: isZh ? '生成默认' : 'Generation Default',
               value: generation == null
                   ? (isZh ? '未绑定模型' : 'No model selected')
@@ -45,7 +41,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
               onTap: () => _pickRoute(
                 context,
                 ref,
-                anchorContext: generationTileKey.currentContext,
                 routeIds: const <AiTaskRouteId>[
                   AiTaskRouteId.summary,
                   AiTaskRouteId.analysisReport,
@@ -55,7 +50,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
               ),
             ),
             SettingsValueRow(
-              key: embeddingTileKey,
               label: 'Embedding Default',
               value: embedding == null
                   ? (isZh ? '未绑定模型' : 'No model selected')
@@ -63,7 +57,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
               onTap: () => _pickRoute(
                 context,
                 ref,
-                anchorContext: embeddingTileKey.currentContext,
                 routeIds: const <AiTaskRouteId>[
                   AiTaskRouteId.embeddingRetrieval,
                 ],
@@ -79,7 +72,6 @@ class AiRouteSettingsScreen extends ConsumerWidget {
   Future<void> _pickRoute(
     BuildContext context,
     WidgetRef ref, {
-    BuildContext? anchorContext,
     required List<AiTaskRouteId> routeIds,
     required AiCapability capability,
   }) async {
@@ -98,33 +90,20 @@ class AiRouteSettingsScreen extends ConsumerWidget {
       return;
     }
 
-    Widget buildRoutePicker(BuildContext surfaceContext) {
-      return SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: SettingsContentHeader(
-                title: isZh ? '选择默认模型' : 'Choose Default Model',
-              ),
-            ),
+    final selected =
+        await showSettingsSingleChoicePicker<AiSelectableRouteOption>(
+          context: context,
+          title: isZh ? '选择默认模型' : 'Choose Default Model',
+          value: null,
+          options: [
             for (final option in options)
-              ListTile(
-                title: Text(option.model.displayName),
-                subtitle: Text(option.service.displayName),
-                onTap: () => Navigator.of(surfaceContext).pop(option),
+              SettingsChoiceOption<AiSelectableRouteOption>(
+                value: option,
+                label: option.model.displayName,
+                description: option.service.displayName,
               ),
           ],
-        ),
-      );
-    }
-
-    final selected = await _showRoutePickerSurface(
-      context,
-      buildRoutePicker,
-      anchorContext: anchorContext,
-    );
+        );
     if (selected == null) return;
 
     final replacements = routeIds
@@ -147,27 +126,5 @@ class AiRouteSettingsScreen extends ConsumerWidget {
         .replaceTaskRouteBindings(current);
     if (!context.mounted) return;
     showTopToast(context, isZh ? '默认用途已更新。' : 'Default routes updated.');
-  }
-
-  Future<AiSelectableRouteOption?> _showRoutePickerSurface(
-    BuildContext context,
-    WidgetBuilder builder, {
-    BuildContext? anchorContext,
-  }) {
-    if (shouldUseWindowsAdaptiveSurface(context)) {
-      return showWindowsAdaptiveSurface<AiSelectableRouteOption>(
-        context: context,
-        kind: WindowsAdaptiveSurfaceKind.popover,
-        anchorContext: anchorContext,
-        fallbackAlignment: Alignment.topLeft,
-        maxWidth: 480,
-        builder: builder,
-      );
-    }
-    return showModalBottomSheet<AiSelectableRouteOption>(
-      context: context,
-      showDragHandle: true,
-      builder: builder,
-    );
   }
 }

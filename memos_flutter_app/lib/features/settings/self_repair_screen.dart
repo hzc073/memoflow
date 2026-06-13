@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/top_toast.dart';
+import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_list_section.dart';
 import '../../state/maintenance/self_repair_mutation_service.dart';
 import '../../state/settings/device_preferences_provider.dart';
@@ -52,17 +54,12 @@ class _SelfRepairScreenState extends ConsumerState<SelfRepairScreen> {
           break;
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_resultMessage(context, action))));
+      showTopToast(context, _resultMessage(context, action));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.t.strings.legacy.msg_self_repair_failed(e: error),
-          ),
-        ),
+      showTopToast(
+        context,
+        context.t.strings.legacy.msg_self_repair_failed(e: error),
       );
     } finally {
       if (mounted) {
@@ -72,24 +69,13 @@ class _SelfRepairScreenState extends ConsumerState<SelfRepairScreen> {
   }
 
   Future<bool> _confirmAction(_RepairAction action) async {
-    final result = await showDialog<bool>(
+    return showSettingsConfirmationDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_confirmTitle(context, action)),
-        content: Text(_confirmMessage(context, action)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(context.t.strings.common.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(context.t.strings.common.confirm),
-          ),
-        ],
-      ),
+      title: _confirmTitle(context, action),
+      message: _confirmMessage(context, action),
+      confirmLabel: context.t.strings.common.confirm,
+      cancelLabel: context.t.strings.common.cancel,
     );
-    return result ?? false;
   }
 
   @override
@@ -231,14 +217,7 @@ class _RepairRow extends StatelessWidget {
         style: TextStyle(fontSize: 12, color: effectiveMuted),
       ),
       trailing: running
-          ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: effectiveMuted,
-              ),
-            )
+          ? SizedBox(width: 18, height: 18, child: PlatformProgress())
           : Icon(Icons.chevron_right, size: 20, color: effectiveMuted),
       onTap: disabled || running ? null : onTap,
       denseOnDesktop: false,

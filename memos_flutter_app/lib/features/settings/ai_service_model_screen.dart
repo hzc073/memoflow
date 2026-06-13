@@ -6,6 +6,9 @@ import '../../data/logs/log_manager.dart';
 import '../../core/top_toast.dart';
 import '../../core/uid.dart';
 import '../../data/repositories/ai_settings_repository.dart';
+import '../../platform/widgets/platform_controls.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/ai_settings_provider.dart';
 import 'settings_ui.dart';
 
@@ -14,7 +17,7 @@ Future<AiModelEntry?> showAiModelEditorDialog(
   required AiServiceInstance service,
   AiModelEntry? initial,
 }) {
-  return showDialog<AiModelEntry>(
+  return showPlatformDialog<AiModelEntry>(
     context: context,
     builder: (_) => _AiModelEditorDialog(service: service, initial: initial),
   );
@@ -135,84 +138,81 @@ class _AiServiceModelPanelState extends ConsumerState<_AiServiceModelPanel> {
                 trailing: _CountPill(count: filteredModels.length),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search_rounded),
-                        hintText: isZh
-                            ? '搜索模型名或 Key'
-                            : 'Search model name or key',
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final searchField = PlatformTextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      hintText: isZh
+                          ? '搜索模型名或 Key'
+                          : 'Search model name or key',
+                    ),
+                  );
+                  final actions = <Widget>[
+                    SettingsAction(
+                      onPressed: () =>
+                          _openEditor(context, ref, service: service),
+                      icon: const Icon(Icons.add_rounded),
+                      label: Text(isZh ? '添加模型' : 'Add Model'),
+                    ),
+                    if (template?.supportsModelDiscovery ?? false)
+                      SettingsAction(
+                        onPressed: _isSyncingModels
+                            ? null
+                            : () => _syncModels(service),
+                        icon: _isSyncingModels
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.sync_rounded),
+                        label: Text(isZh ? '同步模型' : 'Sync Models'),
+                        variant: PlatformPrimaryActionVariant.outlined,
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton.icon(
-                    onPressed: () =>
-                        _openEditor(context, ref, service: service),
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text(isZh ? '添加模型' : 'Add Model'),
-                  ),
-                  if (template?.supportsModelDiscovery ?? false) ...[
-                    const SizedBox(width: 10),
-                    OutlinedButton.icon(
-                      onPressed: _isSyncingModels
-                          ? null
-                          : () => _syncModels(service),
-                      icon: _isSyncingModels
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync_rounded),
-                      label: Text(isZh ? '同步模型' : 'Sync Models'),
-                    ),
-                  ],
-                ],
+                  ];
+                  if (constraints.maxWidth < 620) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        searchField,
+                        const SizedBox(height: 10),
+                        Wrap(spacing: 10, runSpacing: 10, children: actions),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: searchField),
+                      const SizedBox(width: 10),
+                      for (var index = 0; index < actions.length; index++) ...[
+                        if (index > 0) const SizedBox(width: 10),
+                        actions[index],
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  PopupMenuButton<_ModelSourceFilter>(
-                    initialValue: _sourceFilter,
-                    onSelected: (value) =>
-                        setState(() => _sourceFilter = value),
-                    itemBuilder: (context) => _ModelSourceFilter.values
-                        .map(
-                          (value) => PopupMenuItem<_ModelSourceFilter>(
-                            value: value,
-                            child: Text(_sourceFilterLabel(value, isZh)),
-                          ),
-                        )
-                        .toList(growable: false),
-                    child: _ToolbarChip(
-                      icon: Icons.filter_alt_rounded,
-                      label:
-                          '${isZh ? '\u7b5b\u9009' : 'Filter'} · ${_sourceFilterLabel(_sourceFilter, isZh)}',
-                    ),
+                  SettingsActionPill(
+                    icon: Icons.filter_alt_rounded,
+                    label:
+                        '${isZh ? '\u7b5b\u9009' : 'Filter'} · ${_sourceFilterLabel(_sourceFilter, isZh)}',
+                    onPressed: () => _pickSourceFilter(isZh),
                   ),
-                  PopupMenuButton<_ModelSortMode>(
-                    initialValue: _sortMode,
-                    onSelected: (value) => setState(() => _sortMode = value),
-                    itemBuilder: (context) => _ModelSortMode.values
-                        .map(
-                          (value) => PopupMenuItem<_ModelSortMode>(
-                            value: value,
-                            child: Text(_sortModeLabel(value, isZh)),
-                          ),
-                        )
-                        .toList(growable: false),
-                    child: _ToolbarChip(
-                      icon: Icons.swap_vert_rounded,
-                      label:
-                          '${isZh ? '排序' : 'Sort'} · ${_sortModeLabel(_sortMode, isZh)}',
-                    ),
+                  SettingsActionPill(
+                    icon: Icons.swap_vert_rounded,
+                    label:
+                        '${isZh ? '排序' : 'Sort'} · ${_sortModeLabel(_sortMode, isZh)}',
+                    onPressed: () => _pickSortMode(isZh),
                   ),
                 ],
               ),
@@ -721,6 +721,40 @@ class _AiServiceModelPanelState extends ConsumerState<_AiServiceModelPanel> {
     showTopToast(context, isZh ? '已添加内置模型。' : 'Built-in model added.');
   }
 
+  Future<void> _pickSourceFilter(bool isZh) async {
+    final selected = await showSettingsSingleChoicePicker<_ModelSourceFilter>(
+      context: context,
+      title: isZh ? '\u7b5b\u9009\u6a21\u578b' : 'Filter Models',
+      value: _sourceFilter,
+      options: [
+        for (final value in _ModelSourceFilter.values)
+          SettingsChoiceOption<_ModelSourceFilter>(
+            value: value,
+            label: _sourceFilterLabel(value, isZh),
+          ),
+      ],
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _sourceFilter = selected);
+  }
+
+  Future<void> _pickSortMode(bool isZh) async {
+    final selected = await showSettingsSingleChoicePicker<_ModelSortMode>(
+      context: context,
+      title: isZh ? '\u6392\u5e8f\u6a21\u578b' : 'Sort Models',
+      value: _sortMode,
+      options: [
+        for (final value in _ModelSortMode.values)
+          SettingsChoiceOption<_ModelSortMode>(
+            value: value,
+            label: _sortModeLabel(value, isZh),
+          ),
+      ],
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _sortMode = selected);
+  }
+
   Future<void> _openEditor(
     BuildContext context,
     WidgetRef ref, {
@@ -749,28 +783,17 @@ class _AiServiceModelPanelState extends ConsumerState<_AiServiceModelPanel> {
   ) async {
     final isZh =
         Localizations.localeOf(context).languageCode.toLowerCase() == 'zh';
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSettingsConfirmationDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isZh ? '删除模型？' : 'Delete model?'),
-        content: Text(
-          isZh
-              ? '删除后，绑定到这个模型的默认用途会自动解绑。'
-              : 'Deleting this model also removes any route binding that uses it.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(isZh ? '取消' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(isZh ? '删除' : 'Delete'),
-          ),
-        ],
-      ),
+      title: isZh ? '删除模型？' : 'Delete model?',
+      message: isZh
+          ? '删除后，绑定到这个模型的默认用途会自动解绑。'
+          : 'Deleting this model also removes any route binding that uses it.',
+      confirmLabel: isZh ? '删除' : 'Delete',
+      cancelLabel: isZh ? '取消' : 'Cancel',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await ref
         .read(aiSettingsProvider.notifier)
         .deleteServiceModel(widget.service.serviceId, model.modelId);
@@ -814,42 +837,6 @@ class _CountPill extends StatelessWidget {
         style: theme.textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.w700,
         ),
-      ),
-    );
-  }
-}
-
-class _ToolbarChip extends StatelessWidget {
-  const _ToolbarChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.035),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          const Icon(Icons.expand_more_rounded, size: 16),
-        ],
       ),
     );
   }
@@ -913,11 +900,12 @@ class _PresetCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          FilledButton.tonal(
+          SettingsAction(
             onPressed: onAdd,
-            child: Text(
+            label: Text(
               added ? (isZh ? '已添加' : 'Added') : (isZh ? '添加' : 'Add'),
             ),
+            variant: PlatformPrimaryActionVariant.tonal,
           ),
         ],
       ),
@@ -999,23 +987,18 @@ class _ModelCard extends StatelessWidget {
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                padding: EdgeInsets.zero,
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    onEdit();
-                    return;
-                  }
-                  onDelete();
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem<String>(
-                    value: 'edit',
-                    child: Text(isZh ? '编辑' : 'Edit'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: isZh ? '编辑' : 'Edit',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: onEdit,
                   ),
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Text(isZh ? '删除' : 'Delete'),
+                  IconButton(
+                    tooltip: isZh ? '删除' : 'Delete',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: onDelete,
                   ),
                 ],
               ),
@@ -1109,66 +1092,73 @@ class _AiModelEditorDialogState extends State<_AiModelEditorDialog> {
     final modelKeyLabel = widget.service.templateId == aiTemplateAzureOpenAi
         ? (isZh ? 'Deployment 名称' : 'Deployment Name')
         : (isZh ? '模型 Key' : 'Model Key');
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 480,
       title: Text(
         widget.initial == null
             ? (isZh ? '添加模型' : 'Add Model')
             : (isZh ? '编辑模型' : 'Edit Model'),
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      actions: [
+        SettingsDialogAction(
+          onPressed: () => Navigator.of(context).pop(),
+          label: Text(isZh ? '取消' : 'Cancel'),
+        ),
+        SettingsDialogAction(
+          onPressed: _save,
+          variant: PlatformPrimaryActionVariant.filled,
+          label: Text(isZh ? '保存' : 'Save'),
+        ),
+      ],
+      children: [
+        SettingsDialogTextField(
+          label: isZh ? '显示名称' : 'Display Name',
+          controller: _nameController,
+        ),
+        const SizedBox(height: 12),
+        SettingsDialogTextField(
+          label: modelKeyLabel,
+          controller: _keyController,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          isZh ? '能力' : 'Capabilities',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        SettingsSection(
           children: [
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: isZh ? '显示名称' : 'Display Name',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _keyController,
-              decoration: InputDecoration(labelText: modelKeyLabel),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isZh ? '能力' : 'Capabilities',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilterChip(
-                  selected: _chat,
-                  label: const Text('Chat'),
-                  onSelected: (value) => setState(() => _chat = value),
+            SettingsMultiChoiceList<AiCapability>(
+              values: {
+                if (_chat) AiCapability.chat,
+                if (_embedding) AiCapability.embedding,
+              },
+              options: const [
+                SettingsChoiceOption<AiCapability>(
+                  value: AiCapability.chat,
+                  label: 'Chat',
                 ),
-                FilterChip(
-                  selected: _embedding,
-                  label: const Text('Embedding'),
-                  onSelected: (value) => setState(() => _embedding = value),
+                SettingsChoiceOption<AiCapability>(
+                  value: AiCapability.embedding,
+                  label: 'Embedding',
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _enabled,
-              onChanged: (value) => setState(() => _enabled = value),
-              title: Text(isZh ? '启用模型' : 'Enable Model'),
+              onChanged: (values) {
+                setState(() {
+                  _chat = values.contains(AiCapability.chat);
+                  _embedding = values.contains(AiCapability.embedding);
+                });
+              },
             ),
           ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(isZh ? '取消' : 'Cancel'),
+        const SizedBox(height: 12),
+        SettingsToggleRow(
+          label: isZh ? '启用模型' : 'Enable Model',
+          value: _enabled,
+          onChanged: (value) => setState(() => _enabled = value),
+          onTap: () => setState(() => _enabled = !_enabled),
         ),
-        FilledButton(onPressed: _save, child: Text(isZh ? '保存' : 'Save')),
       ],
     );
   }

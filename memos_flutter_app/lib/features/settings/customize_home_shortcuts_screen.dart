@@ -32,61 +32,25 @@ class CustomizeHomeShortcutsScreen extends ConsumerWidget {
 
     Future<void> pickAction(int index) async {
       final options = buildVisibleHomeQuickActions(hasAccount: hasAccount);
-      final selected = await showDialog<HomeQuickAction>(
+      final selected = await showSettingsSingleChoicePicker<HomeQuickAction>(
         context: context,
-        builder: (dialogContext) {
-          final colorScheme = Theme.of(dialogContext).colorScheme;
-          return AlertDialog(
-            backgroundColor: tokens.card,
-            surfaceTintColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-            contentPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            title: SettingsContentHeader(title: slotLabels[index]),
-            content: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 420,
-                maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.6,
+        title: slotLabels[index],
+        value: resolvedActions[index],
+        maxHeightFactor: 0.6,
+        options: [
+          for (final action in options)
+            SettingsChoiceOption<HomeQuickAction>(
+              value: action,
+              label: homeQuickActionLabel(context, action),
+              icon: homeQuickActionIcon(action),
+              enabled: !isHomeQuickActionUsedByOtherSlot(
+                action: action,
+                selectedActions: resolvedActions,
+                editingIndex: index,
               ),
-              child: SingleChildScrollView(
-                child: RadioGroup<HomeQuickAction>(
-                  groupValue: resolvedActions[index],
-                  onChanged: (value) {
-                    Navigator.of(dialogContext).pop(value);
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final action in options)
-                        RadioListTile<HomeQuickAction>(
-                          value: action,
-                          enabled: !isHomeQuickActionUsedByOtherSlot(
-                            action: action,
-                            selectedActions: resolvedActions,
-                            editingIndex: index,
-                          ),
-                          activeColor: colorScheme.primary,
-                          secondary: Icon(
-                            homeQuickActionIcon(action),
-                            color: homeQuickActionIconColor(
-                              action,
-                              isDark: tokens.isDark,
-                            ),
-                          ),
-                          title: Text(
-                            homeQuickActionLabel(dialogContext, action),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+              disabledDescription: 'Already used by another quick entry.',
             ),
-          );
-        },
+        ],
       );
       if (selected == null || selected == resolvedActions[index]) {
         return;

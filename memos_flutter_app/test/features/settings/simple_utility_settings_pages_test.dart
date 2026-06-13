@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,7 @@ import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/features/settings/template_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/widgets_screen.dart';
 import 'package:memos_flutter_app/state/settings/memo_template_settings_provider.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'settings_test_harness.dart';
@@ -29,6 +31,7 @@ void main() {
 
   tearDown(() {
     dismissTopToast();
+    debugPlatformTargetOverride = null;
   });
 
   testWidgets('template settings page uses settings seams and opens dialogs', (
@@ -83,6 +86,59 @@ void main() {
     );
     expect(find.text('{{date}}'), findsOneWidget);
     expect(find.text('Got it'), findsOneWidget);
+  });
+
+  testWidgets('template dialogs use settings form seams on iOS', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(
+      buildSettingsTestApp(
+        home: const TemplateSettingsScreen(),
+        overrides: [
+          memoTemplateSettingsProvider.overrideWith(
+            (ref) => _TestMemoTemplateSettingsController(
+              ref,
+              MemoTemplateSettings(
+                enabled: true,
+                templates: const [
+                  MemoTemplate(
+                    id: 'daily',
+                    name: 'Daily note',
+                    content: 'Today I noticed {{date}}',
+                  ),
+                ],
+                variables: MemoTemplateVariableSettings.defaults.copyWith(
+                  weatherEnabled: true,
+                  weatherCity: 'Beijing',
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Available variable docs'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+
+    await tester.tap(find.widgetWithText(SettingsDialogAction, 'Got it'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Template variables'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFormDialog), findsOneWidget);
+    expect(find.byType(SettingsDialogTextField), findsWidgets);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(TextField), findsNothing);
   });
 
   testWidgets(

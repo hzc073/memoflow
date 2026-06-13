@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/desktop_quick_input_channel.dart';
 import '../../core/desktop_runtime_role.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform/widgets/platform_dialog.dart';
+import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../memos/compose_toolbar_shared.dart';
 import '../memos/memo_toolbar_custom_icon_catalog.dart' as toolbar_icons;
@@ -67,7 +69,7 @@ class MemoToolbarSettingsScreen extends ConsumerWidget {
     }
 
     Future<void> createCustomButton() async {
-      final created = await showDialog<MemoToolbarCustomButton>(
+      final created = await showPlatformDialog<MemoToolbarCustomButton>(
         context: context,
         builder: (dialogContext) => const _CreateCustomToolbarButtonDialog(),
       );
@@ -331,9 +333,9 @@ class _ToolboxCreateTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final toolbarStrings = context.t.strings.settings.preferences.editorToolbar;
-    return InkWell(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1154,7 +1156,6 @@ class _CreateCustomToolbarButtonDialogState
   Widget build(BuildContext context) {
     final toolbarStrings = context.t.strings.settings.preferences.editorToolbar;
     final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
     final labelError = _submitted
         ? _validateLabel(_labelController.text)
         : null;
@@ -1165,164 +1166,129 @@ class _CreateCustomToolbarButtonDialogState
         .where((option) => _selectedGroup.matches(option))
         .toList(growable: false);
 
-    return AlertDialog(
+    return SettingsFormDialog(
+      maxWidth: 488,
       title: Text(toolbarStrings.createCustomDialogTitle),
-      content: SizedBox(
-        width: 440,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                toolbarStrings.customButtonIconLabel,
-                style: textTheme.titleSmall,
+      actions: [
+        SettingsDialogAction(
+          onPressed: () => Navigator.of(context).pop(),
+          label: Text(context.t.strings.legacy.msg_cancel),
+        ),
+        SettingsDialogAction(
+          key: const ValueKey('memo-toolbar-create-save'),
+          onPressed: _submit,
+          variant: PlatformPrimaryActionVariant.filled,
+          label: Text(context.t.strings.legacy.msg_save),
+        ),
+      ],
+      children: [
+        Text(toolbarStrings.customButtonIconLabel, style: textTheme.titleSmall),
+        const SizedBox(height: 10),
+        SettingsOptionChipGroup<_CustomIconGroup>(
+          value: _selectedGroup,
+          options: [
+            for (final group in _CustomIconGroup.values)
+              SettingsChoiceOption<_CustomIconGroup>(
+                key: ValueKey('memo-toolbar-icon-group-${group.valueKey()}'),
+                value: group,
+                label: group.key(context),
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 34,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _CustomIconGroup.values.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final group = _CustomIconGroup.values[index];
-                    return ChoiceChip(
-                      key: ValueKey(
-                        'memo-toolbar-icon-group-${group.valueKey()}',
-                      ),
-                      label: Text(group.key(context)),
-                      selected: group == _selectedGroup,
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      labelStyle: textTheme.labelSmall?.copyWith(
-                        color: group == _selectedGroup
-                            ? colorScheme.onSecondaryContainer
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      onSelected: (_) => setState(() => _selectedGroup = group),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 320,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    var crossAxisCount = ((constraints.maxWidth + 8) / 56)
-                        .floor();
-                    if (crossAxisCount < 5) {
-                      crossAxisCount = 5;
-                    }
+          ],
+          onChanged: (group) => setState(() => _selectedGroup = group),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 320,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              var crossAxisCount = ((constraints.maxWidth + 8) / 56).floor();
+              if (crossAxisCount < 5) {
+                crossAxisCount = 5;
+              }
 
-                    return GridView.builder(
-                      key: ValueKey(
-                        'memo-toolbar-icon-grid-${_selectedGroup.valueKey()}',
-                      ),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1,
-                      ),
-                      itemCount: iconOptions.length,
-                      itemBuilder: (context, index) {
-                        final option = iconOptions[index];
-                        return _CustomIconOption(
-                          key: ValueKey(
-                            'memo-toolbar-icon-option-${option.key}',
-                          ),
-                          option: option,
-                          selected: option.key == _selectedIconKey,
-                          onTap: () =>
-                              setState(() => _selectedIconKey = option.key),
-                        );
-                      },
-                    );
-                  },
+              return GridView.builder(
+                key: ValueKey(
+                  'memo-toolbar-icon-grid-${_selectedGroup.valueKey()}',
                 ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _labelController,
-                inputFormatters: [LengthLimitingTextInputFormatter(4)],
-                decoration: InputDecoration(
-                  labelText: toolbarStrings.customButtonNameLabel,
-                  hintText: toolbarStrings.customButtonNameHint,
-                  errorText: labelError,
-                  border: const OutlineInputBorder(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 1,
                 ),
+                itemCount: iconOptions.length,
+                itemBuilder: (context, index) {
+                  final option = iconOptions[index];
+                  return _CustomIconOption(
+                    key: ValueKey('memo-toolbar-icon-option-${option.key}'),
+                    option: option,
+                    selected: option.key == _selectedIconKey,
+                    onTap: () => setState(() => _selectedIconKey = option.key),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+        SettingsDialogTextField(
+          label: toolbarStrings.customButtonNameLabel,
+          controller: _labelController,
+          hint: toolbarStrings.customButtonNameHint,
+          errorText: labelError,
+          inputFormatters: [LengthLimitingTextInputFormatter(4)],
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        SettingsDialogTextField(
+          label: toolbarStrings.customButtonContentLabel,
+          controller: _contentController,
+          hint: toolbarStrings.customButtonContentLabel,
+          helperText: toolbarStrings.customButtonContentHelp,
+          errorText: contentError,
+          minLines: 3,
+          maxLines: 5,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        Text(toolbarStrings.customButtonPreview, style: textTheme.titleSmall),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _ToolActionVisual(
+              icon: toolbar_icons.resolveMemoToolbarCustomIcon(
+                _selectedIconKey,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _contentController,
-                minLines: 3,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  labelText: toolbarStrings.customButtonContentLabel,
-                  helperText: toolbarStrings.customButtonContentHelp,
-                  helperMaxLines: 2,
-                  errorText: contentError,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                toolbarStrings.customButtonPreview,
-                style: textTheme.titleSmall,
-              ),
-              const SizedBox(height: 10),
-              Row(
+              iconColor: Theme.of(context).colorScheme.primary,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.08),
+              borderColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ToolActionVisual(
-                    icon: toolbar_icons.resolveMemoToolbarCustomIcon(
-                      _selectedIconKey,
-                    ),
-                    iconColor: Theme.of(context).colorScheme.primary,
-                    backgroundColor: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.08),
-                    borderColor: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.18),
+                  Text(
+                    _labelController.text.trim().isEmpty
+                        ? toolbarStrings.customButtonNameHint
+                        : _labelController.text.trim(),
+                    style: textTheme.titleMedium,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _labelController.text.trim().isEmpty
-                              ? toolbarStrings.customButtonNameHint
-                              : _labelController.text.trim(),
-                          style: textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _contentController.text,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _contentController.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodySmall,
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(context.t.strings.legacy.msg_cancel),
-        ),
-        FilledButton(
-          key: const ValueKey('memo-toolbar-create-save'),
-          onPressed: _submit,
-          child: Text(context.t.strings.legacy.msg_save),
+            ),
+          ],
         ),
       ],
     );
@@ -1354,9 +1320,9 @@ class _CustomIconOption extends StatelessWidget {
     return Tooltip(
       message: option.label,
       waitDuration: const Duration(milliseconds: 250),
-      child: InkWell(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
         child: Container(
           alignment: Alignment.center,
           decoration: BoxDecoration(

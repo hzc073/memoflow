@@ -112,6 +112,64 @@ void main() {
     expect(result?.title, 'Work');
     expect(result?.filter, 'tag in ["work"]');
   });
+
+  testWidgets('tag picker uses settings multi choice seams on iOS', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        tagStats: const <TagStat>[
+          TagStat(tag: 'work', count: 1),
+          TagStat(tag: 'personal', count: 2),
+        ],
+        child: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () {
+                  openShortcutEditor(
+                    context,
+                    shortcut: const Shortcut(
+                      name: 'shortcuts/work',
+                      id: 'work',
+                      title: 'Work',
+                      filter: 'tag in ["work"]',
+                    ),
+                  );
+                },
+                child: const Text('Open editor'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsRemovableChip), findsOneWidget);
+    expect(find.byType(InputChip), findsNothing);
+
+    await tester.tap(find.text('Select tags'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byType(SettingsMultiChoiceList<String>), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNothing);
+
+    await tester.tap(find.text('#personal'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(SettingsDialogAction, 'Done'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('#personal'), findsOneWidget);
+  });
 }
 
 Widget _buildTestApp({

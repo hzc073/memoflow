@@ -19,6 +19,8 @@ import '../../state/system/reminder_scheduler.dart';
 import '../../state/settings/reminder_settings_provider.dart';
 import '../../state/webdav/webdav_settings_provider.dart';
 import '../reminders/reminder_settings_screen.dart';
+import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import 'image_bed_settings_screen.dart';
 import 'image_compression_settings_screen.dart';
 import 'location_settings_screen.dart';
@@ -69,7 +71,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
             await ref.read(reminderSchedulerProvider).rescheduleAll();
           },
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            buildPlatformPageRoute<void>(
+              context: context,
               builder: (_) => const ReminderSettingsScreen(),
             ),
           ),
@@ -109,7 +112,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
           onChanged: (v) =>
               ref.read(imageBedSettingsProvider.notifier).setEnabled(v),
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            buildPlatformPageRoute<void>(
+              context: context,
               builder: (_) => const ImageBedSettingsScreen(),
             ),
           ),
@@ -122,7 +126,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
           onChanged: (v) =>
               ref.read(imageCompressionSettingsProvider.notifier).setEnabled(v),
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            buildPlatformPageRoute<void>(
+              context: context,
               builder: (_) => const ImageCompressionSettingsScreen(),
             ),
           ),
@@ -146,7 +151,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
           onChanged: (v) =>
               ref.read(locationSettingsProvider.notifier).setEnabled(v),
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            buildPlatformPageRoute<void>(
+              context: context,
               builder: (_) => const LocationSettingsScreen(),
             ),
           ),
@@ -163,7 +169,8 @@ class ComponentsSettingsScreen extends ConsumerWidget {
           onChanged: (v) =>
               ref.read(memoTemplateSettingsProvider.notifier).setEnabled(v),
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            buildPlatformPageRoute<void>(
+              context: context,
               builder: (_) => const TemplateSettingsScreen(),
             ),
           ),
@@ -185,7 +192,10 @@ class ComponentsSettingsScreen extends ConsumerWidget {
           onChanged: (v) =>
               ref.read(webDavSettingsProvider.notifier).setEnabled(v),
           onOpen: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const WebDavSyncScreen()),
+            buildPlatformPageRoute<void>(
+              context: context,
+              builder: (_) => const WebDavSyncScreen(),
+            ),
           ),
         ),
       ],
@@ -268,31 +278,17 @@ bool _useChineseComponentCopy(BuildContext context) {
 Future<bool> _requestReminderPermissions(BuildContext context) async {
   if (!Platform.isAndroid) return true;
 
-  final confirmed =
-      await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.t.strings.legacy.msg_enable_reminder_permissions),
-          content: Text(
-            context
-                .t
-                .strings
-                .legacy
-                .msg_notification_exact_alarm_permissions_required_send,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => context.safePop(false),
-              child: Text(context.t.strings.legacy.msg_cancel_2),
-            ),
-            FilledButton(
-              onPressed: () => context.safePop(true),
-              child: Text(context.t.strings.legacy.msg_grant),
-            ),
-          ],
-        ),
-      ) ??
-      false;
+  final confirmed = await showSettingsConfirmationDialog(
+    context: context,
+    title: context.t.strings.legacy.msg_enable_reminder_permissions,
+    message: context
+        .t
+        .strings
+        .legacy
+        .msg_notification_exact_alarm_permissions_required_send,
+    cancelLabel: context.t.strings.legacy.msg_cancel_2,
+    confirmLabel: context.t.strings.legacy.msg_grant,
+  );
   if (!confirmed) return false;
 
   final sdkInt = await _getAndroidSdkInt();
@@ -319,7 +315,7 @@ Future<bool> _requestReminderPermissions(BuildContext context) async {
 }
 
 Future<bool> _confirmThirdPartyShareEnable(BuildContext context) async {
-  return await showDialog<bool>(
+  return await showPlatformDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (context) => const ThirdPartyShareCopyrightDialog(),
@@ -391,23 +387,22 @@ class _ThirdPartyShareCopyrightDialogState
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 16),
-              CheckboxListTile(
-                value: _acknowledged,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(
-                  _thirdPartyShareAcknowledgeLabel(
+              SettingsMultiChoiceRow<String>(
+                option: SettingsChoiceOption<String>(
+                  value: 'acknowledged',
+                  label: _thirdPartyShareAcknowledgeLabel(
                     context,
                     secondsRemaining: _secondsRemaining,
                   ),
+                  enabled: checkboxEnabled,
                 ),
-                onChanged: checkboxEnabled
-                    ? (checked) {
-                        setState(() {
-                          _acknowledged = checked ?? false;
-                        });
-                      }
-                    : null,
+                selected: _acknowledged,
+                enabled: checkboxEnabled,
+                onChanged: (checked) {
+                  setState(() {
+                    _acknowledged = checked;
+                  });
+                },
               ),
             ],
           ),

@@ -49,6 +49,8 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('80Percentage'), findsNothing);
+    expect(find.text('80%'), findsWidgets);
 
     final enableRow = tester.widget<SettingsToggleRow>(
       find.byWidgetPredicate(

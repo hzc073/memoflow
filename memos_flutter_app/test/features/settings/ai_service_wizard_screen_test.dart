@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/data/repositories/ai_settings_repository.dart';
 import 'package:memos_flutter_app/features/settings/ai_service_wizard_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/settings/ai_settings_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_provider.dart';
 
@@ -96,7 +98,14 @@ Widget _buildTestApp({
 }
 
 void main() {
-  setUp(() => LocaleSettings.setLocale(AppLocale.en));
+  setUp(() {
+    LocaleSettings.setLocale(AppLocale.en);
+    debugPlatformTargetOverride = null;
+  });
+
+  tearDown(() {
+    debugPlatformTargetOverride = null;
+  });
 
   testWidgets('AiServiceWizardScreen renders unified provider picker', (
     tester,
@@ -184,15 +193,12 @@ void main() {
 
       await tester.tap(find.text('OpenAI').first);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Next').last);
-      await tester.tap(
-        find.widgetWithText(FilledButton, 'Next').last,
-        warnIfMissed: false,
-      );
+      await tester.ensureVisible(find.text('Next').last);
+      await tester.tap(find.text('Next').last, warnIfMissed: false);
       await tester.pumpAndSettle();
 
       expect(find.text('Use shared proxy'), findsOneWidget);
-      await tester.tap(find.widgetWithText(SwitchListTile, 'Use shared proxy'));
+      await tester.tap(find.text('Use shared proxy'));
       await tester.pumpAndSettle();
 
       expect(
@@ -209,4 +215,39 @@ void main() {
       expect(find.text('Proxy Settings'), findsOneWidget);
     },
   );
+
+  testWidgets('iOS wizard service form uses settings seams', (tester) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    await tester.binding.setSurfaceSize(const Size(390, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final prefsRepository = _MemoryAppPreferencesRepository(
+      AppPreferences.defaultsForLanguage(AppLanguage.en),
+    );
+    final aiRepository = _MemoryAiSettingsRepository(
+      AiSettings.defaultsFor(AppLanguage.en),
+    );
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        prefsRepository: prefsRepository,
+        aiRepository: aiRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('OpenAI').first);
+    await tester.tap(find.text('OpenAI').first, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Next').last);
+    await tester.tap(find.text('Next').last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsDialogTextField), findsWidgets);
+    expect(find.byType(SettingsToggleRow), findsWidgets);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(find.byType(ActionChip), findsNothing);
+    expect(find.byType(FilterChip), findsNothing);
+  });
 }

@@ -71,37 +71,19 @@ class AccountSecurityScreen extends ConsumerWidget {
     ) async {
       final decisions = <String, bool>{};
       for (final conflict in conflicts) {
-        final useDisk =
-            await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: Text(context.t.strings.legacy.msg_resolve_conflict),
-                content: Text(
-                  conflict.isDeletion
-                      ? context
-                            .t
-                            .strings
-                            .legacy
-                            .msg_memo_missing_disk_but_has_local
-                      : context
-                            .t
-                            .strings
-                            .legacy
-                            .msg_disk_content_conflicts_local_pending_changes,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => context.safePop(false),
-                    child: Text(context.t.strings.legacy.msg_keep_local),
-                  ),
-                  FilledButton(
-                    onPressed: () => context.safePop(true),
-                    child: Text(context.t.strings.legacy.msg_use_disk),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
+        final useDisk = await showSettingsConfirmationDialog(
+          context: context,
+          title: context.t.strings.legacy.msg_resolve_conflict,
+          message: conflict.isDeletion
+              ? context.t.strings.legacy.msg_memo_missing_disk_but_has_local
+              : context
+                    .t
+                    .strings
+                    .legacy
+                    .msg_disk_content_conflicts_local_pending_changes,
+          confirmLabel: context.t.strings.legacy.msg_use_disk,
+          cancelLabel: context.t.strings.legacy.msg_keep_local,
+        );
         decisions[conflict.memoUid] = useDisk;
       }
       return decisions;
@@ -115,31 +97,17 @@ class AccountSecurityScreen extends ConsumerWidget {
       if (!context.mounted) return;
       await WidgetsBinding.instance.endOfFrame;
       if (!context.mounted) return;
-      final confirmed =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.t.strings.legacy.msg_scan_local_library),
-              content: Text(
-                context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_scan_disk_directory_merge_local_database,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.t.strings.legacy.msg_cancel_2),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.t.strings.legacy.msg_scan),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final confirmed = await showSettingsConfirmationDialog(
+        context: context,
+        title: context.t.strings.legacy.msg_scan_local_library,
+        message: context
+            .t
+            .strings
+            .legacy
+            .msg_scan_disk_directory_merge_local_database,
+        confirmLabel: context.t.strings.legacy.msg_scan,
+        cancelLabel: context.t.strings.legacy.msg_cancel_2,
+      );
       if (!confirmed) return;
       final scanner = ref.read(localLibraryScannerProvider);
       if (scanner == null) return;
@@ -162,13 +130,10 @@ class AccountSecurityScreen extends ConsumerWidget {
             showTopToast(context, context.t.strings.legacy.msg_scan_completed);
             return;
           case LocalScanFailure(:final error):
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context.t.strings.legacy.msg_scan_failed(
-                    e: formatLocalScanError(context, error),
-                  ),
-                ),
+            showTopToast(
+              context,
+              context.t.strings.legacy.msg_scan_failed(
+                e: formatLocalScanError(context, error),
               ),
             );
             return;
@@ -177,11 +142,7 @@ class AccountSecurityScreen extends ConsumerWidget {
         }
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_scan_failed(e: e)),
-          ),
-        );
+        showTopToast(context, context.t.strings.legacy.msg_scan_failed(e: e));
       }
     }
 
@@ -247,31 +208,15 @@ class AccountSecurityScreen extends ConsumerWidget {
     }
 
     Future<void> removeLocalLibrary(LocalLibrary library) async {
-      final confirmed =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.t.strings.legacy.msg_remove_local_library),
-              content: Text(
-                context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_only_local_index_removed_disk_files,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.t.strings.legacy.msg_cancel_2),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.t.strings.legacy.msg_confirm),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final confirmed = await showSettingsConfirmationDialog(
+        context: context,
+        title: context.t.strings.legacy.msg_remove_local_library,
+        message:
+            context.t.strings.legacy.msg_only_local_index_removed_disk_files,
+        confirmLabel: context.t.strings.legacy.msg_confirm,
+        cancelLabel: context.t.strings.legacy.msg_cancel_2,
+        destructive: true,
+      );
       if (!confirmed) return;
 
       final wasCurrent = library.key == currentKey;
@@ -326,35 +271,17 @@ class AccountSecurityScreen extends ConsumerWidget {
         ref.read(secureStorageProvider),
         accountKey: accountKey,
       );
-      final confirmed =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(
-                wasCurrent
-                    ? context.t.strings.legacy.msg_sign
-                    : context.t.strings.legacy.msg_remove_account,
-              ),
-              content: Text(
-                context
-                    .t
-                    .strings
-                    .legacy
-                    .msg_also_clear_local_cache_account_offline,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => context.safePop(false),
-                  child: Text(context.t.strings.legacy.msg_cancel_2),
-                ),
-                FilledButton(
-                  onPressed: () => context.safePop(true),
-                  child: Text(context.t.strings.legacy.msg_confirm),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final confirmed = await showSettingsConfirmationDialog(
+        context: context,
+        title: wasCurrent
+            ? context.t.strings.legacy.msg_sign
+            : context.t.strings.legacy.msg_remove_account,
+        message:
+            context.t.strings.legacy.msg_also_clear_local_cache_account_offline,
+        confirmLabel: context.t.strings.legacy.msg_confirm,
+        cancelLabel: context.t.strings.legacy.msg_cancel_2,
+        destructive: true,
+      );
       if (!confirmed) return;
       if (!context.mounted) return;
 
@@ -379,21 +306,13 @@ class AccountSecurityScreen extends ConsumerWidget {
           ).pushNamedAndRemoveUntil('/', (route) => false);
           return;
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_local_cache_cleared),
-          ),
-        );
+        showTopToast(context, context.t.strings.legacy.msg_local_cache_cleared);
         if (wasCurrent) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.t.strings.legacy.msg_action_failed(e: e)),
-          ),
-        );
+        showTopToast(context, context.t.strings.legacy.msg_action_failed(e: e));
       }
     }
 

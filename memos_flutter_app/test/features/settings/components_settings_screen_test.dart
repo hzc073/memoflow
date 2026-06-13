@@ -4,9 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/features/settings/components_settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_dialog.dart';
 
 void main() {
+  void setTargetPlatform(TargetPlatform platform) {
+    debugPlatformTargetOverride = platform;
+    addTearDown(() {
+      debugPlatformTargetOverride = null;
+    });
+  }
+
   Widget buildTestApp() {
     LocaleSettings.setLocale(AppLocale.en);
     return TranslationProvider(
@@ -24,27 +34,33 @@ void main() {
     (tester) async {
       await tester.pumpWidget(buildTestApp());
 
-      final checkboxTileFinder = find.byType(CheckboxListTile);
+      final acknowledgementRowFinder = find.byType(
+        SettingsMultiChoiceRow<String>,
+      );
       final enableButtonFinder = find.widgetWithText(FilledButton, 'Enable');
 
-      var checkboxTile = tester.widget<CheckboxListTile>(checkboxTileFinder);
+      var acknowledgementRow = tester.widget<SettingsMultiChoiceRow<String>>(
+        acknowledgementRowFinder,
+      );
       var enableButton = tester.widget<FilledButton>(enableButtonFinder);
 
       expect(
         find.text('I understand (5s before it can be checked)'),
         findsOneWidget,
       );
-      expect(checkboxTile.onChanged, isNull);
+      expect(acknowledgementRow.enabled, isFalse);
       expect(enableButton.onPressed, isNull);
 
       await tester.pump(const Duration(seconds: 5));
       await tester.pump();
 
-      checkboxTile = tester.widget<CheckboxListTile>(checkboxTileFinder);
+      acknowledgementRow = tester.widget<SettingsMultiChoiceRow<String>>(
+        acknowledgementRowFinder,
+      );
       expect(find.text('I understand'), findsOneWidget);
-      expect(checkboxTile.onChanged, isNotNull);
+      expect(acknowledgementRow.enabled, isTrue);
 
-      await tester.ensureVisible(checkboxTileFinder);
+      await tester.ensureVisible(acknowledgementRowFinder);
       await tester.tap(find.text('I understand'));
       await tester.pumpAndSettle();
 
@@ -52,6 +68,52 @@ void main() {
       expect(enableButton.onPressed, isNotNull);
     },
   );
+
+  testWidgets('third-party share acknowledgement dialog works on iOS', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+    LocaleSettings.setLocale(AppLocale.en);
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: Builder(
+            builder: (context) {
+              return TextButton(
+                onPressed: () => showPlatformDialog<bool>(
+                  context: context,
+                  builder: (_) => const ThirdPartyShareCopyrightDialog(),
+                ),
+                child: const Text('Open'),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CheckboxListTile), findsNothing);
+    expect(find.byType(SettingsMultiChoiceRow<String>), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    final acknowledgementRowFinder = find.byType(
+      SettingsMultiChoiceRow<String>,
+    );
+    await tester.ensureVisible(acknowledgementRowFinder);
+    await tester.tap(acknowledgementRowFinder);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 
   test('components screen uses shared settings UI seam', () {
     final source = File(
