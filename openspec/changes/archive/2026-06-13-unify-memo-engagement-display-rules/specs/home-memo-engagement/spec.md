@@ -23,6 +23,8 @@ The system SHALL use a single memo engagement preference gate to determine wheth
 - **AND** the final display decision SHALL still use the unified effective memo engagement gate
 - **AND** the implementation SHALL NOT use `showEngagement: true`、`shouldShowEngagement: true`、`widget.showEngagement || preference` 或 equivalent force-display logic to bypass the user preference.
 
+## ADDED Requirements
+
 ### Requirement: Local library mode SHALL NOT support memo engagement display
 The system SHALL treat memo likes and comments as unsupported in local library mode.
 

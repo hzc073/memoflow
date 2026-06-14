@@ -118,16 +118,23 @@ The platform adaptive UI system SHALL provide a settings-owned semantic UI seam 
 - **THEN** it SHALL use a settings semantic row such as `SettingsNavigationRow`, `SettingsValueRow`, `SettingsToggleRow`, or an equivalent seam
 - **AND** platform-specific row, grouped-list, and switch behavior SHALL be delegated to shared settings/platform components
 
-#### Scenario: Settings subpage controls are migrated
+#### Scenario: Settings choice controls are rendered
 
-- **WHEN** a migrated settings subpage renders chips, segmented choices, single-choice rows, multi-choice rows, checkboxes, radios, dropdown-like controls, buttons, progress, validation feedback, or transient choices
-- **THEN** those controls SHALL use settings/platform semantic seams
-- **AND** migrated files SHALL NOT reintroduce page-local Material-only controls in Apple mobile grouped-list content without an explicit documented exception
+- **WHEN** a migrated settings page renders chip-like choices, single-choice lists, multi-choice lists, segmented choices, dropdown-like choices, or picker-backed choices
+- **THEN** it SHALL use a settings/platform semantic choice seam
+- **AND** the page SHALL NOT directly embed Material-only choice widgets inside Apple mobile grouped-list content
 
 #### Scenario: Settings actions are rendered
 
 - **WHEN** a migrated settings page renders save, confirm, continue, cancel, reset, destructive, or secondary actions
 - **THEN** it SHALL express the semantic action variant instead of hardcoding button foreground/background colors in the screen
+- **AND** the action SHALL render through a platform-safe action seam that can choose Cupertino-safe, Material, or desktop-appropriate presentation
+
+#### Scenario: Settings transient feedback is rendered
+
+- **WHEN** a migrated settings page shows confirmation, destructive choice, option selection, validation feedback, success feedback, failure feedback, loading, or progress
+- **THEN** it SHALL use platform/settings dialog, picker, feedback, loading, or progress seams
+- **AND** Apple mobile settings pages SHALL NOT rely on accidental `Scaffold`, `Material`, or `ScaffoldMessenger` ancestors unless the seam explicitly owns that dependency
 
 #### Scenario: Settings visual tokens are resolved
 
@@ -566,7 +573,7 @@ Reference and entry settings pages in this batch SHALL render page chrome, group
 
 ### Requirement: WebDAV settings pages SHALL use semantic settings UI seams
 
-WebDAV settings surfaces in `webdav_sync_screen.dart` SHALL render page chrome, grouped rows, toggles, navigation entries, input rows, action buttons, status/progress rows, warning/copy rows, and log entries through `SettingsPage`, `SettingsSection`, semantic settings rows/actions, or equivalent settings/platform seams instead of direct palette/local card/button/toggle implementations.
+WebDAV settings surfaces in `webdav_sync_screen.dart` SHALL render page chrome, grouped rows, toggles, navigation entries, input rows, action buttons, status/progress rows, warning/copy rows, and log entries through `SettingsPage`, `SettingsSection`, semantic settings rows/actions, or equivalent settings/platform seams instead of direct palette/local card/button/toggle implementations. `_WebDavConnectionScreen` SHALL also present connection settings with clear grouped hierarchy, user-facing copy, and theme-derived colors without changing WebDAV persistence or network behavior.
 
 #### Scenario: WebDAV root page is migrated
 
@@ -579,6 +586,45 @@ WebDAV settings surfaces in `webdav_sync_screen.dart` SHALL render page chrome, 
 - **WHEN** `_WebDavConnectionScreen` renders server URL, username, password, auth mode, ignore TLS, root path, warning copy, or connection test action
 - **THEN** it SHALL use settings semantic page/section/input/toggle/value/action seams
 - **AND** it SHALL preserve controller binding, draft settings construction, validation hints, connection test behavior, toast/snackbar feedback, auth mode picker, TLS toggle, and root path normalization
+
+#### Scenario: WebDAV connection page uses clear grouped hierarchy
+
+- **WHEN** `_WebDavConnectionScreen` renders the WebDAV server connection form
+- **THEN** it SHALL group visible controls under “基础设置”, “认证设置”, “高级设置”, and “安全” or their localized equivalents
+- **AND** the page title SHALL remain “服务器连接” or its localized equivalent with the existing back navigation behavior
+- **AND** section labels, helper copy, row values, dividers, backgrounds, and action colors SHALL come from existing theme/settings/platform seams rather than a new color system or new hard-coded hex values
+
+#### Scenario: WebDAV basic fields remain editable and understandable
+
+- **WHEN** `_WebDavConnectionScreen` renders server URL, username, and password fields
+- **THEN** server URL SHALL show example guidance equivalent to `https://example.com/dav`
+- **AND** server URL SHALL expose a visible text action equivalent to “测试” that reuses the existing connection test logic
+- **AND** username SHALL show placeholder guidance equivalent to “请输入用户名”
+- **AND** password SHALL show placeholder guidance equivalent to “请输入密码”
+- **AND** password visibility toggle SHALL keep the existing show/hide state behavior and use theme or icon-theme colors
+
+#### Scenario: WebDAV auth mode copy is user-facing
+
+- **WHEN** `_WebDavConnectionScreen` displays `WebDavAuthMode.basic`
+- **THEN** the visible row value SHALL be “基础认证” or its localized equivalent
+- **AND** the stored enum value, picker selection, provider write path, and WebDAV auth behavior SHALL remain unchanged
+
+#### Scenario: WebDAV advanced and security settings explain risk and purpose
+
+- **WHEN** `_WebDavConnectionScreen` renders root path and TLS certificate handling settings
+- **THEN** root path SHALL be grouped under advanced settings and SHALL include helper copy equivalent to “用于指定 WebDAV 同步目录”
+- **AND** root path SHALL preserve the existing default value, controller binding, provider write path, and normalization behavior
+- **AND** `ignoreTlsErrors` SHALL be displayed as “允许不安全证书” or its localized equivalent
+- **AND** the security row SHALL include helper copy equivalent to “仅建议在可信内网或测试环境中开启”
+- **AND** the toggle SHALL preserve the existing `ignoreTlsErrors` default, state binding, and save behavior
+
+#### Scenario: WebDAV connection save action has no network side effects
+
+- **WHEN** the user taps the bottom primary action labeled “保存设置” or its localized equivalent
+- **THEN** the page SHALL complete saving/form-finalization behavior by reusing existing setting write and normalization paths
+- **AND** it SHALL NOT call the connection test logic
+- **AND** it SHALL NOT start WebDAV sync, WebDAV backup, restore, Vault setup, or any new network operation
+- **AND** it SHALL NOT automatically change WebDAV enabled, backup enabled, or auto-sync allowed state
 
 #### Scenario: WebDAV backup settings page is migrated
 
@@ -953,3 +999,371 @@ Changes to platform input controls, settings input rows, Apple mobile validation
 #### Scenario: Public shell boundary is verified
 - **WHEN** platform/settings/onboarding input surface code is added or changed in the public repository
 - **THEN** verification or review SHALL confirm it does not add subscription, billing, entitlement, receipt, paywall, StoreKit, product ID, price, private overlay, or `AccessDecision.source` business branching logic
+
+### Requirement: Adaptive UI system SHALL centralize effective typography decisions
+The platform adaptive UI system SHALL provide a centralized policy or equivalent stable seam for resolving effective app typography across platforms. Feature screens SHALL NOT duplicate platform-specific typography decisions for font family, font availability, text scaling, or UI chrome line-height behavior.
+
+#### Scenario: App theme resolves effective typography
+- **WHEN** `MaterialApp` theme, `CupertinoTheme`, or app-level `MediaQuery` needs effective font family, font fallback, text scaler, or UI line-height behavior
+- **THEN** the app SHALL resolve those values through the centralized typography policy or equivalent stable seam
+- **AND** feature pages MUST NOT add local `TargetPlatform.iOS` or `Platform.isIOS` branches to repair the same app-wide typography behavior
+
+#### Scenario: Typography policy remains stable-layer safe
+- **WHEN** a centralized typography policy or helper is introduced or changed
+- **THEN** it MUST NOT depend on `features/*`, `application/*`, or UI page implementation details
+- **AND** it SHALL accept only stable inputs such as platform classification, app preference values, existing text scaler, and theme-relevant primitive values
+
+#### Scenario: Composition root delegates decisions
+- **WHEN** `app.dart` composes `ThemeData`, `CupertinoTheme`, or `MediaQuery`
+- **THEN** it SHALL delegate platform-specific typography decisions to the centralized policy or equivalent seam
+- **AND** `app.dart` SHALL remain primarily a composition root rather than accumulating page-specific typography rules
+
+### Requirement: Adaptive UI system SHALL expose font-selection capability by platform
+The platform adaptive UI system SHALL expose whether a platform can select system fonts and what effective font label should be shown, so settings surfaces do not infer capability from an empty font list alone.
+
+#### Scenario: iOS reports no selectable system-font capability
+- **WHEN** Preferences evaluates the font setting on iPhone or iPadOS
+- **THEN** the adaptive UI system SHALL report that system-font selection is unavailable or system-default-only for that platform
+- **AND** the settings surface SHALL render a non-misleading state without opening an empty font picker
+
+#### Scenario: Desktop reports selectable system-font capability
+- **WHEN** Preferences evaluates the font setting on Windows, macOS, Linux, or another platform with supported system font discovery
+- **THEN** the adaptive UI system SHALL allow the existing system-font picker path to remain available
+- **AND** the displayed label SHALL continue to reflect the selected font or system default
+
+#### Scenario: Settings remains semantic
+- **WHEN** Preferences renders the font setting row, disabled state, hidden state, or read-only label
+- **THEN** it SHALL use settings semantic components or an approved settings/platform seam
+- **AND** it MUST NOT create a separate iOS-only Preferences page tree
+
+### Requirement: Adaptive settings rows SHALL map value metadata to platform-native slots
+The platform adaptive UI system SHALL render settings row value text through platform-native metadata slots rather than treating all right-side content as an unconstrained trailing control. Value text such as selected enum labels, font labels, and mode labels SHALL remain bounded under Apple mobile Dynamic Type while Android and desktop Material rows keep their existing trailing presentation.
+
+#### Scenario: iOS value text uses Cupertino additional info
+- **WHEN** a settings value row renders on iPhone or iPadOS with a value label and a disclosure indicator
+- **THEN** the value label SHALL be mapped to the Cupertino row additional-info slot or an equivalent platform metadata seam
+- **AND** the disclosure indicator SHALL remain the trailing control
+- **AND** the value label MUST NOT be rendered as an unconstrained trailing control that can inherit inconsistent typography
+
+#### Scenario: iOS large text remains bounded
+- **WHEN** Preferences renders on iPhone or iPadOS with a large system `MediaQuery.textScaler`
+- **THEN** settings value labels SHALL remain constrained, ellipsized, or otherwise reflowed without overflowing row chrome
+- **AND** the row SHALL preserve system text scaling rather than disabling Dynamic Type globally
+
+#### Scenario: Material rows keep existing behavior
+- **WHEN** a settings value row renders on Android, Windows, macOS, Linux, or web Material surfaces
+- **THEN** the row SHALL keep the existing Material trailing presentation for value labels, chevrons, switches, and icons
+- **AND** this Apple mobile typography fix MUST NOT introduce Android-specific visual or interaction regressions
+
+### Requirement: Adaptive UI typography changes SHALL include focused verification
+Changes to adaptive typography, text scaling, font-selection capability, or Apple mobile surface rules SHALL include focused automated verification.
+
+#### Scenario: Effective iOS font behavior is verified
+- **WHEN** typography policy tests run
+- **THEN** they SHALL verify that iPhone and iPadOS ignore persisted unsupported `fontFamily` / `fontFile` for effective app chrome
+- **AND** they SHALL verify that non-iOS font behavior covered by existing support is not regressed
+
+#### Scenario: Text scaling behavior is verified
+- **WHEN** widget or unit tests run for iOS typography behavior
+- **THEN** they SHALL verify that system text scaling contributes to the effective iOS text scaler
+- **AND** `AppFontSize.standard` MUST NOT replace the system scaler with a fixed linear value
+
+#### Scenario: Settings font entry behavior is verified
+- **WHEN** iPhone Preferences widget tests run
+- **THEN** they SHALL verify that the font entry does not open an empty iOS system-font picker
+- **AND** the rendered state SHALL communicate system default or an equivalent non-misleading state
+
+#### Scenario: Platform adapter dependency guardrail is verified
+- **WHEN** architecture tests or repo scans run
+- **THEN** they SHALL prevent new `platform -> features`, `platform -> state`, `platform -> application`, and `platform -> data` dependencies introduced by this typography adaptation unless an explicit OpenSpec-approved exception exists
+
+### Requirement: Adaptive UI surface rules SHALL distinguish brand surfaces from platform chrome
+The platform adaptive UI system SHALL document and enforce the distinction between MemoFlow brand surfaces and platform-native chrome so future iOS changes do not mix raw Material/Cupertino decisions arbitrarily.
+
+#### Scenario: High-perception Apple chrome is adapted
+- **WHEN** migrated iPhone or iPadOS UI renders page chrome, navigation, picker, dialog, grouped list, bottom navigation, settings rows, or primary actions
+- **THEN** it SHALL use `platform/`, settings, or approved adaptive seams for platform semantics
+- **AND** page-local raw Material/Cupertino substitutions MUST NOT be introduced as the default migration path
+
+#### Scenario: Shared brand surface is retained
+- **WHEN** a surface intentionally keeps MemoFlow brand styling such as card color, primary accent, or content card shape on Apple mobile
+- **THEN** that behavior SHALL be implemented through shared theme/settings/platform tokens or documented design rationale
+- **AND** it MUST NOT rely on accidental global typography side effects such as unsupported fonts, overridden system scaling, or reader line height on UI chrome
+
+#### Scenario: Future migration stays scoped
+- **WHEN** future iOS UI work touches home, settings, memos, onboarding, collections, review, or stats
+- **THEN** it SHALL reuse the typography and platform surface policy from this change where applicable
+- **AND** it SHALL keep the touched area equal or better structured during `evolve_modularity`
+
+### Requirement: Settings form field blocks SHALL align with settings section geometry
+
+The platform adaptive UI system SHALL provide settings-owned full-width form field blocks whose label、input surface、helper text、error text 和 suffix action 在同一视觉网格内对齐。完整文本、密码、密钥、URL、路径和多行输入 SHALL NOT depend on a grouped-list row subtitle as the primary layout surface when that causes filled input backgrounds to drift from the section geometry.
+
+#### Scenario: Full-width field renders as aligned block
+
+- **WHEN** a migrated settings page renders a URL、路径、password、API Key、Security Key、access token 或其他长/敏感文本字段
+- **THEN** the field SHALL render through `SettingsFormFieldRow`, `SettingsFieldBlock`, `SettingsMultilineFieldRow`, or an equivalent settings-owned field block seam
+- **AND** label、filled input surface、helper text 和 error text SHALL share consistent horizontal padding inside the settings section
+- **AND** the filled input background SHALL NOT visually touch or overflow the section border because of nested list row subtitle padding
+
+#### Scenario: Multiline field uses same field block grid
+
+- **WHEN** a migrated settings page renders AI 个人资料、反馈备注、通知正文或其他多行文本
+- **THEN** the multiline input SHALL use the same settings-owned field block geometry
+- **AND** minLines、maxLines、hint、helper text、error text、enabled state 和 callbacks SHALL remain expressible through the seam
+
+#### Scenario: Inline fallback uses aligned full-width field
+
+- **WHEN** an inline text or numeric settings field switches to a stacked fallback because of narrow width、large text scale 或 long label
+- **THEN** the fallback SHALL use the aligned full-width field block seam
+- **AND** it SHALL preserve the original controller、keyboardType、inputFormatters、onChanged、onSubmitted 和 onEditingComplete behavior
+
+### Requirement: Settings field blocks SHALL use existing theme and settings tokens
+
+Settings field block visuals SHALL use existing settings tokens, `ThemeData`, `ColorScheme`, platform widgets, or approved design tokens for fill、border、focused border、label、hint、helper、error、icon 和 disabled state. They SHALL NOT introduce a new color system or require global theme changes.
+
+#### Scenario: Field block colors are theme-derived
+
+- **WHEN** a field block renders in light mode or dark mode
+- **THEN** field fill、border、focused border、hint text、label text、helper text、error text 和 icon colors SHALL come from existing theme/settings/platform seams
+- **AND** the field block SHALL NOT hard-code new hex colors for ordinary settings field surfaces
+
+#### Scenario: Focus and disabled states remain platform-safe
+
+- **WHEN** a field block is focused, disabled, or has a suffix action
+- **THEN** focus border、opacity、icon color 和 input behavior SHALL be expressed through the field seam and platform text field
+- **AND** feature pages SHALL NOT need local Material/Cupertino wrappers to make the field render safely
+
+### Requirement: Settings field block migration SHALL be guarded
+
+The settings UI migration SHALL include guardrails that prevent migrated settings files from reintroducing page-local field surfaces or subtitle-based full-width form inputs for ordinary settings fields.
+
+#### Scenario: Drift guardrail catches local field wrappers
+
+- **WHEN** `settings_ui_drift_guardrail_test.dart` or equivalent architecture/style guardrail runs
+- **THEN** migrated target files SHALL fail or require an explicit documented exception if they add page-local `PlatformTextField` + `InputBorder.none`, raw `TextField`, page-local field card wrappers, or direct raw palette field surface styling for ordinary settings forms
+- **AND** shared reusable field presentation SHALL stay in `settings_ui.dart` or an approved platform/settings seam
+
+#### Scenario: Boundary direction is preserved
+
+- **WHEN** settings field block seam code is added or changed
+- **THEN** `platform/widgets/*`, `state`, `application`, `core`, and `data` layers SHALL NOT import `features/settings` or other feature UI files
+- **AND** feature pages SHALL continue to pass only presentation inputs such as label、controller、hint、suffix action 和 callbacks into the settings seam
+
+### Requirement: Toolbar location settings prompt SHALL route through migrated settings surface
+
+当用户从 memo compose 工具栏触发定位且定位 provider 未 ready 时，系统 SHALL 通过 settings/navigation seam 打开已迁移的定位设置 surface，而不是从 location picker 直接构造旧承载路由。
+
+#### Scenario: Mobile toolbar prompt opens migrated location settings page
+
+- **WHEN** 用户从 note input、memo editor 或 inline compose 工具栏点击定位
+- **AND** location provider requirements 校验失败
+- **AND** 用户在提示弹窗中选择打开设置
+- **THEN** 系统 SHALL 使用 platform route 或 equivalent settings navigation seam 打开 `LocationSettingsScreen`
+- **AND** `LocationSettingsScreen` SHALL 继续通过 `SettingsPage`、`SettingsSection`、`SettingsToggleRow`、`SettingsMenuRow`、`SettingsInputRow` 或 equivalent settings seams 渲染
+- **AND** 系统 MUST NOT 使用 location picker 内部硬编码的裸 `MaterialPageRoute` 作为该入口的主路径
+
+#### Scenario: Location picker delegates settings navigation
+
+- **WHEN** `showLocationPickerSheetOrDialog()` 发现 location provider requirements 不 ready
+- **THEN** 它 SHALL 显示现有 provider readiness prompt
+- **AND** prompt 的打开设置动作 SHALL 调用传入的 opener callback、typedef 或 equivalent navigation seam
+- **AND** `features/location_picker/show_location_picker.dart` MUST NOT import `features/settings/location_settings_screen.dart`
+- **AND** location provider validation、settings reload、picker sheet/dialog presentation、map controller lifecycle 和 selected `MemoLocation` return behavior SHALL remain unchanged
+
+#### Scenario: Toolbar location entry remains shared across compose surfaces
+
+- **WHEN** note input、memo editor、inline compose 或 desktop quick input 复用 `showLocationPickerSheetOrDialog()`
+- **THEN** 每个 runtime call site SHALL provide the same location settings opener behavior or an equivalent shared seam
+- **AND** no compose surface SHALL reintroduce its own direct duplicate `LocationSettingsScreen` route construction for the provider-not-ready prompt
+
+### Requirement: Toolbar location settings routing SHALL preserve architecture boundaries
+
+工具栏定位设置路由 SHALL 在 `evolve_modularity` phase 下减少 picker 与 settings UI 的直接耦合，并 MUST NOT 引入新的 `state -> features`、`application -> features` 或 `core -> state|application|features` 依赖。
+
+#### Scenario: Picker no longer owns settings widget construction
+
+- **WHEN** toolbar location settings routing is implemented
+- **THEN** location picker code SHALL depend on a stable opener contract rather than constructing settings widgets directly
+- **AND** settings target/fallback widget construction SHALL remain in settings UI composition, caller composition, or an approved navigation seam
+- **AND** implementation SHALL include focused tests or guardrails that fail if the picker reintroduces direct settings screen imports
+
+#### Scenario: Public/private boundary remains unchanged
+
+- **WHEN** toolbar location settings routing is implemented
+- **THEN** public runtime code SHALL NOT add subscription、billing、entitlement、paywall、StoreKit 或 other commercial behavior
+- **AND** `LocationSettings`, location repositories/providers/adapters, API files, WebDAV config transfer, private hooks, and public shell paid-feature state SHALL remain unchanged
+
+### Requirement: Mobile settings home density SHALL stay compact within the home hierarchy
+手机端设置首页 SHALL 支持 home-only compact density treatment，用于降低普通功能入口行高、顶部快捷入口高度、分组间距和 profile 内边距，同时保持 `enhance-mobile-settings-home-hierarchy` 建立的 profile card、quick shortcut tiles、grouped function sections 和 row divider 层级模型。
+
+#### Scenario: Phone home ordinary function rows use compact density
+- **WHEN** 手机端设置首页渲染 `SettingsHomeSection` 中的普通单行 function entries，例如使用指南、账号与安全、偏好设置、AI 设置、应用锁、实验室、功能组件、反馈、充电站、导入 / 导出、关于或 equivalent entries
+- **THEN** Material phone single-line rows SHALL use 48 logical pixels as the compact target height through settings-owned home density tokens 或 approved settings/platform seam
+- **AND** rows with descriptions, multiline content, larger text scale, or platform accessibility constraints MAY grow beyond 48 logical pixels to preserve readable content
+- **AND** the compact row treatment SHALL NOT be hardcoded in `settings_screen.dart`
+
+#### Scenario: Phone home hierarchy tokens use the first compact values
+- **WHEN** `settingsPageTokens(context).homeHierarchy` resolves for phone form factor
+- **THEN** quick shortcut tile height SHALL be 80 logical pixels
+- **AND** section spacing SHALL be 12 logical pixels
+- **AND** profile padding SHALL be 16 logical pixels
+- **AND** these values SHALL be resolved through `settings_ui.dart` or an approved settings-owned seam
+
+#### Scenario: Compact density preserves grouped section hierarchy
+- **WHEN** 手机端设置首页渲染普通功能入口
+- **THEN** ordinary entries SHALL remain inside grouped sections with row dividers where applicable
+- **AND** ordinary entries SHALL NOT be forced into separate cards unless they are explicit quick shortcut tiles or approved special entries
+- **AND** profile and quick shortcut entries SHALL preserve existing navigation, haptic, avatar rendering, icon/label semantics, and tap behavior
+
+#### Scenario: Compact density does not affect secondary settings pages
+- **WHEN** 用户从设置首页进入二级或三级 settings pages
+- **THEN** those pages SHALL continue to use standard `SettingsPage`、`SettingsSection`、settings semantic rows, and platform row density
+- **AND** mobile settings home compact row height, shortcut tile height, profile padding, and section spacing SHALL NOT automatically apply to those pages
+
+#### Scenario: Desktop settings remains dense and work-focused
+- **WHEN** 设置首页运行在 macOS、Windows 或 Linux desktop experience
+- **THEN** desktop presentation SHALL preserve existing bounded, dense, work-focused settings layout
+- **AND** it SHALL NOT be forced to use phone-only 48dp home rows, 80dp shortcut tiles, phone profile padding, or phone section spacing
+
+#### Scenario: Home density is guarded and boundary-safe
+- **WHEN** settings home density, settings UI seam, or platform list row seam code is modified
+- **THEN** verification SHALL cover phone home compact row density, shortcut tile height, section spacing, profile padding, grouped sections, and secondary-page isolation
+- **AND** implementation SHALL NOT introduce new `state -> features`、`application -> features`、`core -> state|application|features` dependencies or `platform/` imports from higher layers
+- **AND** public code MUST NOT include subscription、billing、entitlement、receipt、paywall、StoreKit、private overlay 或 paid-feature branching logic
+
+### Requirement: AI settings pages SHALL use semantic settings UI seams
+
+AI settings pages in this batch SHALL render page chrome, grouped sections, navigation rows, value rows, toggle rows, form rows, warning/info rows, service/model action rows, empty states, and save/test actions through `SettingsPage`, `SettingsSection`, `SettingsNavigationRow`, `SettingsValueRow`, `SettingsToggleRow`, `SettingsInputRow`, `SettingsMenuRow`, `SettingsInfoRow`, `SettingsWarningRow`, `SettingsAction`, `settingsPageTokens`, or equivalent settings/platform seams instead of direct page-local `Scaffold` / `MemoFlowPalette` / card styling implementations.
+
+#### Scenario: AI settings home is migrated
+
+- **GIVEN** the user opens `AiSettingsScreen`
+- **WHEN** AI settings are rendered
+- **THEN** the page SHALL use settings semantic page and section seams
+- **AND** profile, proxy, add service, service detail, add model, manage service, and service enabled toggle behavior SHALL be preserved.
+
+#### Scenario: AI proxy and route settings are migrated
+
+- **GIVEN** the user opens `AiProxySettingsScreen` or `AiRouteSettingsScreen`
+- **WHEN** the page renders forms, route rows, picker surfaces, toggles, save/test actions, or result states
+- **THEN** those visible surfaces SHALL use settings semantic seams or equivalent settings/theme tokens
+- **AND** proxy save/test validation and default route binding replacement behavior SHALL be preserved.
+
+#### Scenario: AI provider and profile settings are migrated
+
+- **GIVEN** the user opens legacy `AiProviderSettingsScreen` or `AiUserProfileScreen`
+- **WHEN** form fields, model pickers, helper copy, or save actions render
+- **THEN** those surfaces SHALL use settings semantic seams or equivalent settings/theme tokens
+- **AND** controller synchronization, dirty state, model option editing, and save behavior SHALL be preserved.
+
+#### Scenario: AI service management pages are migrated
+
+- **GIVEN** the user opens `AiServiceDetailScreen`, `AiServiceModelScreen`, or `AiServiceWizardScreen`
+- **WHEN** service forms, model lists, preset cards, warning rows, validation actions, sync actions, wizard steps, or destructive actions render
+- **THEN** those visible surfaces SHALL use settings semantic seams or equivalent settings/theme tokens
+- **AND** embedded desktop task surface, unsaved close, service validation, model discovery, model edit/delete, wizard create, route binding, proxy warning, and docs link behavior SHALL be preserved.
+
+### Requirement: AI settings migration SHALL preserve public/private and product boundaries
+
+AI settings UI migration SHALL NOT implement AI summary history, commercial feature gating, private overlay behavior, StoreKit behavior, subscription state, product IDs, prices, receipts, entitlements, paywalls, or `AccessDecision.source` business branching.
+
+#### Scenario: AI summary history remains out of scope
+
+- **GIVEN** `add-ai-summary-history` remains an active product change
+- **WHEN** this AI settings UI migration is implemented
+- **THEN** it SHALL NOT add history persistence, history list/detail UI, rerun behavior, quota rules, or `AppCapability.aiSummaryHistory` gating.
+
+#### Scenario: Guardrail reflects completed AI settings migration
+
+- **GIVEN** AI settings files have been migrated
+- **WHEN** `settings_ui_drift_guardrail_test.dart` runs
+- **THEN** migrated AI settings files SHALL be removed from `legacyAllowlist`
+- **AND** migrated AI settings files SHALL be present in `migratedFiles`
+- **AND** non-allowlisted migrated files SHALL fail architecture verification if they reintroduce direct `return Scaffold`, direct `MemoFlowPalette`, page-local `styleFrom`, bare `Switch`, `Switch.adaptive`, or private `_ToggleCard`.
+
+### Requirement: Remaining desktop settings surfaces SHALL use settings/platform visual seams
+
+Remaining desktop settings surfaces SHALL render normal settings pages and sidebar visual states through `SettingsPage`, `SettingsSection`, `settingsPageTokens`, `ThemeData.colorScheme`, or equivalent settings/platform seams, while preserving desktop window composition-root behavior.
+
+#### Scenario: Desktop shortcut overview is migrated
+
+- **GIVEN** the user opens `DesktopShortcutsOverviewScreen`
+- **WHEN** editor and global shortcut groups render
+- **THEN** the page SHALL use settings semantic page/section seams or equivalent settings tokens
+- **AND** shortcut labels, fallback F1 label, editor/global grouping, and binding normalization SHALL be preserved.
+
+#### Scenario: Desktop settings window sidebar uses theme tokens
+
+- **GIVEN** the desktop settings window workbench renders pane navigation
+- **WHEN** selected and unselected pane nav tiles are displayed
+- **THEN** visual state colors SHALL come from `ThemeData.colorScheme` or equivalent platform/settings tokens
+- **AND** pane switching, target routing, workspace reload, method channel handling, and window lifecycle behavior SHALL be preserved.
+
+#### Scenario: Composition-root palette apply remains narrowly allowed
+
+- **GIVEN** `DesktopSettingsWindowApp` builds its independent `MaterialApp`
+- **WHEN** user theme preferences are applied
+- **THEN** `MemoFlowPalette.applyThemeColor(...)` MAY remain as a narrow composition-root exception
+- **AND** guardrails SHALL NOT allow additional direct `MemoFlowPalette` usage in `desktop_settings_window_app.dart`.
+
+### Requirement: Settings layout SHALL preserve adaptive behavior while unifying presentation geometry
+
+平台适配 UI 系统 SHALL allow settings pages to keep platform-adaptive behavior while moving reusable settings presentation geometry into settings-owned seams. `Switch`、picker/dialog、route/back behavior 和 text input behavior SHALL remain adaptive, while section spacing、row padding、typography、field block geometry、divider 和 card hierarchy SHALL be controlled by settings UI seams rather than platform default list row geometry.
+
+#### Scenario: Adaptive behavior remains platform-owned
+
+- **WHEN** a migrated settings page renders a toggle、choice picker、confirmation dialog、navigation route、back action 或 editable text field
+- **THEN** the behavior SHALL continue to use `PlatformSwitch`, platform picker/dialog/route seams, `PlatformTextField`, or an approved adaptive seam
+- **AND** the page SHALL NOT duplicate platform-specific business state or complete platform-specific page trees
+
+#### Scenario: Presentation geometry is settings-owned
+
+- **WHEN** a migrated settings page renders section cards、row titles、row values、descriptions、full-width fields、inline fields 或 dividers
+- **THEN** reusable geometry SHALL come from `settings_ui.dart`, settings-owned layout constants, `SettingsSection`, settings row seams, `SettingsFieldBlock`, or an approved settings seam
+- **AND** `CupertinoListTile`, Material `ListTile`, or equivalent platform default row geometry SHALL NOT be the primary owner of ordinary settings typography and padding
+
+#### Scenario: Platform visual differences stay below the seam
+
+- **WHEN** the same migrated settings page runs on iPhone and Android
+- **THEN** platform-specific controls MAY keep platform-appropriate behavior and interaction details
+- **AND** ordinary settings text hierarchy、row spacing、field padding、section inset 和 divider treatment SHALL remain recognizably consistent across both platforms
+
+### Requirement: Settings typography SHALL express a stable hierarchy
+
+The platform adaptive UI system SHALL provide settings-owned typography hierarchy for settings screens so section headings、row labels、values、input values、placeholders 和 descriptions have stable relative priority across supported platforms.
+
+#### Scenario: Settings text hierarchy is consistent
+
+- **WHEN** a migrated settings page renders section header、row title、right-side selected value、input value、placeholder 和 description text
+- **THEN** row title text SHALL be visually stronger than right-side selected values and descriptions
+- **AND** description text SHALL be visually weaker than row title and selected/input values
+- **AND** section header text SHALL be secondary to page title and suitable as a group label rather than a primary heading
+
+#### Scenario: Typography uses existing theme colors
+
+- **WHEN** settings typography renders in light mode or dark mode
+- **THEN** foreground colors SHALL resolve from settings tokens, `ThemeData`, `ColorScheme`, or approved design tokens
+- **AND** the hierarchy SHALL NOT require new hard-coded hex colors, a new color system, or global theme changes
+
+### Requirement: Settings field geometry SHALL be platform-safe but visually unified
+
+Settings field seams SHALL provide unified input height、content padding、label/helper/error spacing、hint/value styling 和 suffix icon treatment while preserving platform text input behavior.
+
+#### Scenario: Full-width field geometry is unified
+
+- **WHEN** a migrated settings page renders URL、password、API key、path、notes 或 other full-width input through `SettingsFieldBlock`, `SettingsFormFieldRow`, `SettingsMultilineFieldRow`, or an approved seam
+- **THEN** label、input surface、helper/error text 和 suffix action SHALL align to the same settings-owned grid
+- **AND** input height and padding SHALL be defined by the settings seam rather than page-local widgets
+
+#### Scenario: Inline fallback uses unified field geometry
+
+- **WHEN** an inline settings field falls back to stacked layout due to narrow width、large text scale 或 long label
+- **THEN** it SHALL use the same settings-owned field geometry as other full-width fields
+- **AND** controller、focusNode、keyboardType、inputFormatters、enabled state 和 callbacks SHALL be preserved
+
+#### Scenario: Platform text input behavior remains available
+
+- **WHEN** a settings field runs on iPhone, Android, desktop, or web
+- **THEN** editing behavior, keyboard behavior, focus behavior, obscured input behavior, and platform-safe rendering SHALL continue through `PlatformTextField` or an approved platform input seam
+- **AND** unified geometry SHALL NOT force a separate iOS-only or Android-only settings page tree
