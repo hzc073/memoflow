@@ -137,57 +137,6 @@ class SettingsScreen extends ConsumerWidget
     );
   }
 
-  Widget _buildAvatar(BuildContext context, String avatarUrl, Color iconColor) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final avatarFallback = Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colorScheme.surfaceContainerHighest,
-      ),
-      child: Icon(Icons.person, color: iconColor),
-    );
-
-    if (avatarUrl.trim().isEmpty) return avatarFallback;
-    if (avatarUrl.startsWith('data:')) {
-      final bytes = _tryDecodeDataUri(avatarUrl);
-      if (bytes == null) return avatarFallback;
-      return ClipOval(
-        child: Image.memory(
-          bytes,
-          width: 44,
-          height: 44,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => avatarFallback,
-        ),
-      );
-    }
-
-    return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: avatarUrl,
-        width: 44,
-        height: 44,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => avatarFallback,
-        errorWidget: (_, _, _) => avatarFallback,
-      ),
-    );
-  }
-
-  Uint8List? _tryDecodeDataUri(String raw) {
-    final index = raw.indexOf('base64,');
-    if (index == -1) return null;
-    final data = raw.substring(index + 'base64,'.length).trim();
-    if (data.isEmpty) return null;
-    try {
-      return base64Decode(data);
-    } catch (_) {
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final enableWindowsDragToMove =
@@ -300,7 +249,10 @@ class SettingsScreen extends ConsumerWidget
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SettingsHomeProfileEntry(
-                    avatar: _buildAvatar(context, avatarUrl, textMuted),
+                    avatar: _SettingsAvatar(
+                      avatarUrl: avatarUrl,
+                      iconColor: textMuted,
+                    ),
                     name: name,
                     subtitle: subtitle,
                     onTap: () {
@@ -640,6 +592,115 @@ class SettingsScreen extends ConsumerWidget
               fallback: platformPage,
             )
           : platformPage,
+    );
+  }
+}
+
+class _SettingsAvatar extends StatefulWidget {
+  const _SettingsAvatar({required this.avatarUrl, required this.iconColor});
+
+  final String avatarUrl;
+  final Color iconColor;
+
+  @override
+  State<_SettingsAvatar> createState() => _SettingsAvatarState();
+}
+
+class _SettingsAvatarState extends State<_SettingsAvatar> {
+  static const int _maxCachedDataUriAvatars = 4;
+  static final Map<String, Uint8List?> _dataUriAvatarCache =
+      <String, Uint8List?>{};
+
+  bool _isDataUri = false;
+  Uint8List? _dataUriBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveDataUriAvatar();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SettingsAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.avatarUrl != widget.avatarUrl) {
+      _resolveDataUriAvatar();
+    }
+  }
+
+  void _resolveDataUriAvatar() {
+    final avatarUrl = widget.avatarUrl.trim();
+    _isDataUri = avatarUrl.startsWith('data:');
+    if (!_isDataUri) {
+      _dataUriBytes = null;
+      return;
+    }
+    if (_dataUriAvatarCache.containsKey(avatarUrl)) {
+      _dataUriBytes = _dataUriAvatarCache[avatarUrl];
+      return;
+    }
+
+    _dataUriBytes = _tryDecodeDataUri(avatarUrl);
+    _dataUriAvatarCache[avatarUrl] = _dataUriBytes;
+    if (_dataUriAvatarCache.length > _maxCachedDataUriAvatars) {
+      _dataUriAvatarCache.remove(_dataUriAvatarCache.keys.first);
+    }
+  }
+
+  static Uint8List? _tryDecodeDataUri(String raw) {
+    final index = raw.indexOf('base64,');
+    if (index == -1) return null;
+    final data = raw.substring(index + 'base64,'.length).trim();
+    if (data.isEmpty) return null;
+    try {
+      return base64Decode(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildFallback(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: colorScheme.surfaceContainerHighest,
+      ),
+      child: Icon(Icons.person, color: widget.iconColor),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = widget.avatarUrl.trim();
+    final avatarFallback = _buildFallback(context);
+
+    if (avatarUrl.isEmpty) return avatarFallback;
+    if (_isDataUri) {
+      final bytes = _dataUriBytes;
+      if (bytes == null) return avatarFallback;
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => avatarFallback,
+        ),
+      );
+    }
+
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: avatarUrl,
+        width: 44,
+        height: 44,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => avatarFallback,
+        errorWidget: (_, _, _) => avatarFallback,
+      ),
     );
   }
 }

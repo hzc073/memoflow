@@ -44,6 +44,7 @@ import 'package:memos_flutter_app/features/settings/feedback_screen.dart';
 import 'package:memos_flutter_app/features/settings/laboratory_screen.dart';
 import 'package:memos_flutter_app/features/settings/navigation_mode_screen.dart';
 import 'package:memos_flutter_app/features/settings/password_lock_screen.dart';
+import 'package:memos_flutter_app/features/settings/preferences_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/server_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_ui.dart';
@@ -102,12 +103,15 @@ void main() {
     PrivateExtensionBundle? bundle,
     Widget home = const SettingsScreen(),
     LocalLibrary? currentLocalLibrary,
+    AppSessionController? sessionController,
     List<Override> overrides = const [],
   }) {
     LocaleSettings.setLocale(AppLocale.en);
     return ProviderScope(
       overrides: [
-        appSessionProvider.overrideWith((ref) => _TestSessionController()),
+        appSessionProvider.overrideWith(
+          (ref) => sessionController ?? _TestSessionController(),
+        ),
         appPreferencesProvider.overrideWith(
           (ref) => _TestAppPreferencesController(ref),
         ),
@@ -171,6 +175,36 @@ void main() {
     );
 
     expect(componentsFinder, findsOneWidget);
+  });
+
+  testWidgets('settings can open preferences with data uri avatar', (
+    tester,
+  ) async {
+    const avatarUrl =
+        'data:image/png;base64,'
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+        '+M8AAwUBAQB9oL9EAAAAAElFTkSuQmCC';
+    final account = _serverSettingsAccount(
+      'avatar-account',
+      Uri.parse('https://example.test/'),
+      avatarUrl: avatarUrl,
+    );
+
+    await tester.pumpWidget(
+      buildTestApp(
+        sessionController: _TestSessionController(
+          accounts: [account],
+          currentKey: account.key,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Preferences'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PreferencesSettingsScreen), findsOneWidget);
+    expect(find.text('Language'), findsOneWidget);
   });
 
   testWidgets('settings home uses mobile hierarchy seams on phone', (
@@ -1156,7 +1190,11 @@ void main() {
   );
 }
 
-Account _serverSettingsAccount(String key, Uri baseUrl) {
+Account _serverSettingsAccount(
+  String key,
+  Uri baseUrl, {
+  String avatarUrl = '',
+}) {
   return Account(
     key: key,
     baseUrl: baseUrl,
@@ -1165,7 +1203,7 @@ Account _serverSettingsAccount(String key, Uri baseUrl) {
       name: 'users/$key',
       username: key,
       displayName: key,
-      avatarUrl: '',
+      avatarUrl: avatarUrl,
       description: '',
     ),
     instanceProfile: const InstanceProfile(
