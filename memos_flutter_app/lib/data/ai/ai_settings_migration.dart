@@ -8,13 +8,15 @@ class AiSettingsMigration {
   const AiSettingsMigration._();
 
   static AiSettings normalize(AiSettings source) {
-    final normalizedServices = source.services.isNotEmpty
-        ? _normalizeServices(source.services)
-        : _migrateLegacyServices(source);
-    final normalizedBindings =
-        source.services.isNotEmpty || source.taskRouteBindings.isNotEmpty
-        ? _normalizeBindings(source.taskRouteBindings, normalizedServices)
-        : _migrateLegacyBindings(source, normalizedServices);
+    final shouldMigrateLegacyProfiles =
+        source.services.isEmpty &&
+        source.schemaVersion < AiSettings.currentSchemaVersion;
+    final normalizedServices = shouldMigrateLegacyProfiles
+        ? _migrateLegacyServices(source)
+        : _normalizeServices(source.services);
+    final normalizedBindings = shouldMigrateLegacyProfiles
+        ? _migrateLegacyBindings(source, normalizedServices)
+        : _normalizeBindings(source.taskRouteBindings, normalizedServices);
     final shadows = _buildShadowProfiles(
       services: normalizedServices,
       bindings: normalizedBindings,

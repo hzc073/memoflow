@@ -220,6 +220,84 @@ void main() {
   );
 
   test(
+    'AiSettingsController deletes final summary service without remigrating profiles',
+    () async {
+      final aiRepository = _MemoryAiSettingsRepository(
+        AiSettings.defaultsFor(AppLanguage.en),
+      );
+      final prefsRepository = _MemoryAppPreferencesRepository(
+        AppPreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final devicePrefsRepository = _MemoryDevicePreferencesRepository(
+        DevicePreferences.defaultsForLanguage(AppLanguage.en),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          devicePreferencesProvider.overrideWith(
+            (ref) =>
+                _TestDevicePreferencesController(ref, devicePrefsRepository),
+          ),
+          appPreferencesProvider.overrideWith(
+            (ref) => _TestAppPreferencesController(ref, prefsRepository),
+          ),
+          aiSettingsProvider.overrideWith(
+            (ref) => _TestAiSettingsController(ref, aiRepository),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(aiSettingsProvider);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final notifier = container.read(aiSettingsProvider.notifier);
+      const summaryService = AiServiceInstance(
+        serviceId: 'svc_summary',
+        templateId: aiTemplateOpenAi,
+        adapterKind: AiProviderAdapterKind.openAiCompatible,
+        displayName: 'Summary Service',
+        enabled: true,
+        baseUrl: 'https://api.openai.com',
+        apiKey: 'sk-test',
+        customHeaders: <String, String>{},
+        models: <AiModelEntry>[
+          AiModelEntry(
+            modelId: 'mdl_summary',
+            displayName: 'gpt-4o-mini',
+            modelKey: 'gpt-4o-mini',
+            capabilities: <AiCapability>[AiCapability.chat],
+            source: AiModelSource.manual,
+            enabled: true,
+          ),
+        ],
+        lastValidatedAt: null,
+        lastValidationStatus: AiValidationStatus.unknown,
+        lastValidationMessage: null,
+      );
+
+      await notifier.upsertService(summaryService);
+      await notifier.saveTaskRouteBinding(
+        const AiTaskRouteBinding(
+          routeId: AiTaskRouteId.summary,
+          serviceId: 'svc_summary',
+          modelId: 'mdl_summary',
+          capability: AiCapability.chat,
+        ),
+      );
+
+      expect(aiRepository._value.services, hasLength(1));
+      expect(aiRepository._value.generationProfiles, isNotEmpty);
+
+      await notifier.deleteService('svc_summary');
+
+      final state = aiRepository._value;
+      expect(state.services, isEmpty);
+      expect(state.taskRouteBindings, isEmpty);
+      expect(state.generationProfiles, isEmpty);
+      expect(state.selectedGenerationProfileKey, isEmpty);
+    },
+  );
+
+  test(
     'AiSettingsController does not let late load overwrite newer local edits',
     () async {
       const loadedSettings = AiSettings(
