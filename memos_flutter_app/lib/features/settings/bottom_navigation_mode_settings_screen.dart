@@ -5,7 +5,6 @@ import '../../data/models/home_navigation_preferences.dart';
 import '../../features/home/home_navigation_resolver.dart';
 import '../../features/home/home_root_destination_registry.dart';
 import '../../i18n/strings.g.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import 'settings_ui.dart';
@@ -171,21 +170,11 @@ class _FixedAddRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
     final colorScheme = Theme.of(context).colorScheme;
-    return PlatformListSectionRow(
+    return SettingsLongValueRow(
       leading: Icon(Icons.add_circle_outline, color: colorScheme.primary),
-      title: SettingsRowTitle(
-        context.t.strings.legacy.msg_navigation_slot_center,
-      ),
-      trailing: Text(
-        label,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: tokens.textMain.withValues(alpha: 0.82),
-        ),
-      ),
+      label: context.t.strings.legacy.msg_navigation_slot_center,
+      value: label,
     );
   }
 }

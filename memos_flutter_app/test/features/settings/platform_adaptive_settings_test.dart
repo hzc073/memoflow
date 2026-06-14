@@ -16,6 +16,7 @@ import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
 import 'package:memos_flutter_app/features/settings/preferences_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/desktop_settings_screen.dart';
 import 'package:memos_flutter_app/features/settings/settings_screen.dart';
+import 'package:memos_flutter_app/features/settings/settings_ui.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/settings/device_preferences_provider.dart';
@@ -44,7 +45,7 @@ void main() {
     debugPlatformTargetOverride = null;
   });
 
-  testWidgets('settings center is bounded and dense on desktop', (
+  testWidgets('settings center is bounded and uses settings rows on desktop', (
     tester,
   ) async {
     await _setViewport(tester, const Size(1200, 900));
@@ -59,12 +60,8 @@ void main() {
 
     expect(bounded, findsOneWidget);
     expect(tester.getSize(bounded).width, lessThanOrEqualTo(760));
-    expect(
-      tester
-          .widgetList<ListTile>(find.byType(ListTile))
-          .any((row) => row.dense == true),
-      isTrue,
-    );
+    expect(find.byType(ListTile), findsNothing);
+    expect(find.byType(SettingsNavigationRow), findsWidgets);
   });
 
   testWidgets('desktop settings shows shared and Windows sections on Windows', (
@@ -147,7 +144,7 @@ void main() {
     },
   );
 
-  testWidgets('preferences uses apple grouped list rows on iPhone', (
+  testWidgets('preferences keeps settings-owned rows on iPhone', (
     tester,
   ) async {
     await _setViewport(tester, const Size(390, 844));
@@ -158,63 +155,56 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(CupertinoListSection), findsWidgets);
-    expect(find.byType(CupertinoListTile), findsWidgets);
+    expect(find.byType(CupertinoListSection), findsNothing);
+    expect(find.byType(CupertinoListTile), findsNothing);
+    expect(find.byType(ListTile), findsNothing);
+    expect(find.byType(CupertinoSwitch), findsWidgets);
   });
 
-  testWidgets(
-    'preferences value rows use bounded Cupertino metadata under large iPhone text',
-    (tester) async {
-      await _setViewport(tester, const Size(390, 844));
-      debugPlatformTargetOverride = TargetPlatform.iOS;
-
-      await tester.pumpWidget(
-        _buildApp(
-          child: const PreferencesSettingsScreen(),
-          mediaQueryData: const MediaQueryData(
-            size: Size(390, 844),
-            textScaler: TextScaler.linear(2.4),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-
-      final valueTileFinder = find.ancestor(
-        of: find.text('Standard'),
-        matching: find.byType(CupertinoListTile),
-      );
-      expect(valueTileFinder, findsOneWidget);
-
-      final valueTile = tester.widget<CupertinoListTile>(valueTileFinder);
-      expect(valueTile.additionalInfo, isNotNull);
-      expect(valueTile.trailing, isA<Icon>());
-    },
-  );
-
-  testWidgets('preferences value rows keep Material trailing on Android', (
+  testWidgets('preferences value rows stay bounded under large iPhone text', (
     tester,
   ) async {
     await _setViewport(tester, const Size(390, 844));
-    debugPlatformTargetOverride = TargetPlatform.android;
+    debugPlatformTargetOverride = TargetPlatform.iOS;
 
     await tester.pumpWidget(
-      _buildApp(child: const PreferencesSettingsScreen()),
+      _buildApp(
+        child: const PreferencesSettingsScreen(),
+        mediaQueryData: const MediaQueryData(
+          size: Size(390, 844),
+          textScaler: TextScaler.linear(2.4),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
+    expect(tester.takeException(), isNull);
     expect(find.byType(CupertinoListTile), findsNothing);
+    expect(find.byType(ListTile), findsNothing);
 
-    final valueTileFinder = find.ancestor(
-      of: find.text('Standard'),
-      matching: find.byType(ListTile),
-    );
-    expect(valueTileFinder, findsOneWidget);
-
-    final valueTile = tester.widget<ListTile>(valueTileFinder);
-    expect(valueTile.trailing, isA<Row>());
+    final valueText = tester.widget<Text>(find.text('Standard'));
+    expect(valueText.maxLines, 1);
+    expect(valueText.overflow, TextOverflow.ellipsis);
+    expect(find.byIcon(Icons.chevron_right), findsWidgets);
   });
+
+  testWidgets(
+    'preferences value rows keep settings-owned trailing on Android',
+    (tester) async {
+      await _setViewport(tester, const Size(390, 844));
+      debugPlatformTargetOverride = TargetPlatform.android;
+
+      await tester.pumpWidget(
+        _buildApp(child: const PreferencesSettingsScreen()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CupertinoListTile), findsNothing);
+      expect(find.byType(ListTile), findsNothing);
+      expect(find.text('Standard'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsWidgets);
+    },
+  );
 
   testWidgets('preferences enum choices use desktop picker dialog', (
     tester,

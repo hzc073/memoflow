@@ -7,7 +7,6 @@ import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/shortcut.dart';
 import '../../i18n/strings.g.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
@@ -269,9 +268,9 @@ class _ShortcutRow extends StatelessWidget {
     final title = shortcut.title.trim().isEmpty ? '--' : shortcut.title.trim();
     final filter = shortcut.filter.trim();
     final tokens = settingsPageTokens(context);
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       title: SettingsRowTitle(title),
-      subtitle: filter.isEmpty ? null : SettingsRowDescription(filter),
+      description: filter.isEmpty ? null : SettingsRowDescription(filter),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -287,7 +286,6 @@ class _ShortcutRow extends StatelessWidget {
           ),
         ],
       ),
-      denseOnDesktop: filter.isEmpty,
     );
   }
 }

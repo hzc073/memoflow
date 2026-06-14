@@ -220,16 +220,22 @@ void main() {
     );
     expect(firstHomeSection.style?.boxShadow, home.sectionShadow);
 
-    final firstHomeSectionRows = tester
-        .widgetList<ListTile>(
-          find.descendant(
+    expect(
+      find.descendant(
+        of: find.byType(SettingsHomeSection).first,
+        matching: find.byType(SettingsNavigationRow),
+      ),
+      findsOneWidget,
+    );
+    final firstHomeRowHeight = tester.getSize(
+      find
+          .descendant(
             of: find.byType(SettingsHomeSection).first,
-            matching: find.byType(ListTile),
-          ),
-        )
-        .toList();
-    expect(firstHomeSectionRows, hasLength(1));
-    expect(firstHomeSectionRows.single.minTileHeight, 48);
+            matching: find.byType(ConstrainedBox),
+          )
+          .first,
+    );
+    expect(firstHomeRowHeight.height, greaterThanOrEqualTo(48));
 
     expect(find.text('Stats'), findsOneWidget);
     expect(find.text('Widgets'), findsOneWidget);
@@ -252,9 +258,7 @@ void main() {
     expect(find.text('Self Repair'), findsOneWidget);
     expect(find.text('How to report?'), findsOneWidget);
 
-    final rows = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
-    expect(rows, isNotEmpty);
-    expect(rows.every((row) => row.minTileHeight == null), isTrue);
+    expect(find.byType(ListTile), findsNothing);
   });
 
   testWidgets('settings home opens storage space through help diagnostics', (
@@ -526,15 +530,15 @@ void main() {
       expect(find.text('Bundle supplied entry'), findsOneWidget);
       expect(find.byIcon(Icons.workspace_premium_rounded), findsNothing);
 
-      tester
-          .widget<ListTile>(
-            find.ancestor(
+      final privateEntryTapSurface = tester.widget<InkWell>(
+        find
+            .ancestor(
               of: find.text('Private Entry'),
-              matching: find.byType(ListTile),
-            ),
-          )
-          .onTap
-          ?.call();
+              matching: find.byType(InkWell),
+            )
+            .first,
+      );
+      privateEntryTapSurface.onTap?.call();
       await tester.pump();
 
       expect(tapped, isTrue);

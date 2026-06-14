@@ -81,14 +81,20 @@ class _ImageBedSettingsScreenState
         child: ListView(
           shrinkWrap: true,
           children: [
-            ListTile(
-              title: Text(
-                _providerLabel(surfaceContext, ImageBedProvider.lskyPro),
-              ),
-              trailing: _provider == ImageBedProvider.lskyPro
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () => surfaceContext.safePop(ImageBedProvider.lskyPro),
+            SettingsSection(
+              children: [
+                SettingsSingleChoiceRow<ImageBedProvider>(
+                  option: SettingsChoiceOption<ImageBedProvider>(
+                    value: ImageBedProvider.lskyPro,
+                    label: _providerLabel(
+                      surfaceContext,
+                      ImageBedProvider.lskyPro,
+                    ),
+                  ),
+                  selected: _provider == ImageBedProvider.lskyPro,
+                  onChanged: surfaceContext.safePop,
+                ),
+              ],
             ),
           ],
         ),

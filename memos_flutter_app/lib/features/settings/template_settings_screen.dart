@@ -5,7 +5,6 @@ import '../../core/uid.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../i18n/strings.g.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
 import 'settings_ui.dart';
@@ -64,9 +63,9 @@ class TemplateSettingsScreen extends ConsumerWidget {
       final subtitle = template.content.trim().isEmpty
           ? context.t.strings.legacy.msg_empty_content
           : template.content.trim().replaceAll('\n', ' ');
-      return PlatformListSectionRow(
+      return SettingsCustomRow(
         title: SettingsRowTitle(template.name),
-        subtitle: SettingsRowDescription(subtitle),
+        description: SettingsRowDescription(subtitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -82,7 +81,6 @@ class TemplateSettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
-        denseOnDesktop: false,
       );
     }
 

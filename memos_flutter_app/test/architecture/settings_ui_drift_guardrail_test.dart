@@ -143,6 +143,11 @@ void main() {
       );
       expect(settingsUi, contains('class SettingsHomeHierarchyTokens'));
       expect(settingsUi, contains('class SettingsHomeSection'));
+      expect(settingsUi, contains('class _SettingsSectionSurface'));
+      expect(settingsUi, contains('class _SettingsRowShell'));
+      expect(settingsUi, contains('class SettingsCustomRow'));
+      expect(settingsUi, contains('_settingsSectionHeaderFontSize'));
+      expect(settingsUi, contains('_settingsMobileRowMinHeight'));
       expect(settingsUi, contains('navigationRowMinHeight'));
       expect(settingsUi, contains('class _SettingsHomeDensityScope'));
       expect(settingsUi, contains('ListTileTheme.merge'));
@@ -657,14 +662,14 @@ void main() {
         'class SettingsNumericInlineFieldRow',
         'class SettingsFormFieldRow',
         'class SettingsMultilineFieldRow',
+        'class SettingsFieldBlock',
         'class SettingsLongValueRow',
         'Future<DateTime?> showSettingsDatePicker',
         'Future<TimeOfDay?> showSettingsTimePicker',
         'Future<DateTime?> showSettingsDateTimePicker',
       ],
       'lib/features/settings/webdav_sync_screen.dart': [
-        'SettingsFormFieldRow',
-        'SettingsInlineTextFieldRow',
+        'SettingsFieldBlock',
         'SettingsNumericInlineFieldRow',
         'SettingsNavigationRow',
       ],
@@ -742,8 +747,17 @@ void main() {
       'BorderRadius.circular(22)',
       'class _InputRow',
       'class _InlineInputRow',
+      'class _FieldBlock',
+      'class _FieldSurface',
+      'class _InputCard',
     ];
 
+    final rawTextField = RegExp(
+      r'(^|[^A-Za-z0-9_])(?:TextField|TextFormField|CupertinoTextField)\s*\(',
+    );
+    final pageLocalFieldWrapper = RegExp(
+      r'\bclass\s+_[A-Za-z0-9]*(?:Field|Input)[A-Za-z0-9]*(?:Row|Block|Card|Surface)\b',
+    );
     final violations = <String>[];
     for (final entry in requiredSeams.entries) {
       final source = await File(entry.key).readAsString();
@@ -751,6 +765,10 @@ void main() {
         if (!source.contains(seam)) {
           violations.add('${entry.key}: missing ergonomic seam $seam');
         }
+      }
+      if (formTargetFiles.contains(entry.key) &&
+          pageLocalFieldWrapper.hasMatch(source)) {
+        violations.add('${entry.key}: forbidden page-local field wrapper');
       }
     }
 
@@ -762,6 +780,9 @@ void main() {
             '$relativePath: forbidden form ergonomics regression $forbidden',
           );
         }
+      }
+      if (rawTextField.hasMatch(source)) {
+        violations.add('$relativePath: forbidden raw TextField');
       }
     }
 
@@ -816,16 +837,36 @@ final _rules = <_DriftRule>[
     RegExp(r'\bPlatformListSection\s*\('),
     'direct PlatformListSection outside settings surface seam',
   ),
+  _DriftRule(
+    'platform_list_section_row',
+    RegExp(r'\bPlatformListSectionRow\s*\('),
+    'direct PlatformListSectionRow outside settings row seam',
+  ),
+  _DriftRule(
+    'platform_list_tile',
+    RegExp(r'\bPlatformListTile\s*\('),
+    'direct PlatformListTile outside settings row seam',
+  ),
+  _DriftRule(
+    'material_list_tile',
+    RegExp(r'\bListTile\s*\('),
+    'direct Material ListTile outside settings row seam',
+  ),
+  _DriftRule(
+    'cupertino_list_tile',
+    RegExp(r'\bCupertinoListTile\s*\('),
+    'direct CupertinoListTile outside settings row seam',
+  ),
 ];
 
 Map<String, int> _allowancesFor(String relativePath) {
   if (relativePath == 'lib/features/settings/settings_ui.dart') {
     return const {
       // Settings UI owns settings row/section surface tokens and delegates them
-      // to PlatformListSectionStyle for all migrated settings pages. It also
-      // owns the mobile settings home hierarchy section seam.
+      // to its own row/section shells. It also owns the mobile settings home
+      // hierarchy section seam.
       'palette': 8,
-      'platform_list_section': 2,
+      'platform_list_section': 1,
     };
   }
   if (relativePath ==

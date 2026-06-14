@@ -51,6 +51,7 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(SettingsInlineTextFieldRow), findsOneWidget);
     expect(find.byType(SettingsMultilineFieldRow), findsOneWidget);
+    expect(find.byType(SettingsFieldBlock), findsOneWidget);
     expect(find.text('Preview'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).first, 'Custom title');

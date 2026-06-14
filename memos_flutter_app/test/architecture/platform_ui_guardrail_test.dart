@@ -113,7 +113,8 @@ void main() {
 
     expect(platformControls, contains('CupertinoTextField('));
     expect(platformControls, contains('resolvePlatformTarget(context)'));
-    expect(settingsUi, contains('child: PlatformTextField('));
+    expect(settingsUi, contains('class SettingsFieldBlock'));
+    expect(settingsUi, contains('PlatformTextField('));
     expect(localModeSetup, contains('buildPlatformPageRoute'));
     expect(localModeSetup, contains('showTopToast(context, message)'));
 

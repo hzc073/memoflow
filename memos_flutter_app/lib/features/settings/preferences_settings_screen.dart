@@ -14,7 +14,6 @@ import '../../core/theme_colors.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_picker.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/device_preferences.dart';
@@ -45,25 +44,23 @@ class PreferencesSettingsScreen extends ConsumerWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text(title)),
+            SettingsSection(
+              header: Text(title),
+              children: [
+                for (final value in values)
+                  SettingsSingleChoiceRow<T>(
+                    option: SettingsChoiceOption<T>(
+                      value: value,
+                      label: label(value),
+                    ),
+                    selected: value == selected,
+                    onChanged: (value) {
+                      context.safePop();
+                      onSelect(value);
+                    },
+                  ),
+              ],
             ),
-            ...values.map((v) {
-              final isSelected = v == selected;
-              return ListTile(
-                leading: Icon(
-                  isSelected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(label(v)),
-                onTap: () {
-                  context.safePop();
-                  onSelect(v);
-                },
-              );
-            }),
           ],
         ),
       );
@@ -92,47 +89,42 @@ class PreferencesSettingsScreen extends ConsumerWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(context.t.strings.settings.preferences.font),
-              ),
+            SettingsSection(
+              header: Text(context.t.strings.settings.preferences.font),
+              children: [
+                for (final font in [systemDefault, ...fonts])
+                  SettingsCustomRow(
+                    leading: Icon(
+                      font.family == selectedFamily
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                    ),
+                    title: SettingsRowTitle(font.displayName),
+                    onTap: () async {
+                      context.safePop();
+                      if (font.isSystemDefault) {
+                        ref
+                            .read(devicePreferencesProvider.notifier)
+                            .setFontFamily(family: null, filePath: null);
+                        return;
+                      }
+                      await SystemFonts.ensureLoaded(font);
+                      if (!context.mounted) return;
+                      ref
+                          .read(devicePreferencesProvider.notifier)
+                          .setFontFamily(
+                            family: font.family,
+                            filePath: font.filePath,
+                          );
+                    },
+                  ),
+                if (fonts.isEmpty)
+                  SettingsInfoRow(
+                    description:
+                        context.t.strings.settings.preferences.noSystemFonts,
+                  ),
+              ],
             ),
-            for (final font in [systemDefault, ...fonts])
-              ListTile(
-                leading: Icon(
-                  font.family == selectedFamily
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(font.displayName),
-                onTap: () async {
-                  context.safePop();
-                  if (font.isSystemDefault) {
-                    ref
-                        .read(devicePreferencesProvider.notifier)
-                        .setFontFamily(family: null, filePath: null);
-                    return;
-                  }
-                  await SystemFonts.ensureLoaded(font);
-                  if (!context.mounted) return;
-                  ref
-                      .read(devicePreferencesProvider.notifier)
-                      .setFontFamily(
-                        family: font.family,
-                        filePath: font.filePath,
-                      );
-                },
-              ),
-            if (fonts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Text(
-                  context.t.strings.settings.preferences.noSystemFonts,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
           ],
         ),
       );
@@ -414,11 +406,8 @@ class _ThemeColorRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ringColor = textMain.withValues(alpha: isDark ? 0.28 : 0.18);
 
-    return PlatformListSectionRow(
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
+    return SettingsCustomRow(
+      title: SettingsRowTitle(label, color: textMain),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

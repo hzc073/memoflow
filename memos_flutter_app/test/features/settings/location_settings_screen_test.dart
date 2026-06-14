@@ -53,6 +53,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(SettingsFormFieldRow), findsNWidgets(2));
+    expect(find.byType(SettingsFieldBlock), findsNWidgets(2));
     expect(find.text('Location'), findsOneWidget);
     expect(find.text('Enable memo location'), findsOneWidget);
 

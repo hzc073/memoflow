@@ -25,14 +25,17 @@ void main() {
         theme: ThemeData(brightness: brightness, useMaterial3: true),
         home: Scaffold(
           body: SettingsSection(
+            header: const SettingsSectionHeader(title: 'Basics'),
             children: [
               SettingsValueRow(
                 label: 'Language',
                 value: 'System',
+                description: 'Follow system behavior',
                 onTap: () {},
               ),
               SettingsToggleRow(
                 label: 'Fold content',
+                description: 'Hide long text',
                 value: true,
                 onChanged: (_) {},
               ),
@@ -50,20 +53,28 @@ void main() {
 
     final context = tester.element(find.byType(SettingsSection));
     final tokens = settingsPageTokens(context);
-    final rows = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
 
-    expect(rows, hasLength(2));
-    expect(rows.every((row) => row.tileColor == tokens.rowBackground), isTrue);
-    expect(rows.every((row) => row.hoverColor == tokens.rowHover), isTrue);
-    expect(rows.every((row) => row.splashColor == tokens.rowPressed), isTrue);
+    expect(find.byType(ListTile), findsNothing);
+    expect(find.byType(CupertinoListTile), findsNothing);
+    expect(find.byType(PlatformListSection), findsNothing);
     expect(tester.widget<Divider>(find.byType(Divider)).color, tokens.divider);
     expect(_hasDecoratedBoxColor(tester, tokens.sectionBackground), isTrue);
 
-    final section = tester.widget<PlatformListSection>(
-      find.byType(PlatformListSection),
+    final headerStyle = tester.widget<Text>(find.text('Basics')).style!;
+    final titleStyle = tester.widget<Text>(find.text('Language')).style!;
+    final valueStyle = tester.widget<Text>(find.text('System')).style!;
+    final descriptionStyle = tester
+        .widget<Text>(find.text('Follow system behavior'))
+        .style!;
+
+    expect(headerStyle.fontSize, lessThan(titleStyle.fontSize!));
+    expect(titleStyle.fontSize, greaterThan(valueStyle.fontSize!));
+    expect(
+      valueStyle.fontWeight!.index,
+      lessThan(titleStyle.fontWeight!.index),
     );
-    expect(section.style?.borderRadius, isNull);
-    expect(section.style?.boxShadow, isNull);
+    expect(descriptionStyle.fontSize, lessThanOrEqualTo(12));
+    expect(descriptionStyle.color, isNot(titleStyle.color));
   });
 
   testWidgets('settings section rows resolve dark mode surface tokens', (
@@ -73,20 +84,98 @@ void main() {
 
     final context = tester.element(find.byType(SettingsSection));
     final tokens = settingsPageTokens(context);
-    final rows = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
 
-    expect(rows, hasLength(2));
-    expect(rows.every((row) => row.tileColor == tokens.rowBackground), isTrue);
-    expect(rows.every((row) => row.hoverColor == tokens.rowHover), isTrue);
-    expect(rows.every((row) => row.splashColor == tokens.rowPressed), isTrue);
+    expect(find.byType(ListTile), findsNothing);
+    expect(find.byType(CupertinoListTile), findsNothing);
+    expect(find.byType(PlatformListSection), findsNothing);
     expect(tester.widget<Divider>(find.byType(Divider)).color, tokens.divider);
     expect(_hasDecoratedBoxColor(tester, tokens.sectionBackground), isTrue);
 
-    final section = tester.widget<PlatformListSection>(
-      find.byType(PlatformListSection),
+    final headerStyle = tester.widget<Text>(find.text('Basics')).style!;
+    final titleStyle = tester.widget<Text>(find.text('Language')).style!;
+    final valueStyle = tester.widget<Text>(find.text('System')).style!;
+    final descriptionStyle = tester
+        .widget<Text>(find.text('Follow system behavior'))
+        .style!;
+
+    expect(headerStyle.fontSize, lessThan(titleStyle.fontSize!));
+    expect(titleStyle.fontSize, greaterThan(valueStyle.fontSize!));
+    expect(
+      valueStyle.fontWeight!.index,
+      lessThan(titleStyle.fontWeight!.index),
     );
-    expect(section.style?.borderRadius, isNull);
-    expect(section.style?.boxShadow, isNull);
+    expect(descriptionStyle.fontSize, lessThanOrEqualTo(12));
+    expect(descriptionStyle.color, isNot(titleStyle.color));
+  });
+
+  testWidgets('settings rows keep mobile touch height on iPhone and Android', (
+    tester,
+  ) async {
+    Future<double> rowHeightFor(TargetPlatform platform) async {
+      setTargetPlatform(platform);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SettingsSection(
+              children: [SettingsNavigationRow(label: 'Account', onTap: () {})],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('Account'),
+                  matching: find.byType(ConstrainedBox),
+                )
+                .first,
+          )
+          .height;
+    }
+
+    final iPhoneHeight = await rowHeightFor(TargetPlatform.iOS);
+    final androidHeight = await rowHeightFor(TargetPlatform.android);
+
+    expect(iPhoneHeight, greaterThanOrEqualTo(52));
+    expect(androidHeight, greaterThanOrEqualTo(52));
+  });
+
+  testWidgets('settings value rows pin selected values to the trailing edge', (
+    tester,
+  ) async {
+    setTargetPlatform(TargetPlatform.iOS);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 560,
+              child: SettingsSection(
+                children: [
+                  SettingsValueRow(
+                    label: 'Language',
+                    value: 'System',
+                    icon: Icons.expand_more,
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final sectionRect = tester.getRect(find.byType(SettingsSection));
+    final valueRect = tester.getRect(find.text('System'));
+    final iconRect = tester.getRect(find.byIcon(Icons.expand_more));
+
+    expect(valueRect.right, greaterThan(sectionRect.right - 72));
+    expect(iconRect.right, greaterThan(sectionRect.right - 32));
+    expect(valueRect.right, lessThan(iconRect.left));
   });
 
   Future<void> pumpSettingsHomeHierarchyForBrightness(
@@ -176,9 +265,24 @@ void main() {
     );
     expect(shortcutSize.height, home.shortcutTileHeight);
 
-    final rows = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
-    expect(rows, hasLength(2));
-    expect(rows.every((row) => row.minTileHeight == 48), isTrue);
+    final guideRowSize = tester.getSize(
+      find
+          .ancestor(
+            of: find.text('Guide'),
+            matching: find.byType(ConstrainedBox),
+          )
+          .first,
+    );
+    final preferencesRowSize = tester.getSize(
+      find
+          .ancestor(
+            of: find.text('Preferences'),
+            matching: find.byType(ConstrainedBox),
+          )
+          .first,
+    );
+    expect(guideRowSize.height, greaterThanOrEqualTo(48));
+    expect(preferencesRowSize.height, greaterThanOrEqualTo(48));
 
     final section = tester.widget<PlatformListSection>(
       find.descendant(
@@ -329,7 +433,7 @@ void main() {
 
     expect(find.text('One'), findsOneWidget);
 
-    await tester.tap(find.byType(SettingsMenuRow<String>));
+    await tester.tap(find.byType(SettingsMenuRow<String>), warnIfMissed: false);
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsSingleChoiceList<String>), findsOneWidget);
@@ -386,11 +490,14 @@ void main() {
                 SettingsFormFieldRow(
                   label: 'Server URL',
                   controller: urlController,
+                  hint: 'https://example.com',
+                  errorText: 'Server URL is invalid',
                   suffixIcon: const Icon(Icons.visibility_outlined),
                 ),
                 SettingsMultilineFieldRow(
                   label: 'Notes',
                   controller: notesController,
+                  helperText: 'Optional notes',
                   minLines: 3,
                   maxLines: 5,
                 ),
@@ -402,15 +509,17 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
+    expect(find.byType(SettingsFieldBlock), findsNWidgets(2));
+    expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+    expect(find.text('Server URL is invalid'), findsOneWidget);
+    expect(find.text('Optional notes'), findsOneWidget);
     final fields = tester
         .widgetList<CupertinoTextField>(find.byType(CupertinoTextField))
         .toList();
     expect(fields, hasLength(4));
-    final rows = tester
-        .widgetList<CupertinoListTile>(find.byType(CupertinoListTile))
-        .toList();
-    expect(rows, hasLength(4));
-    expect(rows.every((row) => row.onTap == null), isTrue);
+    expect(fields[3].minLines, 3);
+    expect(fields[3].maxLines, 5);
+    expect(find.byType(CupertinoListTile), findsNothing);
     for (final field in fields) {
       final padding = field.padding.resolve(TextDirection.ltr);
       expect(padding.horizontal, greaterThan(0));
@@ -450,6 +559,7 @@ void main() {
     );
 
     expect(find.byType(SettingsFormFieldRow), findsOneWidget);
+    expect(find.byType(SettingsFieldBlock), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
   });
 
@@ -511,7 +621,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byType(SettingsMenuRow<String>));
+    await tester.tap(find.byType(SettingsMenuRow<String>), warnIfMissed: false);
     await tester.pumpAndSettle();
 
     expect(selectedValue, 'one');
@@ -744,7 +854,7 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(CupertinoButton), findsOneWidget);
+    expect(find.widgetWithText(CupertinoButton, 'Delete'), findsOneWidget);
     expect(find.text('Saved'), findsOneWidget);
     expect(find.text('40%'), findsOneWidget);
 

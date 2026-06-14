@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/maintenance/storage_space_summary_models.dart';
 import '../../core/top_toast.dart';
 import '../../platform/widgets/platform_controls.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/maintenance/storage_space_controller.dart';
 import '../../i18n/strings.g.dart';
@@ -94,7 +93,7 @@ class _StorageSummaryHeader extends StatelessWidget {
 
     return SettingsSection(
       children: [
-        PlatformListSectionRow(
+        SettingsCustomRow(
           leading: Icon(
             Icons.pie_chart_outline,
             size: 20,
@@ -115,11 +114,10 @@ class _StorageSummaryHeader extends StatelessWidget {
                     value,
                     style: TextStyle(
                       color: settingsPageTokens(context).textMain,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
           ),
-          denseOnDesktop: false,
         ),
       ],
     );
@@ -133,19 +131,18 @@ class _LoadingStorageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       leading: Icon(
         Icons.storage_outlined,
         size: 20,
         color: settingsPageTokens(context).textMuted,
       ),
       title: SettingsRowTitle(context.t.strings.legacy.msg_storage_cache),
-      subtitle: SettingsRowDescription(
+      description: SettingsRowDescription(
         state.loadError != null
             ? context.t.strings.legacy.msg_media_cache_size_unavailable
             : context.t.strings.legacy.msg_media_cache_calculating,
       ),
-      denseOnDesktop: false,
     );
   }
 }
@@ -165,14 +162,14 @@ class _StorageCategoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
     final isCache = category.categoryId == StorageSpaceCategoryId.cache;
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       leading: Icon(
         _categoryIcon(category.categoryId),
         size: 20,
         color: tokens.textMuted,
       ),
       title: SettingsRowTitle(_categoryLabel(context, category.categoryId)),
-      subtitle: SettingsRowDescription(
+      description: SettingsRowDescription(
         _categoryDescription(context, category.categoryId),
       ),
       trailing: Row(
@@ -199,7 +196,6 @@ class _StorageCategoryRow extends StatelessWidget {
           ],
         ],
       ),
-      denseOnDesktop: false,
     );
   }
 }

@@ -37,6 +37,8 @@ class FakeWebDavSyncService implements WebDavSyncService {
 
   final List<String> conflicts;
   int callCount = 0;
+  int connectionTestCount = 0;
+  WebDavSettings? lastConnectionTestSettings;
 
   @override
   Future<WebDavSyncResult> syncNow({
@@ -72,6 +74,8 @@ class FakeWebDavSyncService implements WebDavSyncService {
     required WebDavSettings settings,
     required String? accountKey,
   }) async {
+    connectionTestCount += 1;
+    lastConnectionTestSettings = settings;
     return const WebDavConnectionTestResult.success();
   }
 }
@@ -473,16 +477,19 @@ Future<AppDatabase> _pumpWebDavScreen(
   required WebDavSettings settings,
   NavigatorObserver? observer,
   FakeWebDavSyncService? webDavSyncService,
+  FakeWebDavBackupService? webDavBackupService,
+  FakeWebDavSettingsController? settingsController,
   FakeWebDavBackupPasswordRepository? passwordRepository,
   LocalLibrary? localLibrary,
 }) async {
   final syncService = webDavSyncService ?? FakeWebDavSyncService(const []);
-  final webDavBackupService = FakeWebDavBackupService();
+  final backupService = webDavBackupService ?? FakeWebDavBackupService();
   final backupStateRepo = FakeWebDavBackupStateRepository();
   final sessionController = FakeAppSessionController(
     const AsyncValue.data(AppSessionState(accounts: [], currentKey: null)),
   );
-  final settingsController = FakeWebDavSettingsController(settings);
+  final effectiveSettingsController =
+      settingsController ?? FakeWebDavSettingsController(settings);
   final progressTracker = WebDavBackupProgressTracker();
   final db = AppDatabase(
     dbName: 'webdav_exit_guard_${DateTime.now().microsecondsSinceEpoch}.db',
@@ -492,7 +499,9 @@ Future<AppDatabase> _pumpWebDavScreen(
     TranslationProvider(
       child: ProviderScope(
         overrides: [
-          webDavSettingsProvider.overrideWith((ref) => settingsController),
+          webDavSettingsProvider.overrideWith(
+            (ref) => effectiveSettingsController,
+          ),
           webDavSettingsRepositoryProvider.overrideWithValue(
             FakeWebDavSettingsRepository(settings),
           ),
@@ -511,9 +520,9 @@ Future<AppDatabase> _pumpWebDavScreen(
             return RecordingSyncCoordinator(
               SyncDependencies(
                 webDavSyncService: syncService,
-                webDavBackupService: webDavBackupService,
+                webDavBackupService: backupService,
                 webDavBackupStateRepository: backupStateRepo,
-                readWebDavSettings: () => settingsController.state,
+                readWebDavSettings: () => effectiveSettingsController.state,
                 readCurrentAccountKey: () =>
                     sessionController.state.valueOrNull?.currentKey,
                 readCurrentAccount: () =>
@@ -832,17 +841,86 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SettingsPage), findsOneWidget);
-      expect(find.byType(SettingsSection), findsWidgets);
-      final testConnectionButton = find.byTooltip('Test connection');
+      expect(find.text(t.strings.legacy.msg_basic_settings), findsOneWidget);
+      expect(find.text(t.strings.legacy.msg_auth_settings), findsOneWidget);
+      expect(find.text('Advanced settings'), findsOneWidget);
+      expect(find.text('Security'), findsOneWidget);
+      final testConnectionButton = find.text('Test');
+      expect(find.byTooltip('Test connection'), findsOneWidget);
       expect(testConnectionButton, findsOneWidget);
+      expect(webDavSyncService.connectionTestCount, 0);
       await tester.tap(testConnectionButton);
       await tester.pump();
       await tester.pumpAndSettle();
 
+      expect(webDavSyncService.connectionTestCount, 1);
       expect(
         find.text('Connection test passed. WebDAV is reachable and writable.'),
         findsWidgets,
       );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await db.close();
+    },
+  );
+
+  testWidgets(
+    'connection save action preserves settings without network side effects',
+    (WidgetTester tester) async {
+      LocaleSettings.setLocale(AppLocale.en);
+      final settings = WebDavSettings.defaults.copyWith(
+        enabled: false,
+        autoSyncAllowed: false,
+        backupEnabled: false,
+        serverUrl: 'https://example.com',
+        username: 'user',
+        password: 'pass',
+      );
+      final settingsController = FakeWebDavSettingsController(settings);
+      final webDavSyncService = FakeWebDavSyncService(const <String>[]);
+      final webDavBackupService = FakeWebDavBackupService();
+
+      final db = await _pumpWebDavScreen(
+        tester,
+        settings: settings,
+        settingsController: settingsController,
+        webDavSyncService: webDavSyncService,
+        webDavBackupService: webDavBackupService,
+      );
+
+      await tester.tap(find.text(t.strings.legacy.msg_server_connection));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Basic auth'), findsOneWidget);
+      expect(find.text('Specifies the WebDAV sync directory.'), findsOneWidget);
+      expect(find.text('Allow insecure certificates'), findsOneWidget);
+      expect(
+        find.text('Only recommended on trusted intranet or test environments.'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.visibility), findsOneWidget);
+
+      final saveAction = find.byKey(
+        const ValueKey<String>('webDavConnection.saveSettingsAction'),
+      );
+      await tester.ensureVisible(saveAction);
+      await tester.pumpAndSettle();
+      expect(find.text('Save settings'), findsOneWidget);
+      await tester.tap(saveAction);
+      await tester.pumpAndSettle();
+
+      expect(webDavSyncService.connectionTestCount, 0);
+      expect(webDavSyncService.callCount, 0);
+      expect(webDavBackupService.callCount, 0);
+      expect(settingsController.state.enabled, isFalse);
+      expect(settingsController.state.backupEnabled, isFalse);
+      expect(settingsController.state.autoSyncAllowed, isFalse);
+
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
 

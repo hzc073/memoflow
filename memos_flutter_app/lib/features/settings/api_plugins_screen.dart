@@ -8,7 +8,6 @@ import '../../core/top_toast.dart';
 import '../../data/models/personal_access_token.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/personal_access_token_repository_provider.dart';
@@ -380,14 +379,13 @@ class _ApiPluginsScreenState extends ConsumerState<ApiPluginsScreen> {
   List<Widget> _tokenRows(BuildContext context) {
     if (_listError != null) {
       return [
-        PlatformListSectionRow(
+        SettingsCustomRow(
           title: SettingsRowDescription(_listError!),
           trailing: IconButton(
             tooltip: context.t.strings.legacy.msg_retry,
             onPressed: _refreshTokens,
             icon: const Icon(Icons.refresh_rounded),
           ),
-          denseOnDesktop: false,
         ),
       ];
     }
@@ -429,21 +427,18 @@ class _TokenDescriptionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: SettingsDialogTextField(
-            label: context.t.strings.legacy.msg_token_name,
-            controller: controller,
-            enabled: enabled,
-            hint: context.t.strings.legacy.msg_enter_token_description,
-            errorText: errorText,
-            onChanged: onChanged,
-          ),
+    return SettingsCustomRow(
+      enabled: enabled,
+      title: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: SettingsDialogTextField(
+          label: context.t.strings.legacy.msg_token_name,
+          controller: controller,
+          enabled: enabled,
+          hint: context.t.strings.legacy.msg_enter_token_description,
+          errorText: errorText,
+          onChanged: onChanged,
         ),
-        denseOnDesktop: false,
       ),
     );
   }
@@ -482,7 +477,7 @@ class _TokenItemState extends State<_TokenItem> {
     final title = widget.token.description.trim().isEmpty
         ? context.t.strings.legacy.msg_unnamed_token
         : widget.token.description.trim();
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       title: Row(
         children: [
           Expanded(child: SettingsRowTitle(title)),
@@ -506,7 +501,7 @@ class _TokenItemState extends State<_TokenItem> {
           ),
         ],
       ),
-      subtitle: Padding(
+      description: Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -555,7 +550,6 @@ class _TokenItemState extends State<_TokenItem> {
           ),
         ),
       ),
-      denseOnDesktop: false,
     );
   }
 }

@@ -36,6 +36,7 @@ void main() {
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.byType(SettingsToggleCard), findsOneWidget);
     expect(find.byType(SettingsFormFieldRow), findsNWidgets(2));
+    expect(find.byType(SettingsFieldBlock), findsNWidgets(2));
     expect(find.byType(SettingsInlineTextFieldRow), findsNWidgets(2));
     expect(find.byType(SettingsNumericInlineFieldRow), findsOneWidget);
     expect(find.byType(SettingsStepperRow), findsOneWidget);

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/top_toast.dart';
 import '../../platform/widgets/platform_controls.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../state/maintenance/self_repair_mutation_service.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../i18n/strings.g.dart';
@@ -206,13 +205,10 @@ class _RepairRow extends StatelessWidget {
     final effectiveText = disabled
         ? tokens.textMain.withValues(alpha: 0.45)
         : tokens.textMain;
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       leading: Icon(icon, size: 20, color: effectiveMuted),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: effectiveText),
-      ),
-      subtitle: Text(
+      title: SettingsRowTitle(label, color: effectiveText),
+      description: Text(
         subtitle,
         style: TextStyle(fontSize: 12, color: effectiveMuted),
       ),
@@ -220,7 +216,7 @@ class _RepairRow extends StatelessWidget {
           ? SizedBox(width: 18, height: 18, child: PlatformProgress())
           : Icon(Icons.chevron_right, size: 20, color: effectiveMuted),
       onTap: disabled || running ? null : onTap,
-      denseOnDesktop: false,
+      enabled: !disabled,
     );
   }
 }

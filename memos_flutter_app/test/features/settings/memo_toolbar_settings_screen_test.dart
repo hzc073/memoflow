@@ -49,11 +49,11 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.ensureVisible(toolbarEntry);
-    final tile = find.descendant(
+    final tapSurface = find.descendant(
       of: toolbarEntry,
-      matching: find.byType(ListTile),
+      matching: find.byType(InkWell),
     );
-    tester.widget<ListTile>(tile).onTap?.call();
+    tester.widget<InkWell>(tapSurface).onTap?.call();
     await tester.pumpAndSettle();
 
     expect(find.byType(MemoToolbarSettingsScreen), findsOneWidget);

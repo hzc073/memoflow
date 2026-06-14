@@ -74,6 +74,7 @@ void main() {
       expect(find.byType(SettingsInlineTextFieldRow), findsNWidgets(3));
       expect(find.byType(SettingsNumericInlineFieldRow), findsOneWidget);
       expect(find.byType(SettingsFormFieldRow), findsNWidgets(2));
+      expect(find.byType(SettingsFieldBlock), findsNWidgets(2));
       expect(find.text('Proxy Test'), findsOneWidget);
       expect(find.text('Test Connection'), findsOneWidget);
       final urlField = tester.widget<TextField>(find.byType(TextField).at(4));

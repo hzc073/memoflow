@@ -73,23 +73,20 @@ class _UserGeneralSettingsScreenState
       return SafeArea(
         child: ListView(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(surfaceContext.t.strings.legacy.msg_locale),
-              ),
+            SettingsSection(
+              header: Text(surfaceContext.t.strings.legacy.msg_locale),
+              children: [
+                for (final option in options)
+                  SettingsSingleChoiceRow<String>(
+                    option: SettingsChoiceOption<String>(
+                      value: option,
+                      label: _localeLabel(option),
+                    ),
+                    selected: option == currentLocale,
+                    onChanged: surfaceContext.safePop,
+                  ),
+              ],
             ),
-            for (final option in options)
-              ListTile(
-                leading: Icon(
-                  option == currentLocale
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(_localeLabel(option)),
-                onTap: () => surfaceContext.safePop(option),
-              ),
           ],
         ),
       );
@@ -110,25 +107,22 @@ class _UserGeneralSettingsScreenState
       return SafeArea(
         child: ListView(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  surfaceContext.t.strings.legacy.msg_default_visibility,
-                ),
+            SettingsSection(
+              header: Text(
+                surfaceContext.t.strings.legacy.msg_default_visibility,
               ),
+              children: [
+                for (final option in const ['PRIVATE', 'PROTECTED', 'PUBLIC'])
+                  SettingsSingleChoiceRow<String>(
+                    option: SettingsChoiceOption<String>(
+                      value: option,
+                      label: _visibilityLabel(option),
+                    ),
+                    selected: option == currentVisibility,
+                    onChanged: surfaceContext.safePop,
+                  ),
+              ],
             ),
-            for (final option in const ['PRIVATE', 'PROTECTED', 'PUBLIC'])
-              ListTile(
-                leading: Icon(
-                  option == currentVisibility
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(_visibilityLabel(option)),
-                onTap: () => surfaceContext.safePop(option),
-              ),
           ],
         ),
       );

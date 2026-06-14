@@ -7,7 +7,6 @@ import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../data/models/user_setting.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
@@ -243,11 +242,11 @@ class _WebhooksSettingsScreenState
               SettingsProgressRow(label: context.t.strings.legacy.msg_loading),
             ],
             error: (error, _) => [
-              PlatformListSectionRow(
+              SettingsCustomRow(
                 title: SettingsRowTitle(
                   context.t.strings.legacy.msg_failed_load_2,
                 ),
-                subtitle: SettingsRowDescription(
+                description: SettingsRowDescription(
                   _formatLoadError(context, error),
                 ),
                 trailing: IconButton(
@@ -255,7 +254,6 @@ class _WebhooksSettingsScreenState
                   onPressed: () => ref.invalidate(userWebhooksProvider),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
-                denseOnDesktop: false,
               ),
             ],
           ),
@@ -281,9 +279,9 @@ class _WebhookRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       title: SettingsRowTitle(title),
-      subtitle: SettingsRowDescription(url),
+      description: SettingsRowDescription(url),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -299,7 +297,6 @@ class _WebhookRow extends StatelessWidget {
           ),
         ],
       ),
-      denseOnDesktop: false,
     );
   }
 }

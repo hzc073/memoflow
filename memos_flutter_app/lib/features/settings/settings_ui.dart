@@ -182,6 +182,101 @@ SettingsPageTokens settingsPageTokens(BuildContext context) {
   );
 }
 
+const double _settingsSectionHeaderFontSize = 13;
+const double _settingsRowTitleFontSize = 15;
+const double _settingsRowValueFontSize = 13;
+const double _settingsDescriptionFontSize = 12;
+const double _settingsFieldValueFontSize = 14;
+const double _settingsPlaceholderFontSize = 13;
+const double _settingsMobileRowMinHeight = 52;
+const double _settingsDesktopRowMinHeight = 44;
+const double _settingsFieldMinHeight = 44;
+
+bool _settingsUseDesktopDensity(BuildContext context) {
+  return resolvePlatformExperience(context).isDesktop;
+}
+
+double _settingsSectionRadius(BuildContext context) {
+  return _settingsUseDesktopDensity(context) ? 8 : 14;
+}
+
+EdgeInsetsDirectional _settingsSectionLabelPadding(BuildContext context) {
+  return _settingsUseDesktopDensity(context)
+      ? const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 7)
+      : const EdgeInsetsDirectional.fromSTEB(20, 0, 20, 8);
+}
+
+EdgeInsetsDirectional _settingsSectionFooterPadding(BuildContext context) {
+  return _settingsUseDesktopDensity(context)
+      ? const EdgeInsetsDirectional.fromSTEB(16, 7, 16, 0)
+      : const EdgeInsetsDirectional.fromSTEB(20, 8, 20, 0);
+}
+
+EdgeInsetsDirectional _settingsRowPadding(BuildContext context) {
+  return _settingsUseDesktopDensity(context)
+      ? const EdgeInsetsDirectional.fromSTEB(16, 10, 16, 10)
+      : const EdgeInsetsDirectional.fromSTEB(18, 12, 16, 12);
+}
+
+double _settingsRowMinHeight(BuildContext context) {
+  return _settingsUseDesktopDensity(context)
+      ? _settingsDesktopRowMinHeight
+      : _settingsMobileRowMinHeight;
+}
+
+TextStyle _settingsSectionHeaderTextStyle(BuildContext context) {
+  final colorScheme = Theme.of(context).colorScheme;
+  return Theme.of(context).textTheme.labelMedium?.copyWith(
+        color: colorScheme.onSurfaceVariant,
+        fontSize: _settingsSectionHeaderFontSize,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      ) ??
+      TextStyle(
+        color: colorScheme.onSurfaceVariant,
+        fontSize: _settingsSectionHeaderFontSize,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      );
+}
+
+TextStyle _settingsRowTitleTextStyle(
+  BuildContext context, {
+  bool danger = false,
+}) {
+  final theme = Theme.of(context);
+  final tokens = settingsPageTokens(context);
+  return theme.textTheme.titleSmall?.copyWith(
+        color: danger ? theme.colorScheme.error : tokens.textMain,
+        fontSize: _settingsRowTitleFontSize,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+      ) ??
+      TextStyle(
+        color: danger ? theme.colorScheme.error : tokens.textMain,
+        fontSize: _settingsRowTitleFontSize,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+      );
+}
+
+TextStyle _settingsDescriptionTextStyle(BuildContext context) {
+  final theme = Theme.of(context);
+  final tokens = settingsPageTokens(context);
+  return theme.textTheme.bodySmall?.copyWith(
+        color: tokens.textMuted,
+        fontSize: _settingsDescriptionFontSize,
+        fontWeight: FontWeight.w400,
+        height: 1.25,
+      ) ??
+      TextStyle(
+        color: tokens.textMuted,
+        fontSize: _settingsDescriptionFontSize,
+        fontWeight: FontWeight.w400,
+        height: 1.25,
+      );
+}
+
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
@@ -288,13 +383,93 @@ class SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    return PlatformListSection(
-      padding: EdgeInsets.zero,
+    return _SettingsSectionSurface(
       header: header,
       footer: footer,
-      style: tokens.listSectionStyle,
       children: children,
+    );
+  }
+}
+
+class _SettingsSectionSurface extends StatelessWidget {
+  const _SettingsSectionSurface({
+    required this.children,
+    this.header,
+    this.footer,
+  });
+
+  final List<Widget> children;
+  final Widget? header;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final radius = BorderRadius.circular(_settingsSectionRadius(context));
+    final section = DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.sectionBackground,
+        borderRadius: radius,
+        border: Border.all(color: tokens.border),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _separatedChildren(context, tokens),
+        ),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (header != null)
+          _SettingsSectionLabel(
+            padding: _settingsSectionLabelPadding(context),
+            child: header!,
+          ),
+        section,
+        if (footer != null)
+          _SettingsSectionLabel(
+            padding: _settingsSectionFooterPadding(context),
+            child: footer!,
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _separatedChildren(
+    BuildContext context,
+    SettingsPageTokens tokens,
+  ) {
+    final result = <Widget>[];
+    for (var index = 0; index < children.length; index += 1) {
+      if (index > 0) {
+        result.add(Divider(height: 1, thickness: 1, color: tokens.divider));
+      }
+      result.add(children[index]);
+    }
+    return result;
+  }
+}
+
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel({required this.padding, required this.child});
+
+  final EdgeInsetsGeometry padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: padding,
+      child: DefaultTextStyle.merge(
+        style: _settingsSectionHeaderTextStyle(context),
+        child: child,
+      ),
     );
   }
 }
@@ -427,11 +602,7 @@ class SettingsSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-      fontWeight: FontWeight.w600,
-    );
+    final style = _settingsSectionHeaderTextStyle(context);
     final titleWidget = Text(
       title,
       maxLines: 1,
@@ -460,6 +631,164 @@ class SettingsSectionHeader extends StatelessWidget {
   }
 }
 
+class _SettingsRowShell extends StatelessWidget {
+  const _SettingsRowShell({
+    required this.title,
+    this.description,
+    this.leading,
+    this.value,
+    this.trailing,
+    this.onTap,
+    this.enabled = true,
+    this.minHeight,
+    this.valueMaxWidthFactor = 0.42,
+  });
+
+  final Widget title;
+  final Widget? description;
+  final Widget? leading;
+  final Widget? value;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final double? minHeight;
+  final double valueMaxWidthFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveOnTap = enabled ? onTap : null;
+    final valueFlex = (valueMaxWidthFactor.clamp(0.12, 0.7) * 1000).round();
+    final titleFlex = 1000 - valueFlex;
+    final row = ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: minHeight ?? _settingsRowMinHeight(context),
+      ),
+      child: Padding(
+        padding: _settingsRowPadding(context),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 12)],
+            Expanded(
+              flex: value == null ? 1000 : titleFlex,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  title,
+                  if (description != null) ...[
+                    const SizedBox(height: 4),
+                    description!,
+                  ],
+                ],
+              ),
+            ),
+            if (value != null) ...[
+              const SizedBox(width: 12),
+              Flexible(
+                flex: valueFlex,
+                fit: FlexFit.tight,
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: value!,
+                ),
+              ),
+            ],
+            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          ],
+        ),
+      ),
+    );
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Semantics(
+        button: effectiveOnTap != null,
+        enabled: enabled,
+        child: _SettingsRowTapSurface(onTap: effectiveOnTap, child: row),
+      ),
+    );
+  }
+}
+
+class _SettingsRowTapSurface extends StatelessWidget {
+  const _SettingsRowTapSurface({required this.child, this.onTap});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onTap == null) {
+      return child;
+    }
+    final experience = resolvePlatformExperience(context);
+    if (experience.usesAppleVisuals && experience.isMobileLike) {
+      return CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        pressedOpacity: 0.72,
+        onPressed: onTap,
+        child: child,
+      );
+    }
+
+    final tokens = settingsPageTokens(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: tokens.rowHover,
+        focusColor: tokens.rowHover,
+        highlightColor: tokens.rowPressed,
+        splashColor: tokens.rowPressed,
+        child: child,
+      ),
+    );
+  }
+}
+
+class SettingsCustomRow extends StatelessWidget {
+  const SettingsCustomRow({
+    super.key,
+    required this.title,
+    this.description,
+    this.leading,
+    this.value,
+    this.trailing,
+    this.onTap,
+    this.enabled = true,
+    this.minHeight,
+    this.valueMaxWidthFactor = 0.42,
+  });
+
+  final Widget title;
+  final Widget? description;
+  final Widget? leading;
+  final Widget? value;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final double? minHeight;
+  final double valueMaxWidthFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsRowShell(
+      leading: leading,
+      title: title,
+      description: description,
+      value: value,
+      trailing: trailing,
+      onTap: onTap,
+      enabled: enabled,
+      minHeight: minHeight,
+      valueMaxWidthFactor: valueMaxWidthFactor,
+    );
+  }
+}
+
 class SettingsValueRow extends StatelessWidget {
   const SettingsValueRow({
     super.key,
@@ -481,29 +810,15 @@ class SettingsValueRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rowWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final maxTrailingWidth = rowWidth * 0.42;
-        return Opacity(
-          opacity: enabled ? 1 : 0.55,
-          child: PlatformListSectionRow(
-            title: SettingsRowTitle(label),
-            additionalInfo: _SettingsRowValueText(
-              value,
-              maxWidth: maxTrailingWidth,
-            ),
-            trailing: Icon(icon, size: 18, color: tokens.textMuted),
-            onTap: enabled ? onTap : null,
-            subtitle: description == null
-                ? null
-                : SettingsRowDescription(description!),
-            denseOnDesktop: description == null,
-          ),
-        );
-      },
+    return _SettingsRowShell(
+      title: SettingsRowTitle(label),
+      description: description == null
+          ? null
+          : SettingsRowDescription(description!),
+      value: _SettingsRowValueText(value),
+      trailing: Icon(icon, size: 18, color: tokens.textMuted),
+      onTap: onTap,
+      enabled: enabled,
     );
   }
 }
@@ -533,53 +848,39 @@ class SettingsNavigationRow extends StatelessWidget {
     final tokens = settingsPageTokens(context);
     final homeDensity = _SettingsHomeDensityScope.maybeOf(context);
     final isSingleLine = description == null;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rowWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final maxTrailingWidth = rowWidth * 0.42;
-        return Opacity(
-          opacity: enabled ? 1 : 0.55,
-          child: PlatformListSectionRow(
-            leading: leading,
-            title: SettingsRowTitle(label),
-            subtitle: description == null
-                ? null
-                : SettingsRowDescription(description!),
-            additionalInfo: value == null
-                ? null
-                : _SettingsRowValueText(value!, maxWidth: maxTrailingWidth),
-            trailing: Icon(trailingIcon, size: 18, color: tokens.textMuted),
-            onTap: enabled ? onTap : null,
-            mobileMinTileHeight: isSingleLine
-                ? homeDensity?.navigationRowMinHeight
-                : null,
-            denseOnDesktop: description == null,
-          ),
-        );
-      },
+    return _SettingsRowShell(
+      leading: leading,
+      title: SettingsRowTitle(label),
+      description: description == null
+          ? null
+          : SettingsRowDescription(description!),
+      value: value == null ? null : _SettingsRowValueText(value!),
+      trailing: Icon(trailingIcon, size: 18, color: tokens.textMuted),
+      onTap: onTap,
+      enabled: enabled,
+      minHeight: isSingleLine ? homeDensity?.navigationRowMinHeight : null,
     );
   }
 }
 
 class _SettingsRowValueText extends StatelessWidget {
-  const _SettingsRowValueText(this.value, {required this.maxWidth});
+  const _SettingsRowValueText(this.value);
 
   final String value;
-  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: Text(
-        value,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.end,
-        style: TextStyle(fontWeight: FontWeight.w600, color: tokens.textMuted),
+    return Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.end,
+      style: TextStyle(
+        color: tokens.textMuted,
+        fontSize: _settingsRowValueFontSize,
+        fontWeight: FontWeight.w500,
+        height: 1.25,
       ),
     );
   }
@@ -592,10 +893,7 @@ class SettingsInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PlatformListSectionRow(
-      title: SettingsRowDescription(description),
-      denseOnDesktop: false,
-    );
+    return _SettingsRowShell(title: SettingsRowDescription(description));
   }
 }
 
@@ -614,7 +912,7 @@ class SettingsProfileSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       leading: CircleAvatar(
         radius: 22,
         backgroundColor: Theme.of(
@@ -627,10 +925,10 @@ class SettingsProfileSummary extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: subtitle == null || subtitle!.trim().isEmpty
+      description: subtitle == null || subtitle!.trim().isEmpty
           ? null
           : SettingsRowDescription(subtitle!),
-      denseOnDesktop: false,
+      minHeight: _settingsUseDesktopDensity(context) ? 64 : 72,
     );
   }
 }
@@ -675,19 +973,18 @@ class SettingsSelectableItemRow extends StatelessWidget {
         ),
     ];
 
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       leading: Icon(
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
         size: 20,
         color: tokens.textMuted,
       ),
       title: SettingsRowTitle(title),
-      subtitle: SettingsRowDescription(subtitle),
+      description: SettingsRowDescription(subtitle),
       trailing: actions.isEmpty
           ? null
           : Row(mainAxisSize: MainAxisSize.min, children: actions),
       onTap: onTap,
-      denseOnDesktop: false,
     );
   }
 }
@@ -712,14 +1009,13 @@ class SettingsToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final rowTap =
         onTap ?? (onChanged == null ? null : () => onChanged!(!value));
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       title: SettingsRowTitle(label),
-      subtitle: description == null
+      description: description == null
           ? null
           : SettingsRowDescription(description!),
       trailing: PlatformSwitch(value: value, onChanged: onChanged),
       onTap: rowTap,
-      denseOnDesktop: description == null,
     );
   }
 }
@@ -788,41 +1084,20 @@ class SettingsInputRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(label),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: PlatformTextField(
-            controller: controller,
-            focusNode: focusNode,
-            enabled: enabled,
-            keyboardType: keyboardType,
-            inputFormatters: inputFormatters,
-            obscureText: obscureText,
-            minLines: minLines,
-            maxLines: maxLines,
-            onChanged: onChanged,
-            onEditingComplete: onEditingComplete,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: tokens.textMain,
-            ),
-            decoration: InputDecoration(
-              labelText: fieldLabel,
-              hintText: hint,
-              suffixIcon: suffixIcon,
-              hintStyle: TextStyle(color: tokens.textMuted),
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-        ),
-        denseOnDesktop: false,
-      ),
+    return SettingsFieldBlock(
+      label: label,
+      controller: controller,
+      focusNode: focusNode,
+      hint: hint ?? fieldLabel,
+      suffixIcon: suffixIcon,
+      inputFormatters: inputFormatters,
+      keyboardType: keyboardType,
+      enabled: enabled,
+      obscureText: obscureText,
+      minLines: minLines,
+      maxLines: maxLines,
+      onChanged: onChanged,
+      onEditingComplete: onEditingComplete,
     );
   }
 }
@@ -929,35 +1204,33 @@ class _SettingsInlineTextFieldRowState
         final fieldWidth = (width * 0.48)
             .clamp(widget.minFieldWidth, widget.maxFieldWidth)
             .toDouble();
-        return Opacity(
-          opacity: widget.enabled ? 1 : 0.55,
-          child: PlatformListSectionRow(
-            title: SettingsRowTitle(
-              widget.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: SizedBox(
-              width: fieldWidth,
-              child: _SettingsTextField(
-                controller: widget.controller,
-                focusNode: _focusNode,
-                hint: widget.hint,
-                suffixIcon: widget.suffixIcon,
-                inputFormatters: widget.inputFormatters,
-                keyboardType: widget.keyboardType,
-                textInputAction: widget.textInputAction,
-                maxLength: widget.maxLength,
-                maxLengthEnforcement: widget.maxLengthEnforcement,
-                enabled: widget.enabled,
-                obscureText: widget.obscureText,
-                textAlign: TextAlign.end,
-                onChanged: widget.onChanged,
-                onSubmitted: widget.onSubmitted,
-                onEditingComplete: widget.onEditingComplete,
-              ),
+        return _SettingsRowShell(
+          title: SettingsRowTitle(
+            widget.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: SizedBox(
+            width: fieldWidth,
+            child: _SettingsTextField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              hint: widget.hint,
+              suffixIcon: widget.suffixIcon,
+              inputFormatters: widget.inputFormatters,
+              keyboardType: widget.keyboardType,
+              textInputAction: widget.textInputAction,
+              maxLength: widget.maxLength,
+              maxLengthEnforcement: widget.maxLengthEnforcement,
+              enabled: widget.enabled,
+              obscureText: widget.obscureText,
+              textAlign: TextAlign.end,
+              onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+              onEditingComplete: widget.onEditingComplete,
             ),
           ),
+          enabled: widget.enabled,
         );
       },
     );
@@ -1079,54 +1352,26 @@ class _SettingsFormFieldRowState extends State<SettingsFormFieldRow> {
 
   @override
   Widget build(BuildContext context) {
-    final error = widget.errorText?.trim();
-    final helper = widget.helperText?.trim();
-    return Opacity(
-      opacity: widget.enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(widget.label),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SettingsTextField(
-                controller: widget.controller,
-                focusNode: _focusNode,
-                hint: widget.hint,
-                suffixIcon: widget.suffixIcon,
-                inputFormatters: widget.inputFormatters,
-                keyboardType: widget.keyboardType,
-                textInputAction: widget.textInputAction,
-                maxLength: widget.maxLength,
-                maxLengthEnforcement: widget.maxLengthEnforcement,
-                enabled: widget.enabled,
-                obscureText: widget.obscureText,
-                minLines: widget.minLines,
-                maxLines: widget.maxLines,
-                onChanged: widget.onChanged,
-                onSubmitted: widget.onSubmitted,
-                onEditingComplete: widget.onEditingComplete,
-              ),
-              if (error != null && error.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Text(
-                  error,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.error,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ] else if (helper != null && helper.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                SettingsRowDescription(helper),
-              ],
-            ],
-          ),
-        ),
-        denseOnDesktop: false,
-      ),
+    return SettingsFieldBlock(
+      label: widget.label,
+      controller: widget.controller,
+      focusNode: _focusNode,
+      hint: widget.hint,
+      helperText: widget.helperText,
+      errorText: widget.errorText,
+      suffixIcon: widget.suffixIcon,
+      inputFormatters: widget.inputFormatters,
+      keyboardType: widget.keyboardType,
+      textInputAction: widget.textInputAction,
+      maxLength: widget.maxLength,
+      maxLengthEnforcement: widget.maxLengthEnforcement,
+      enabled: widget.enabled,
+      obscureText: widget.obscureText,
+      minLines: widget.minLines,
+      maxLines: widget.maxLines,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      onEditingComplete: widget.onEditingComplete,
     );
   }
 }
@@ -1183,6 +1428,104 @@ class SettingsMultilineFieldRow extends StatelessWidget {
   }
 }
 
+class SettingsFieldBlock extends StatelessWidget {
+  const SettingsFieldBlock({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    this.hint,
+    this.helperText,
+    this.errorText,
+    this.suffixIcon,
+    this.inputFormatters,
+    this.keyboardType,
+    this.textInputAction,
+    this.maxLength,
+    this.maxLengthEnforcement,
+    this.enabled = true,
+    this.obscureText = false,
+    this.minLines,
+    this.maxLines = 1,
+    this.onChanged,
+    this.onSubmitted,
+    this.onEditingComplete,
+    this.padding = const EdgeInsetsDirectional.fromSTEB(18, 12, 18, 14),
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String? hint;
+  final String? helperText;
+  final String? errorText;
+  final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final int? maxLength;
+  final MaxLengthEnforcement? maxLengthEnforcement;
+  final bool enabled;
+  final bool obscureText;
+  final int? minLines;
+  final int? maxLines;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final VoidCallback? onEditingComplete;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = errorText?.trim();
+    final helper = helperText?.trim();
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Padding(
+        padding: padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SettingsRowTitle(label),
+            const SizedBox(height: 10),
+            _SettingsTextField(
+              controller: controller,
+              focusNode: focusNode,
+              hint: hint,
+              suffixIcon: suffixIcon,
+              inputFormatters: inputFormatters,
+              keyboardType: keyboardType,
+              textInputAction: textInputAction,
+              maxLength: maxLength,
+              maxLengthEnforcement: maxLengthEnforcement,
+              enabled: enabled,
+              obscureText: obscureText,
+              minLines: minLines,
+              maxLines: maxLines,
+              onChanged: onChanged,
+              onSubmitted: onSubmitted,
+              onEditingComplete: onEditingComplete,
+            ),
+            if (error != null && error.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                error,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.error,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ] else if (helper != null && helper.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SettingsRowDescription(helper),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsLongValueRow extends StatelessWidget {
   const SettingsLongValueRow({
     super.key,
@@ -1208,32 +1551,19 @@ class SettingsLongValueRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rowWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final maxTrailingWidth = rowWidth * maxTrailingWidthFactor;
-        return Opacity(
-          opacity: enabled ? 1 : 0.55,
-          child: PlatformListSectionRow(
-            leading: leading,
-            title: SettingsRowTitle(label),
-            subtitle: description == null
-                ? null
-                : SettingsRowDescription(description!),
-            additionalInfo: _SettingsRowValueText(
-              value,
-              maxWidth: maxTrailingWidth,
-            ),
-            trailing: trailingIcon == null
-                ? null
-                : Icon(trailingIcon, size: 18, color: tokens.textMuted),
-            onTap: enabled ? onTap : null,
-            denseOnDesktop: description == null,
-          ),
-        );
-      },
+    return _SettingsRowShell(
+      leading: leading,
+      title: SettingsRowTitle(label),
+      description: description == null
+          ? null
+          : SettingsRowDescription(description!),
+      value: _SettingsRowValueText(value),
+      trailing: trailingIcon == null
+          ? null
+          : Icon(trailingIcon, size: 18, color: tokens.textMuted),
+      onTap: onTap,
+      enabled: enabled,
+      valueMaxWidthFactor: maxTrailingWidthFactor,
     );
   }
 }
@@ -1281,6 +1611,12 @@ class _SettingsTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
     final colorScheme = Theme.of(context).colorScheme;
+    final themedSuffixIcon = suffixIcon == null
+        ? null
+        : IconTheme.merge(
+            data: IconThemeData(color: tokens.textMuted),
+            child: suffixIcon!,
+          );
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: tokens.valueBorder),
@@ -1302,18 +1638,21 @@ class _SettingsTextField extends StatelessWidget {
       onSubmitted: onSubmitted,
       onEditingComplete: onEditingComplete,
       style: TextStyle(
-        fontSize: 14,
+        fontSize: _settingsFieldValueFontSize,
         fontWeight: FontWeight.w600,
         color: tokens.textMain,
         decoration: TextDecoration.none,
       ),
       decoration: InputDecoration(
         hintText: hint,
-        suffixIcon: suffixIcon,
+        suffixIcon: themedSuffixIcon,
         counterText: '',
         filled: true,
         fillColor: tokens.valueSurface,
-        hintStyle: TextStyle(color: tokens.textMuted, fontSize: 13),
+        hintStyle: TextStyle(
+          color: tokens.textMuted,
+          fontSize: _settingsPlaceholderFontSize,
+        ),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
@@ -1321,9 +1660,10 @@ class _SettingsTextField extends StatelessWidget {
           borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
         ),
         isDense: true,
+        constraints: const BoxConstraints(minHeight: _settingsFieldMinHeight),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
-          vertical: 10,
+          vertical: 11,
         ),
       ),
     );
@@ -1352,34 +1692,20 @@ class SettingsMenuRow<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
     final selectedLabel = labelFor(value);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rowWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final maxValueWidth = (rowWidth * 0.32).clamp(96.0, 140.0).toDouble();
-        return Opacity(
-          opacity: enabled ? 1 : 0.55,
-          child: PlatformListSectionRow(
-            title: SettingsRowTitle(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            additionalInfo: _SettingsMenuValueLabel(
-              label: selectedLabel,
-              color: tokens.textMuted,
-              maxWidth: maxValueWidth,
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: tokens.textMuted,
-            ),
-            onTap: enabled ? () => _showPicker(context) : null,
-          ),
-        );
-      },
+    return _SettingsRowShell(
+      title: SettingsRowTitle(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      value: _SettingsMenuValueLabel(
+        label: selectedLabel,
+        color: tokens.textMuted,
+      ),
+      trailing: Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
+      onTap: () => _showPicker(context),
+      enabled: enabled,
+      valueMaxWidthFactor: 0.32,
     );
   }
 
@@ -1398,31 +1724,23 @@ class SettingsMenuRow<T> extends StatelessWidget {
 }
 
 class _SettingsMenuValueLabel extends StatelessWidget {
-  const _SettingsMenuValueLabel({
-    required this.label,
-    required this.color,
-    required this.maxWidth,
-  });
+  const _SettingsMenuValueLabel({required this.label, required this.color});
 
   final String label;
   final Color color;
-  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.end,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: color,
-          decoration: TextDecoration.none,
-        ),
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.end,
+      style: TextStyle(
+        fontSize: _settingsRowValueFontSize,
+        fontWeight: FontWeight.w500,
+        color: color,
+        decoration: TextDecoration.none,
       ),
     );
   }
@@ -1799,7 +2117,7 @@ class SettingsOptionChoiceRow<T> extends StatelessWidget {
       onChanged: onChanged,
     );
     final subtitle = description == null
-        ? Padding(padding: const EdgeInsets.only(top: 8), child: optionGroup)
+        ? optionGroup
         : Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1809,13 +2127,10 @@ class SettingsOptionChoiceRow<T> extends StatelessWidget {
             ],
           );
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(label),
-        subtitle: subtitle,
-        denseOnDesktop: false,
-      ),
+    return _SettingsRowShell(
+      title: SettingsRowTitle(label),
+      description: subtitle,
+      enabled: enabled,
     );
   }
 }
@@ -1911,24 +2226,21 @@ class SettingsSingleChoiceRow<T> extends StatelessWidget {
     final description = option.enabled
         ? option.description
         : option.disabledDescription ?? option.description;
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        leading: option.icon == null
-            ? null
-            : Icon(
-                option.icon,
-                size: 20,
-                color: settingsPageTokens(context).textMuted,
-              ),
-        title: SettingsRowTitle(option.label),
-        subtitle: description == null
-            ? null
-            : SettingsRowDescription(description),
-        trailing: _SettingsSelectionMark(selected: selected),
-        onTap: enabled ? () => onChanged(option.value) : null,
-        denseOnDesktop: description == null,
-      ),
+    return _SettingsRowShell(
+      leading: option.icon == null
+          ? null
+          : Icon(
+              option.icon,
+              size: 20,
+              color: settingsPageTokens(context).textMuted,
+            ),
+      title: SettingsRowTitle(option.label),
+      description: description == null
+          ? null
+          : SettingsRowDescription(description),
+      trailing: _SettingsSelectionMark(selected: selected),
+      onTap: () => onChanged(option.value),
+      enabled: enabled,
     );
   }
 }
@@ -1991,24 +2303,21 @@ class SettingsMultiChoiceRow<T> extends StatelessWidget {
     final description = option.enabled
         ? option.description
         : option.disabledDescription ?? option.description;
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        leading: option.icon == null
-            ? null
-            : Icon(
-                option.icon,
-                size: 20,
-                color: settingsPageTokens(context).textMuted,
-              ),
-        title: SettingsRowTitle(option.label),
-        subtitle: description == null
-            ? null
-            : SettingsRowDescription(description),
-        trailing: _SettingsSelectionMark(selected: selected, boxed: true),
-        onTap: enabled ? () => onChanged(!selected) : null,
-        denseOnDesktop: description == null,
-      ),
+    return _SettingsRowShell(
+      leading: option.icon == null
+          ? null
+          : Icon(
+              option.icon,
+              size: 20,
+              color: settingsPageTokens(context).textMuted,
+            ),
+      title: SettingsRowTitle(option.label),
+      description: description == null
+          ? null
+          : SettingsRowDescription(description),
+      trailing: _SettingsSelectionMark(selected: selected, boxed: true),
+      onTap: () => onChanged(!selected),
+      enabled: enabled,
     );
   }
 }
@@ -2325,48 +2634,46 @@ class SettingsStepperRow extends StatelessWidget {
       );
     }
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        title: SettingsRowTitle(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+    return _SettingsRowShell(
+      title: SettingsRowTitle(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tokens.valueSurface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: tokens.valueBorder),
         ),
-        trailing: DecoratedBox(
-          decoration: BoxDecoration(
-            color: tokens.valueSurface,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: tokens.valueBorder),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                buildButton(Icons.remove, onDecrease),
-                const SizedBox(width: 4),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 34),
-                  child: Text(
-                    valueLabel,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: tokens.textMain,
-                      decoration: TextDecoration.none,
-                    ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              buildButton(Icons.remove, onDecrease),
+              const SizedBox(width: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 34),
+                child: Text(
+                  valueLabel,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: _settingsRowValueFontSize,
+                    color: tokens.textMain,
+                    decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(width: 4),
-                buildButton(Icons.add, onIncrease),
-              ],
-            ),
+              ),
+              const SizedBox(width: 4),
+              buildButton(Icons.add, onIncrease),
+            ],
           ),
         ),
       ),
+      enabled: enabled,
     );
   }
 }
@@ -2380,14 +2687,13 @@ class SettingsWarningRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       leading: Icon(
         Icons.info_outline,
         size: 18,
         color: iconColor ?? colorScheme.primary,
       ),
       title: SettingsRowDescription(message),
-      denseOnDesktop: false,
     );
   }
 }
@@ -2409,13 +2715,12 @@ class SettingsFeedbackRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = _settingsFeedbackData(context, kind);
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       leading: Icon(data.icon, size: 18, color: data.color),
       title: title == null
           ? SettingsRowDescription(message)
           : SettingsRowTitle(title!, color: data.color),
-      subtitle: title == null ? null : SettingsRowDescription(message),
-      denseOnDesktop: title == null,
+      description: title == null ? null : SettingsRowDescription(message),
     );
   }
 }
@@ -2438,19 +2743,17 @@ class SettingsProgressRow extends StatelessWidget {
     final valueLabel = progressValue == null
         ? null
         : '${(progressValue * 100).round()}%';
-    return PlatformListSectionRow(
+    return _SettingsRowShell(
       leading: SizedBox.square(
         dimension: 20,
         child: PlatformProgress(value: progressValue),
       ),
       title: SettingsRowTitle(label),
-      subtitle: description == null
+      description: description == null
           ? null
           : SettingsRowDescription(description!),
-      additionalInfo: valueLabel == null
-          ? null
-          : _SettingsRowValueText(valueLabel, maxWidth: 56),
-      denseOnDesktop: description == null,
+      value: valueLabel == null ? null : _SettingsRowValueText(valueLabel),
+      valueMaxWidthFactor: 0.16,
     );
   }
 }
@@ -3260,17 +3563,12 @@ class SettingsRowTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
+    final style = _settingsRowTitleTextStyle(context).copyWith(color: color);
     return Text(
       label,
       maxLines: maxLines,
       overflow: overflow,
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: color ?? tokens.textMain,
-        decoration: TextDecoration.none,
-      ),
+      style: style.copyWith(decoration: TextDecoration.none),
     );
   }
 }
@@ -3282,15 +3580,11 @@ class SettingsRowDescription extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
     return Text(
       label,
-      style: TextStyle(
-        fontSize: 12,
-        color: tokens.textMuted,
-        height: 1.3,
-        decoration: TextDecoration.none,
-      ),
+      style: _settingsDescriptionTextStyle(
+        context,
+      ).copyWith(decoration: TextDecoration.none),
     );
   }
 }

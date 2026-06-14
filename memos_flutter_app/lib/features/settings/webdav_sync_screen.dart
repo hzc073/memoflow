@@ -40,8 +40,6 @@ import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
-import '../../platform/widgets/platform_list_section.dart';
-import '../../platform/widgets/platform_list_tile.dart';
 import '../../platform/widgets/platform_page.dart';
 import '../../platform/widgets/platform_primary_action.dart';
 import '../../i18n/strings.g.dart';
@@ -2299,18 +2297,16 @@ class _SyncStatusLine extends StatelessWidget {
 }
 
 class _WarningCard extends StatelessWidget {
-  const _WarningCard({required this.text, required this.isDark});
+  const _WarningCard({required this.text});
 
   final String text;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xFF2E1F1F) : const Color(0xFFFFF4F0);
-    final border = isDark ? const Color(0xFF4A2A2A) : const Color(0xFFFFD1C2);
-    final textColor = isDark
-        ? const Color(0xFFF5C8C8)
-        : const Color(0xFFB23A2C);
+    final colorScheme = Theme.of(context).colorScheme;
+    final bg = colorScheme.errorContainer.withValues(alpha: 0.28);
+    final border = colorScheme.error.withValues(alpha: 0.28);
+    final textColor = colorScheme.onErrorContainer;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -2376,46 +2372,21 @@ class _ToggleRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.description,
   });
 
   final String label;
+  final String? description;
   final bool value;
   final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return SettingsToggleRow(label: label, value: value, onChanged: onChanged);
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    required this.textMain,
-    required this.textMuted,
-  });
-
-  final String label;
-  final String value;
-  final Color textMain;
-  final Color textMuted;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlatformListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(
-        label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: textMain),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          value,
-          style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
-        ),
-      ),
+    return SettingsToggleRow(
+      label: label,
+      description: description,
+      value: value,
+      onChanged: onChanged,
     );
   }
 }
@@ -2488,12 +2459,12 @@ class _WebDavConnectionScreenState
       context: context,
       title: context.t.strings.legacy.msg_auth_mode,
       value: _authMode,
-      options: const [
+      options: [
         SettingsChoiceOption<WebDavAuthMode>(
           value: WebDavAuthMode.basic,
-          label: 'Basic',
+          label: _authModeLabel(context, WebDavAuthMode.basic),
         ),
-        SettingsChoiceOption<WebDavAuthMode>(
+        const SettingsChoiceOption<WebDavAuthMode>(
           value: WebDavAuthMode.digest,
           label: 'Digest',
         ),
@@ -2555,9 +2526,40 @@ class _WebDavConnectionScreenState
     showTopToast(context, message);
   }
 
+  String _authModeLabel(BuildContext context, WebDavAuthMode mode) {
+    return switch (mode) {
+      WebDavAuthMode.basic => context.tr(
+        zh: '\u57fa\u7840\u8ba4\u8bc1',
+        en: 'Basic auth',
+      ),
+      WebDavAuthMode.digest => 'Digest',
+    };
+  }
+
+  void _normalizeVisibleFields() {
+    final normalizedUrl = normalizeWebDavBaseUrl(
+      widget.serverUrlController.text,
+    );
+    if (normalizedUrl != widget.serverUrlController.text) {
+      widget.serverUrlController.text = normalizedUrl;
+    }
+
+    final normalizedRootPath = normalizeWebDavRootPath(
+      widget.rootPathController.text,
+    );
+    if (normalizedRootPath != widget.rootPathController.text) {
+      widget.rootPathController.text = normalizedRootPath;
+    }
+  }
+
+  void _saveSettings() {
+    FocusScope.of(context).unfocus();
+    _normalizeVisibleFields();
+    showTopToast(context, context.t.strings.legacy.msg_settings_saved);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
     final serverUrl = widget.serverUrlController.text.trim();
     final isHttp = serverUrl.startsWith('http://');
     final hasCredentialMismatch =
@@ -2567,52 +2569,55 @@ class _WebDavConnectionScreenState
 
     return SettingsPage(
       title: Text(context.t.strings.legacy.msg_server_connection),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
       children: [
-        SettingsSection(
-          header: Text(context.t.strings.legacy.msg_basic_settings),
+        _ConnectionSection(
+          title: context.t.strings.legacy.msg_basic_settings,
           children: [
-            SettingsFormFieldRow(
+            SettingsFieldBlock(
               label: context.t.strings.legacy.msg_server_url,
               hint: 'https://example.com/dav',
               controller: widget.serverUrlController,
               keyboardType: TextInputType.url,
               onChanged: widget.onServerUrlChanged,
               onEditingComplete: widget.onServerUrlEditingComplete,
-              suffixIcon: IconButton(
-                tooltip: context.tr(
+              errorText: hasCredentialMismatch
+                  ? context.tr(
+                      zh: '\u8bf7\u540c\u65f6\u586b\u5199\u7528\u6237\u540d\u548c\u5bc6\u7801\uff0c\u6216\u5747\u7559\u7a7a\u3002',
+                      en: 'Enter both username and password, or leave both empty.',
+                    )
+                  : null,
+              suffixIcon: Tooltip(
+                message: context.tr(
                   zh: '\u6d4b\u8bd5\u8fde\u63a5',
                   en: 'Test connection',
                 ),
-                onPressed: (!canTestConnection || _testingConnection)
-                    ? null
-                    : _testConnection,
-                icon: _testingConnection
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: PlatformProgress(),
-                      )
-                    : const Icon(Icons.network_check_rounded, size: 20),
-              ),
-            ),
-            if (hasCredentialMismatch) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Text(
-                  context.tr(
-                    zh: '\u8bf7\u540c\u65f6\u586b\u5199\u7528\u6237\u540d\u548c\u5bc6\u7801\uff0c\u6216\u5747\u7559\u7a7a\u3002',
-                    en: 'Enter both username and password, or leave both empty.',
-                  ),
-                  style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                child: PlatformPrimaryAction(
+                  onPressed: (!canTestConnection || _testingConnection)
+                      ? null
+                      : _testConnection,
+                  variant: PlatformPrimaryActionVariant.text,
+                  desktopAlignment: AlignmentDirectional.center,
+                  desktopMinWidth: 0,
+                  desktopMaxWidth: 96,
+                  expandOnMobile: false,
+                  expandOnNarrowDesktop: false,
+                  child: _testingConnection
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: PlatformProgress(),
+                        )
+                      : Text(context.tr(zh: '\u6d4b\u8bd5', en: 'Test')),
                 ),
               ),
-            ],
-            SettingsInlineTextFieldRow(
+            ),
+            SettingsFieldBlock(
               label: context.t.strings.legacy.msg_username,
               hint: context.t.strings.legacy.msg_enter_username,
               controller: widget.usernameController,
               onChanged: widget.onUsernameChanged,
             ),
-            SettingsFormFieldRow(
+            SettingsFieldBlock(
               label: context.t.strings.legacy.msg_password,
               hint: context.t.strings.legacy.msg_enter_password_2,
               controller: widget.passwordController,
@@ -2630,7 +2635,7 @@ class _WebDavConnectionScreenState
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         if (isHttp || _ignoreTlsErrors) ...[
           _WarningCard(
             text: context
@@ -2638,43 +2643,130 @@ class _WebDavConnectionScreenState
                 .strings
                 .legacy
                 .msg_use_https_avoid_ignoring_tls_errors,
-            isDark: tokens.isDark,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
         ],
-        SettingsSection(
-          header: Text(context.t.strings.legacy.msg_auth_settings),
+        _ConnectionSection(
+          title: context.t.strings.legacy.msg_auth_settings,
           children: [
             _SelectRow(
               label: context.t.strings.legacy.msg_auth_mode,
-              value: _authMode.name.toUpperCase(),
+              value: _authModeLabel(context, _authMode),
               onTap: _pickAuthMode,
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        SettingsSection(
-          header: Text(context.t.strings.legacy.msg_advanced_security),
+        const SizedBox(height: 24),
+        _ConnectionSection(
+          title: context.tr(
+            zh: '\u9ad8\u7ea7\u8bbe\u7f6e',
+            en: 'Advanced settings',
+          ),
           children: [
-            _ToggleRow(
-              label: context.t.strings.legacy.msg_ignore_tls_errors,
-              value: _ignoreTlsErrors,
-              onChanged: (v) {
-                setState(() => _ignoreTlsErrors = v);
-                widget.onIgnoreTlsChanged(v);
-              },
-            ),
-            SettingsFormFieldRow(
+            SettingsFieldBlock(
               label: context.t.strings.legacy.msg_root_path,
-              hint: '/notes',
+              hint: '/MemoFlow/settings/v1',
+              helperText: context.tr(
+                zh: '\u7528\u4e8e\u6307\u5b9a WebDAV \u540c\u6b65\u76ee\u5f55',
+                en: 'Specifies the WebDAV sync directory.',
+              ),
               controller: widget.rootPathController,
               onChanged: widget.onRootPathChanged,
               onEditingComplete: widget.onRootPathEditingComplete,
             ),
           ],
         ),
+        const SizedBox(height: 24),
+        _ConnectionSection(
+          title: context.tr(zh: '\u5b89\u5168', en: 'Security'),
+          children: [
+            _ToggleRow(
+              label: context.tr(
+                zh: '\u5141\u8bb8\u4e0d\u5b89\u5168\u8bc1\u4e66',
+                en: 'Allow insecure certificates',
+              ),
+              description: context.tr(
+                zh: '\u4ec5\u5efa\u8bae\u5728\u53ef\u4fe1\u5185\u7f51\u6216\u6d4b\u8bd5\u73af\u5883\u4e2d\u5f00\u542f',
+                en: 'Only recommended on trusted intranet or test environments.',
+              ),
+              value: _ignoreTlsErrors,
+              onChanged: (v) {
+                setState(() => _ignoreTlsErrors = v);
+                widget.onIgnoreTlsChanged(v);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        SettingsAction(
+          key: const ValueKey<String>('webDavConnection.saveSettingsAction'),
+          onPressed: _saveSettings,
+          label: Text(
+            context.tr(zh: '\u4fdd\u5b58\u8bbe\u7f6e', en: 'Save settings'),
+          ),
+        ),
+        const SizedBox(height: 12),
       ],
     );
+  }
+}
+
+class _ConnectionSection extends StatelessWidget {
+  const _ConnectionSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    final borderRadius = BorderRadius.circular(14);
+    final borderColor = tokens.border.withValues(
+      alpha: tokens.isDark ? 0.72 : 0.92,
+    );
+    final backgroundColor = tokens.sectionBackground.withValues(
+      alpha: tokens.isDark ? 0.86 : 1,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(2, 0, 2, 8),
+          child: SettingsSectionHeader(title: title),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: borderRadius,
+            border: Border.all(color: borderColor),
+          ),
+          child: ClipRRect(
+            borderRadius: borderRadius,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(children: _separatedChildren(context)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _separatedChildren(BuildContext context) {
+    if (children.length < 2) return children;
+    final tokens = settingsPageTokens(context);
+    final dividerColor = tokens.divider.withValues(
+      alpha: tokens.isDark ? 0.56 : 0.78,
+    );
+    final separated = <Widget>[];
+    for (var index = 0; index < children.length; index += 1) {
+      if (index > 0) {
+        separated.add(Divider(height: 1, thickness: 1, color: dividerColor));
+      }
+      separated.add(children[index]);
+    }
+    return separated;
   }
 }
 

@@ -560,15 +560,14 @@ class _VaultStatusRow extends StatelessWidget {
         ? (isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32))
         : (isDark ? const Color(0xFFFFD54F) : const Color(0xFFF9A825));
 
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       leading: Icon(
         isGood ? Icons.check_circle : Icons.warning_amber_rounded,
         color: statusColor,
         size: 18,
       ),
       title: SettingsRowTitle(entry.label),
-      subtitle: SettingsRowDescription(entry.value),
-      denseOnDesktop: false,
+      description: SettingsRowDescription(entry.value),
     );
   }
 }
@@ -580,10 +579,9 @@ class _VaultLoadingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PlatformListSectionRow(
+    return SettingsCustomRow(
       leading: const SizedBox(width: 18, height: 18, child: PlatformProgress()),
       title: SettingsRowDescription(label),
-      denseOnDesktop: false,
     );
   }
 }

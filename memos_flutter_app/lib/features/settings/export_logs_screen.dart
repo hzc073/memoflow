@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/top_toast.dart';
-import '../../platform/widgets/platform_list_section.dart';
 import '../../state/system/debug_log_provider.dart';
 import '../../state/system/logging_provider.dart';
 import '../../state/system/network_log_provider.dart';
@@ -240,7 +239,7 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
           SettingsSection(
             header: Text(context.t.strings.legacy.msg_log_file),
             children: [
-              PlatformListSectionRow(
+              SettingsCustomRow(
                 title: SettingsRowDescription(_lastPath!),
                 trailing: IconButton(
                   tooltip: context.t.strings.legacy.msg_copy_path,
@@ -255,7 +254,6 @@ class _ExportLogsScreenState extends ConsumerState<ExportLogsScreen> {
                   },
                   icon: const Icon(Icons.copy_rounded),
                 ),
-                denseOnDesktop: false,
               ),
             ],
           ),
@@ -302,14 +300,12 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = settingsPageTokens(context);
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      child: PlatformListSectionRow(
-        leading: Icon(icon, size: 20, color: tokens.textMuted),
-        title: SettingsRowTitle(label),
-        trailing: Icon(Icons.chevron_right, size: 20, color: tokens.textMuted),
-        onTap: enabled ? onTap : null,
-      ),
+    return SettingsCustomRow(
+      leading: Icon(icon, size: 20, color: tokens.textMuted),
+      title: SettingsRowTitle(label),
+      trailing: Icon(Icons.chevron_right, size: 20, color: tokens.textMuted),
+      onTap: onTap,
+      enabled: enabled,
     );
   }
 }
