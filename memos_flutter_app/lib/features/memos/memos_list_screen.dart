@@ -3935,11 +3935,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         (isDark ? MemoFlowPalette.textDark : MemoFlowPalette.textLight)
             .withValues(alpha: isDark ? 0.52 : 0.46);
     final loadMoreHintDisplayText = '- $loadMoreHintText -';
-    final headerBg =
-        (isDark
-                ? MemoFlowPalette.backgroundDark
-                : MemoFlowPalette.backgroundLight)
-            .withValues(alpha: 0.9);
+    final pageBg = isDark
+        ? MemoFlowPalette.backgroundDark
+        : MemoFlowPalette.backgroundLight;
+    final headerBg = pageBg.withValues(alpha: 0.9);
     final activeListGuideMessage = switch (activeListGuideId) {
       SceneMicroGuideId.desktopGlobalShortcuts =>
         _desktopGlobalShortcutsGuideMessage(context),
@@ -4538,6 +4537,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           loadMoreHintDisplayText: loadMoreHintDisplayText,
           loadMoreHintTextColor: loadMoreHintTextColor,
           headerBackgroundColor: headerBg,
+          pageBackgroundColor: pageBg,
           bottomInset: bottomInset,
           hapticsEnabled: hapticsEnabled,
           desktopPreviewVisible: desktopSecondaryPaneVisible,

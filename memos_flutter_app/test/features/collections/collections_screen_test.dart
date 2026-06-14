@@ -18,6 +18,7 @@ import 'package:memos_flutter_app/features/home/app_drawer.dart';
 import 'package:memos_flutter_app/features/home/home_entry_screen.dart';
 import 'package:memos_flutter_app/features/home/home_navigation_host.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/collections/collection_resolver.dart';
 import 'package:memos_flutter_app/state/collections/collections_provider.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -277,6 +278,46 @@ void main() {
     expect(host.lastDestination, AppDrawerDestination.memos);
 
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('iPhone menu button opens embedded drawer through PlatformPage', (
+    tester,
+  ) async {
+    final host = _TestHomeEmbeddedNavigationHost();
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() => debugPlatformTargetOverride = null);
+
+    await tester.pumpWidget(
+      _buildTestApp(
+        overrides: [
+          collectionsDashboardProvider.overrideWith(
+            (ref) => AsyncValue.data(<MemoCollectionDashboardItem>[
+              _dashboardItem(
+                id: 'smart-1',
+                title: 'Reading shelf',
+                type: MemoCollectionType.smart,
+              ),
+            ]),
+          ),
+        ],
+        size: const Size(430, 900),
+        home: CollectionsScreen(embeddedNavigationHost: host),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('drawer-menu-button')), findsOneWidget);
+    expect(find.text('All Memos'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('drawer-menu-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All Memos'), findsOneWidget);
+
+    await tester.tap(find.text('All Memos'));
+    await tester.pumpAndSettle();
+
+    expect(host.lastDestination, AppDrawerDestination.memos);
   });
 
   testWidgets('standalone Collections back returns to HomeEntryScreen', (

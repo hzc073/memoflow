@@ -36,6 +36,7 @@ import 'package:memos_flutter_app/features/notifications/notifications_screen.da
 import 'package:memos_flutter_app/features/tags/tags_screen.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
+import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/memos/sync_queue_provider.dart';
 import 'package:memos_flutter_app/state/settings/device_preferences_provider.dart';
@@ -160,6 +161,63 @@ void main() {
       return false;
     });
     expect(immediateParent?.widget, isA<DecoratedBox>());
+  });
+
+  testWidgets('iPhone dark bottom navigation remains readable', (tester) async {
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+    addTearDown(() => debugPlatformTargetOverride = null);
+
+    final container = _buildContainer(
+      workspacePrefs: _simpleBottomBarPrefs(),
+      hasAccount: true,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      _buildApp(
+        container,
+        theme: ThemeData.dark(),
+        home: const MediaQuery(
+          data: MediaQueryData(
+            size: Size(430, 900),
+            padding: EdgeInsets.only(bottom: 24),
+          ),
+          child: HomeBottomNavShell(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final navSafeAreaFinder = find.ancestor(
+      of: find.text('Memos'),
+      matching: find.byType(SafeArea),
+    );
+    expect(navSafeAreaFinder, findsOneWidget);
+
+    final navSafeArea = tester.widget<SafeArea>(navSafeAreaFinder);
+    expect(navSafeArea.top, isFalse);
+
+    final navDecorationFinder = find.ancestor(
+      of: navSafeAreaFinder,
+      matching: find.byType(DecoratedBox),
+    );
+    final navDecoration = tester.widget<DecoratedBox>(
+      navDecorationFinder.first,
+    );
+    final boxDecoration = navDecoration.decoration as BoxDecoration;
+    final navBackground = boxDecoration.color;
+    expect(navBackground, isNotNull);
+    expect(navBackground!.computeLuminance(), lessThan(0.1));
+
+    final activeLabel = tester.widget<Text>(find.text('Memos'));
+    final inactiveLabel = tester.widget<Text>(find.text('Settings'));
+    final activeColor = activeLabel.style?.color;
+    final inactiveColor = inactiveLabel.style?.color;
+
+    expect(activeColor, isNotNull);
+    expect(inactiveColor, isNotNull);
+    expect(_contrastRatio(activeColor!, navBackground), greaterThan(3));
+    expect(_contrastRatio(inactiveColor!, navBackground), greaterThan(3));
   });
 
   testWidgets('bottom navigation icon labels fit compact bar', (tester) async {
@@ -883,6 +941,7 @@ WorkspacePreferences _simpleBottomBarPrefs() {
 Widget _buildApp(
   ProviderContainer container, {
   Widget? home,
+  ThemeData? theme,
   List<NavigatorObserver> navigatorObservers = const [],
 }) {
   return UncontrolledProviderScope(
@@ -892,6 +951,7 @@ Widget _buildApp(
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: theme,
         navigatorObservers: navigatorObservers,
         home:
             home ??
@@ -902,6 +962,12 @@ Widget _buildApp(
       ),
     ),
   );
+}
+
+double _contrastRatio(Color foreground, Color background) {
+  final light = foreground.computeLuminance() + 0.05;
+  final dark = background.computeLuminance() + 0.05;
+  return light > dark ? light / dark : dark / light;
 }
 
 class _RecordingNavigatorObserver extends NavigatorObserver {

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/memoflow_palette.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
 import 'package:memos_flutter_app/core/system_fonts.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
@@ -159,6 +160,44 @@ void main() {
     expect(find.byType(CupertinoListTile), findsNothing);
     expect(find.byType(ListTile), findsNothing);
     expect(find.byType(CupertinoSwitch), findsWidgets);
+  });
+
+  testWidgets('preferences iPhone dark top chrome uses settings background', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 844));
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(
+      _buildApp(
+        child: const PreferencesSettingsScreen(),
+        theme: ThemeData.dark(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<CupertinoPageScaffold>(find.byType(CupertinoPageScaffold))
+          .backgroundColor,
+      MemoFlowPalette.backgroundDark,
+    );
+    expect(
+      tester
+          .widget<CupertinoNavigationBar>(find.byType(CupertinoNavigationBar))
+          .backgroundColor,
+      MemoFlowPalette.backgroundDark,
+    );
+
+    await tester.drag(find.byType(ListView), const Offset(0, -220));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<CupertinoNavigationBar>(find.byType(CupertinoNavigationBar))
+          .backgroundColor,
+      MemoFlowPalette.backgroundDark,
+    );
   });
 
   testWidgets('preferences value rows stay bounded under large iPhone text', (
@@ -330,6 +369,7 @@ Widget _buildApp({
   DevicePreferences? devicePreferences,
   List<SystemFontInfo> systemFonts = const [],
   MediaQueryData? mediaQueryData,
+  ThemeData? theme,
 }) {
   final home = mediaQueryData == null
       ? child
@@ -357,6 +397,7 @@ Widget _buildApp({
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: theme,
         home: home,
       ),
     ),

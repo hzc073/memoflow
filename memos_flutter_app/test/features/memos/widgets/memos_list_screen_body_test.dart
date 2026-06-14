@@ -274,6 +274,60 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 
+  testWidgets('iPhone dark top chrome keeps a dark backing while scrolling', (
+    tester,
+  ) async {
+    final pageBackground = MemoFlowPalette.backgroundDark;
+    final headerBackground = pageBackground.withValues(alpha: 0.9);
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData.dark().copyWith(platform: TargetPlatform.iOS),
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(430, 900)),
+            child: _buildBodyScreen(
+              data: _buildBodyData(
+                visibleMemos: <LocalMemo>[_buildMemo('memo-1')],
+                pageBackgroundColor: pageBackground,
+                headerBackgroundColor: headerBackground,
+              ),
+              animatedItemBuilder: (_, _, _) => const SizedBox(
+                height: 1200,
+                child: Text('memo-card-content'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+      pageBackground,
+    );
+    expect(
+      tester.widget<SliverAppBar>(find.byType(SliverAppBar)).backgroundColor,
+      headerBackground,
+    );
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -280));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+      pageBackground,
+    );
+    expect(
+      tester.widget<SliverAppBar>(find.byType(SliverAppBar)).backgroundColor,
+      headerBackground,
+    );
+  });
+
   testWidgets('overlay buttons react to listenable changes', (tester) async {
     MemoFlowPalette.applyThemeColor(AppThemeColor.cypressGreen);
     final showBackToTop = ValueNotifier<bool>(false);
@@ -1060,6 +1114,8 @@ MemosListScreenBodyData _buildBodyData({
   MemosListScreenQueryState? query,
   MemosListScreenLayoutState? layout,
   bool desktopPreviewVisible = false,
+  Color pageBackgroundColor = Colors.white,
+  Color headerBackgroundColor = Colors.white,
 }) {
   final resolvedQuery = query ?? _buildQueryState();
   return MemosListScreenBodyData(
@@ -1093,7 +1149,8 @@ MemosListScreenBodyData _buildBodyData({
     showLoadMoreHint: false,
     loadMoreHintDisplayText: '',
     loadMoreHintTextColor: Colors.black,
-    headerBackgroundColor: Colors.white,
+    headerBackgroundColor: headerBackgroundColor,
+    pageBackgroundColor: pageBackgroundColor,
     bottomInset: 0,
     hapticsEnabled: false,
     desktopPreviewVisible: desktopPreviewVisible,

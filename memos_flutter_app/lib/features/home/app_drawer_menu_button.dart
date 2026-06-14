@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_motion_widgets.dart';
+import '../../platform/widgets/platform_page.dart';
 import '../../state/memos/sync_queue_provider.dart';
 import '../../state/system/notifications_provider.dart';
 
@@ -41,7 +42,9 @@ class AppDrawerMenuButton extends ConsumerWidget {
               final scaffold = Scaffold.maybeOf(context);
               if (scaffold?.hasDrawer ?? false) {
                 scaffold!.openDrawer();
+                return;
               }
+              PlatformPageDrawerController.maybeOf(context)?.openDrawer();
             },
         icon: Stack(
           clipBehavior: Clip.none,

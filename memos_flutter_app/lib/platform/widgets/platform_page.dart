@@ -1,9 +1,31 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../core/desktop/window_chrome_safe_area.dart';
 import '../platform_target.dart';
+
+class PlatformPageDrawerController extends InheritedWidget {
+  const PlatformPageDrawerController({
+    super.key,
+    required this.openDrawer,
+    required super.child,
+  });
+
+  final VoidCallback openDrawer;
+
+  static PlatformPageDrawerController? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<PlatformPageDrawerController>();
+  }
+
+  @override
+  bool updateShouldNotify(PlatformPageDrawerController oldWidget) {
+    return openDrawer != oldWidget.openDrawer;
+  }
+}
 
 class PlatformPage extends StatelessWidget {
   const PlatformPage({
@@ -59,13 +81,14 @@ class PlatformPage extends StatelessWidget {
         fontSize: 17,
         height: 1.2,
       );
-      return CupertinoPageScaffold(
+      final applePage = CupertinoPageScaffold(
         backgroundColor: backgroundColor,
         navigationBar:
             title == null && leading == null && (actions?.isEmpty ?? true)
             ? null
             : CupertinoNavigationBar(
                 transitionBetweenRoutes: false,
+                backgroundColor: backgroundColor,
                 middle: title,
                 leading: leading == null
                     ? null
@@ -95,6 +118,17 @@ class PlatformPage extends StatelessWidget {
             if (bottomBar != null) bottomBar!,
           ],
         ),
+      );
+      if (drawer == null) {
+        return applePage;
+      }
+      return Builder(
+        builder: (drawerContext) {
+          return PlatformPageDrawerController(
+            openDrawer: () => _openAppleDrawer(drawerContext),
+            child: applePage,
+          );
+        },
       );
     }
 
@@ -206,6 +240,75 @@ class PlatformPage extends StatelessWidget {
           ),
           if (bottomBar != null) bottomBar!,
         ],
+      ),
+    );
+  }
+
+  void _openAppleDrawer(BuildContext context) {
+    final routeTextDirection = Directionality.of(context);
+    final materialLocalizations = Localizations.of<MaterialLocalizations>(
+      context,
+      MaterialLocalizations,
+    );
+    final barrierLabel =
+        materialLocalizations?.modalBarrierDismissLabel ?? 'Dismiss';
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black54,
+        barrierLabel: barrierLabel,
+        transitionDuration: const Duration(milliseconds: 240),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (routeContext, animation, secondaryAnimation) {
+          return _ApplePlatformDrawerSurface(
+            drawer: drawer!,
+            backgroundColor: backgroundColor,
+          );
+        },
+        transitionsBuilder:
+            (routeContext, animation, secondaryAnimation, child) {
+              final begin = routeTextDirection == TextDirection.rtl
+                  ? const Offset(1, 0)
+                  : const Offset(-1, 0);
+              final position = Tween<Offset>(begin: begin, end: Offset.zero)
+                  .animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  );
+              return SlideTransition(position: position, child: child);
+            },
+      ),
+    );
+  }
+}
+
+class _ApplePlatformDrawerSurface extends StatelessWidget {
+  const _ApplePlatformDrawerSurface({
+    required this.drawer,
+    required this.backgroundColor,
+  });
+
+  final Widget drawer;
+  final Color? backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final width = math.min(360.0, size.width * 0.88);
+    final effectiveBackground =
+        backgroundColor ??
+        Theme.of(context).drawerTheme.backgroundColor ??
+        Theme.of(context).colorScheme.surface;
+
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: SizedBox(
+        width: width,
+        height: size.height,
+        child: Material(color: effectiveBackground, child: drawer),
       ),
     );
   }

@@ -882,9 +882,12 @@ class _AppleHomeBottomNavigationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background = CupertinoDynamicColor.resolve(
-      CupertinoColors.systemBackground.withValues(alpha: isDark ? 0.9 : 0.96),
+    final resolvedSystemBackground = CupertinoDynamicColor.resolve(
+      CupertinoColors.systemBackground,
       context,
+    );
+    final background = resolvedSystemBackground.withValues(
+      alpha: isDark ? 0.9 : 0.96,
     );
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.12)
@@ -1010,8 +1013,13 @@ class _AppleHomeBottomNavigationItem extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final activeColor = CupertinoTheme.of(context).primaryColor;
-    final inactiveColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = isDark
+        ? MemoFlowPalette.primaryDark
+        : CupertinoTheme.of(context).primaryColor;
+    final inactiveColor = isDark
+        ? CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.72)
+        : CupertinoColors.secondaryLabel.resolveFrom(context);
     final color = selected ? activeColor : inactiveColor;
 
     return CupertinoButton(

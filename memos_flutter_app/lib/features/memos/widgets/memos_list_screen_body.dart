@@ -122,6 +122,7 @@ class MemosListScreenBodyData {
     required this.loadMoreHintDisplayText,
     required this.loadMoreHintTextColor,
     required this.headerBackgroundColor,
+    required this.pageBackgroundColor,
     required this.bottomInset,
     required this.hapticsEnabled,
     required this.desktopPreviewVisible,
@@ -147,6 +148,7 @@ class MemosListScreenBodyData {
   final String loadMoreHintDisplayText;
   final Color loadMoreHintTextColor;
   final Color headerBackgroundColor;
+  final Color pageBackgroundColor;
   final double bottomInset;
   final bool hapticsEnabled;
   final bool desktopPreviewVisible;
@@ -1244,6 +1246,7 @@ class MemosListScreenBody extends StatelessWidget {
 
     return Scaffold(
       key: scaffoldKey,
+      backgroundColor: data.pageBackgroundColor,
       drawer: data.viewState.layout.useDesktopSidePane ? null : drawerPanel,
       drawerEnableOpenDragGesture: drawerOpenDragEnabled,
       drawerEdgeDragWidth: drawerOpenDragEnabled
@@ -1255,7 +1258,7 @@ class MemosListScreenBody extends StatelessWidget {
             drawerPanel != null &&
             _usesNativeMobilePlatform(context),
         scaffoldKey: scaffoldKey,
-        child: scaffoldBody,
+        child: ColoredBox(color: data.pageBackgroundColor, child: scaffoldBody),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: desktopPrimaryContentOverridden
