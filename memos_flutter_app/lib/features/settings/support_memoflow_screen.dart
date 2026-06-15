@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,11 +19,19 @@ const supportMemoFlowExternalSupportUrl =
     'https://qr.alipay.com/tsx16856ygfke5rugz1ao4a';
 const supportMemoFlowPublicGoodUrl = 'https://memoflow.app/support/public-good';
 const supportMemoFlowCharityUrl = 'https://www.hhax.org/';
+final _showPublicGoodSection = false;
 
 class SupportMemoFlowScreen extends ConsumerWidget {
-  const SupportMemoFlowScreen({super.key, this.showBackButton = true});
+  const SupportMemoFlowScreen({super.key, this.showBackButton = true})
+    : publicAppreciationOnly = false;
+
+  const SupportMemoFlowScreen.publicAppreciation({
+    super.key,
+    this.showBackButton = true,
+  }) : publicAppreciationOnly = true;
 
   final bool showBackButton;
+  final bool publicAppreciationOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,8 +40,12 @@ class SupportMemoFlowScreen extends ConsumerWidget {
     );
     final bundle = ref.watch(privateExtensionBundleProvider);
     final contributions = _resolvePrivateContributions(context, ref, bundle);
-    final hasPrivateSupport = contributions.isNotEmpty;
-    final showPublicSupportQr = resolvePlatformExperience(context).isDesktop;
+    final hasPrivateSupport =
+        !publicAppreciationOnly && contributions.isNotEmpty;
+    final experience = resolvePlatformExperience(context);
+    final publicSupportPolicy = _PublicSupportPolicy.forExperience(experience);
+    final showPublicSupportQr =
+        publicSupportPolicy.allowsExternalSupport && experience.isDesktop;
 
     void haptic() {
       if (hapticsEnabled) {
@@ -69,27 +82,37 @@ class SupportMemoFlowScreen extends ConsumerWidget {
       children: [
         const _SupportHero(),
         const SizedBox(height: 14),
-        if (hasPrivateSupport) ...[
+        if (publicAppreciationOnly) ...[
+          _PublicAppreciationSurface(
+            policy: publicSupportPolicy,
+            showQr: showPublicSupportQr,
+            onOpenSupport: () =>
+                openExternal(supportMemoFlowExternalSupportUrl),
+            onOpenPublicGood: () => openExternal(supportMemoFlowPublicGoodUrl),
+            onOpenCharity: () => openExternal(supportMemoFlowCharityUrl),
+          ),
+        ] else if (hasPrivateSupport) ...[
           for (final contribution in contributions) ...[
             contribution.builder(context),
             const SizedBox(height: 14),
           ],
-          const _BaseCapabilityPromise(),
         ] else ...[
           const _WhySupportSection(),
-          const SizedBox(height: 14),
-          _PublicGoodSection(
-            onOpenPublicGood: () => openExternal(supportMemoFlowPublicGoodUrl),
-            onOpenCharity: () => openExternal(supportMemoFlowCharityUrl),
-          ),
+          if (_showPublicGoodSection) ...[
+            const SizedBox(height: 14),
+            _PublicGoodSection(
+              onOpenPublicGood: () =>
+                  openExternal(supportMemoFlowPublicGoodUrl),
+              onOpenCharity: () => openExternal(supportMemoFlowCharityUrl),
+            ),
+          ],
           const SizedBox(height: 14),
           _PublicAppreciationSection(
+            policy: publicSupportPolicy,
             showQr: showPublicSupportQr,
             onOpenSupport: () =>
                 openExternal(supportMemoFlowExternalSupportUrl),
           ),
-          const SizedBox(height: 22),
-          const _SupportFooter(),
         ],
       ],
     );
@@ -108,6 +131,55 @@ class SupportMemoFlowScreen extends ConsumerWidget {
       ...extension.supportMemoFlowContributions(context, ref),
     ]..sort((a, b) => a.order.compareTo(b.order));
     return contributions;
+  }
+}
+
+class _PublicAppreciationSurface extends StatelessWidget {
+  const _PublicAppreciationSurface({
+    required this.policy,
+    required this.showQr,
+    required this.onOpenSupport,
+    required this.onOpenPublicGood,
+    required this.onOpenCharity,
+  });
+
+  final _PublicSupportPolicy policy;
+  final bool showQr;
+  final VoidCallback onOpenSupport;
+  final VoidCallback onOpenPublicGood;
+  final VoidCallback onOpenCharity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _WhySupportSection(),
+        if (_showPublicGoodSection) ...[
+          const SizedBox(height: 14),
+          _PublicGoodSection(
+            onOpenPublicGood: onOpenPublicGood,
+            onOpenCharity: onOpenCharity,
+          ),
+        ],
+        const SizedBox(height: 14),
+        _PublicAppreciationSection(
+          policy: policy,
+          showQr: showQr,
+          onOpenSupport: onOpenSupport,
+        ),
+      ],
+    );
+  }
+}
+
+class _PublicSupportPolicy {
+  const _PublicSupportPolicy._({required this.allowsExternalSupport});
+
+  final bool allowsExternalSupport;
+
+  factory _PublicSupportPolicy.forExperience(PlatformExperience experience) {
+    return _PublicSupportPolicy._(allowsExternalSupport: !experience.isApple);
   }
 }
 
@@ -193,7 +265,7 @@ class _WhySupportSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SupportSectionTitle(
-            title: context.tr(zh: '为什么赞赏', en: 'Why support'),
+            title: context.tr(zh: '你的支持会带来什么', en: 'What your support brings'),
           ),
           const SizedBox(height: 12),
           _ReasonRow(
@@ -213,8 +285,8 @@ class _WhySupportSection extends StatelessWidget {
           _ReasonRow(
             icon: Icons.favorite_border,
             label: context.tr(
-              zh: '部分盈利将用于公益并公示',
-              en: 'Part of any profit will support public-good causes with records',
+              zh: '项目盈利的一部分会投入公益或公共善意项目',
+              en: 'Part of any project profit will support public-good or public-good-aligned work',
             ),
             showDivider: false,
           ),
@@ -256,8 +328,8 @@ class _PublicGoodSection extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       context.tr(
-                        zh: '如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示。',
-                        en: 'If the project generates profit, MemoFlow will donate part of it to the Beijing Han Hong Love Charity Foundation and publish records.',
+                        zh: '如项目产生盈利，MemoFlow 会将其中一部分投入公益事业或公共善意项目，并通过公开记录保持透明。',
+                        en: 'If the project generates profit, MemoFlow will use part of it for public-good causes or public-good-aligned work and keep transparent records.',
                       ),
                       style: TextStyle(
                         height: 1.48,
@@ -306,37 +378,51 @@ class _PublicGoodLinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: tokens.textMain,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Icon(Icons.chevron_right, color: accent),
+        ],
+      ),
+    );
+    final experience = resolvePlatformExperience(context);
+    if (experience.usesAppleVisuals && experience.isMobileLike) {
+      return CupertinoButton(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        pressedOpacity: 0.72,
+        onPressed: onTap,
+        child: row,
+      );
+    }
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: tokens.textMain,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            Icon(Icons.chevron_right, color: accent),
-          ],
-        ),
-      ),
+      child: row,
     );
   }
 }
 
 class _PublicAppreciationSection extends StatelessWidget {
   const _PublicAppreciationSection({
+    required this.policy,
     required this.showQr,
     required this.onOpenSupport,
   });
 
+  final _PublicSupportPolicy policy;
   final bool showQr;
   final VoidCallback onOpenSupport;
 
@@ -359,17 +445,14 @@ class _PublicAppreciationSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            context.tr(
-              zh: showQr ? '使用手机支付宝扫码完成赞赏。' : '点击下方按钮后，将在浏览器中打开赞赏链接。',
-              en: showQr
-                  ? 'Scan with Alipay on your phone to support MemoFlow.'
-                  : 'Tap the button below to open the support link in a browser.',
-            ),
+            _appreciationDescription(context),
             textAlign: TextAlign.center,
             style: TextStyle(height: 1.45, color: tokens.textMuted),
           ),
           const SizedBox(height: 18),
-          if (showQr)
+          if (!policy.allowsExternalSupport)
+            _AppleSupportExplanation(tokens: tokens)
+          else if (showQr)
             const _SupportQrCode(data: supportMemoFlowExternalSupportUrl)
           else
             SettingsAction(
@@ -383,12 +466,7 @@ class _PublicAppreciationSection extends StatelessWidget {
             ),
           const SizedBox(height: 14),
           Text(
-            context.tr(
-              zh: showQr ? '二维码仅用于自愿赞赏，不影响基础功能使用。' : '赞赏金额将在打开的页面中完成。',
-              en: showQr
-                  ? 'The QR code is only for voluntary support and does not affect basic features.'
-                  : 'The support amount is completed on the page that opens.',
-            ),
+            _appreciationFootnote(context),
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
@@ -397,6 +475,81 @@ class _PublicAppreciationSection extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _appreciationDescription(BuildContext context) {
+    if (!policy.allowsExternalSupport) {
+      return context.tr(
+        zh: '在 Apple 平台上，MemoFlow 会通过 App Store 支持中心处理支持。当前页面只保留项目说明，不提供外部赞赏链接。',
+        en: 'On Apple platforms, MemoFlow handles support through the App Store support center. This page keeps project notes without external support links.',
+      );
+    }
+    return context.tr(
+      zh: showQr ? '使用手机支付宝扫码完成赞赏。' : '点击下方按钮后，将在浏览器中打开赞赏链接。',
+      en: showQr
+          ? 'Scan with Alipay on your phone to support MemoFlow.'
+          : 'Tap the button below to open the support link in a browser.',
+    );
+  }
+
+  String _appreciationFootnote(BuildContext context) {
+    if (!policy.allowsExternalSupport) {
+      return context.tr(
+        zh: '此处不展示支付宝链接、二维码或其他外部付款入口。',
+        en: 'This page does not show Alipay links, QR codes, or other external support actions.',
+      );
+    }
+    return context.tr(
+      zh: showQr ? '二维码仅用于自愿赞赏。' : '赞赏金额将在打开的页面中完成。',
+      en: showQr
+          ? 'The QR code is only for voluntary support.'
+          : 'The support amount is completed on the page that opens.',
+    );
+  }
+}
+
+class _AppleSupportExplanation extends StatelessWidget {
+  const _AppleSupportExplanation({required this.tokens});
+
+  final SettingsPageTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey<String>('supportMemoFlow.appleSupportExplanation'),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.7)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                context.tr(
+                  zh: 'Apple 版本不会在这里打开外部赞赏页面。',
+                  en: 'The Apple version does not open an external support page here.',
+                ),
+                style: TextStyle(
+                  color: tokens.textMain,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -435,73 +588,6 @@ class _SupportQrCode extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _BaseCapabilityPromise extends StatelessWidget {
-  const _BaseCapabilityPromise();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    return _SupportCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _IconBubble(icon: Icons.all_inclusive_rounded),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              context.tr(
-                zh: '无论是否成为支持者，MemoFlow 的基础记录、整理和数据管理能力都会继续保持可用。',
-                en: 'Whether or not you become a supporter, MemoFlow will keep its basic recording, organizing, and data management capabilities available.',
-              ),
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: tokens.textMuted,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupportFooter extends StatelessWidget {
-  const _SupportFooter();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = settingsPageTokens(context);
-    return Column(
-      children: [
-        Icon(
-          Icons.favorite_border,
-          color: Theme.of(context).colorScheme.primary,
-          size: 22,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          context.tr(
-            zh: '感谢你愿意支持 MemoFlow。',
-            en: 'Thank you for supporting MemoFlow.',
-          ),
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, height: 1.4, color: tokens.textMuted),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          context.tr(
-            zh: '赞赏完全自愿，不会影响 MemoFlow 基础功能的正常使用。',
-            en: 'Support is fully voluntary and does not affect normal use of MemoFlow basics.',
-          ),
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, height: 1.4, color: tokens.textMuted),
-        ),
-      ],
     );
   }
 }

@@ -39,11 +39,11 @@ void main() {
     expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
     expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.text('Support MemoFlow'), findsWidgets);
-    expect(find.text('Why support'), findsOneWidget);
-    expect(find.text('Public-good note'), findsOneWidget);
+    expect(find.text('What your support brings'), findsOneWidget);
+    expect(find.text('Public-good note'), findsNothing);
     expect(find.text('Support the developer'), findsOneWidget);
-    expect(find.text('View foundation website'), findsOneWidget);
-    expect(find.text('View public-good records'), findsOneWidget);
+    expect(find.text('View foundation website'), findsNothing);
+    expect(find.text('View public-good records'), findsNothing);
     expect(find.text('Open support link'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
@@ -51,6 +51,77 @@ void main() {
     );
     expect(supportMemoFlowExternalSupportUrl, contains('qr.alipay.com'));
     expect(supportMemoFlowCharityUrl, contains('hhax.org'));
+  });
+
+  testWidgets('iPhone public support page renders without Material errors', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(390, 844));
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(_buildApp());
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+    expect(find.text('View foundation website'), findsNothing);
+    expect(find.text('View public-good records'), findsNothing);
+    expect(find.text('Open support link'), findsNothing);
+    expect(
+      find.byKey(
+        const ValueKey<String>('supportMemoFlow.appleSupportExplanation'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('iPad public support page hides external support action', (
+    tester,
+  ) async {
+    await _setViewport(tester, const Size(834, 1194));
+    debugPlatformTargetOverride = TargetPlatform.iOS;
+
+    await tester.pumpWidget(_buildApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+    expect(find.text('Open support link'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('supportMemoFlow.appleSupportExplanation'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('macOS public support page hides external support QR', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.macOS;
+
+    await tester.pumpWidget(_buildApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+    expect(find.text('Open support link'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('supportMemoFlow.appleSupportExplanation'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('desktop public support page shows QR instead of link action', (
@@ -82,7 +153,8 @@ void main() {
       find.text('Scan with Alipay on your phone to support MemoFlow.'),
       findsOneWidget,
     );
-    expect(find.text('View foundation website'), findsOneWidget);
+    expect(find.text('View foundation website'), findsNothing);
+    expect(find.text('View public-good records'), findsNothing);
   });
 
   testWidgets('private support contribution replaces public fallback', (
@@ -105,11 +177,48 @@ void main() {
     expect(find.text('Private Apple support contribution'), findsOneWidget);
     expect(find.text('Support the developer'), findsNothing);
     expect(find.text('Open support link'), findsNothing);
-    expect(find.text('Why support'), findsNothing);
+    expect(find.text('What your support brings'), findsNothing);
   });
+
+  testWidgets(
+    'public appreciation page opens without private contribution loop',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildApp(
+          screen: const SupportMemoFlowScreen.publicAppreciation(),
+          bundle: _SupportContributionBundle(
+            contribution: const SupportMemoFlowContribution(
+              id: 'private-support',
+              order: 100,
+              builder: _buildPrivateSupportProbe,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('privateSupportProbe')),
+        findsNothing,
+      );
+      expect(find.text('What your support brings'), findsOneWidget);
+      expect(find.text('Support the developer'), findsOneWidget);
+      expect(find.text('Open support link'), findsOneWidget);
+    },
+  );
 }
 
-Widget _buildApp({PrivateExtensionBundle? bundle}) {
+Future<void> _setViewport(WidgetTester tester, Size size) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPhysicalSize);
+}
+
+Widget _buildApp({
+  Widget screen = const SupportMemoFlowScreen(),
+  PrivateExtensionBundle? bundle,
+}) {
   return ProviderScope(
     overrides: [
       devicePreferencesProvider.overrideWith(
@@ -123,7 +232,7 @@ Widget _buildApp({PrivateExtensionBundle? bundle}) {
         locale: AppLocale.en.flutterLocale,
         supportedLocales: AppLocaleUtils.supportedLocales,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        home: const SupportMemoFlowScreen(),
+        home: screen,
       ),
     ),
   );

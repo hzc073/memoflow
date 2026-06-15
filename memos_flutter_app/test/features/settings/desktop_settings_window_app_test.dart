@@ -664,11 +664,17 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('supportMemoFlow.openSupportLink')),
         findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>('supportMemoFlow.appleSupportExplanation'),
+        ),
+        findsOneWidget,
       );
       expect(find.text('Purchase'), findsNothing);
       expect(find.text('Restore purchase'), findsNothing);
