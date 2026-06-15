@@ -13,7 +13,7 @@ Apple support center, subscription center, IAP tip, and IAP Pro entry points SHA
 - **WHEN** the public repository runs without a private Apple support-center contribution
 - **THEN** public defaults SHALL remain free-safe
 - **AND** commercial-only capabilities SHALL remain disabled by default
-- **AND** base memo creation, reading, editing, local library access, basic import/export, and existing data viewing SHALL remain available
+- **AND** existing non-commercial memo workflows SHALL keep their current behavior
 
 ### Requirement: IAP tip SHALL not map to product capabilities
 Private entitlement mapping SHALL keep voluntary IAP tip purchases separate from `Pro` and feature capability decisions.
@@ -40,15 +40,15 @@ Private Apple purchase and restore flows SHALL map commercial entitlement state 
 - **AND** public code SHALL NOT parse transactions, receipts, product IDs, or purchase errors directly
 
 ### Requirement: Apple external support CTA policy SHALL not leak into public capability decisions
-External support payment availability for Apple App Store builds SHALL NOT be modeled as a public product capability that unlocks business logic.
+External support payment availability for Apple runtimes SHALL NOT be modeled as a public product capability that unlocks business logic.
 
 #### Scenario: Public code asks for commercial capabilities
 - **WHEN** public code checks `AppCapability` decisions for Pro or Apple ecosystem features
 - **THEN** those decisions SHALL describe product behavior availability only
-- **AND** they SHALL NOT encode whether an Apple App Store build may show an external Alipay payment CTA
-- **AND** external payment CTA policy SHALL be handled by support-surface channel policy or private overlay routing rules
+- **AND** they SHALL NOT encode whether an Apple runtime may show an external Alipay payment CTA
+- **AND** external payment CTA policy SHALL be handled by support-surface policy or private overlay routing rules
 
 #### Scenario: Guardrails scan commercial leakage
 - **WHEN** architecture or repository guardrails scan public shell and shared public models
 - **THEN** they SHALL block StoreKit/IAP implementation details and raw commercial state
-- **AND** they SHOULD also block accidental Apple App Store external payment branches in public settings support surfaces unless a documented exception is present
+- **AND** they SHOULD also block accidental Apple runtime external payment branches in public settings support surfaces unless a documented exception is present

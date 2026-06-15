@@ -1,13 +1,13 @@
 ## Context
 
-`define-support-memoflow-page-boundary` 已经把“支持 MemoFlow”从旧 `DonationDialog` 升级为独立支持页，并通过 `SupportMemoFlowExtension` 允许 private overlay 贡献 Apple 支持者区域。当前仍有一个关键规则需要冻结：Apple App Store 发布版里的“打赏开发者”是否和 `Pro` 功能增强一样走 IAP，以及公开仓是否继续保留外部付款入口。
+`define-support-memoflow-page-boundary` 已经把“支持 MemoFlow”从旧 `DonationDialog` 升级为独立支持页，并通过 `SupportMemoFlowExtension` 允许 private overlay 贡献 Apple 支持者区域。当前仍有一个关键规则需要冻结：Apple 运行时里的“打赏开发者”是否和 `Pro` 功能增强一样走 IAP，以及公开仓是否在 iPhone、iPad 或 macOS 路径中继续保留外部付款入口。
 
-基于当前产品方向和 App Store 审核边界，本设计采用更保守的规则：
+基于当前产品方向和“通过 Apple 审核优先”的目标，本设计采用 deny-by-default 的更保守规则：
 
-- Apple App Store 版本中的支持/付款入口统一由 private overlay 的 IAP 支持中心承载。
+- Apple 运行时中的支持/付款入口统一由 private overlay 的 IAP 支持中心承载。
 - “请开发者喝咖啡 / 自愿打赏”在 Apple 版中也建模为 IAP tip，而不是外部付款链接或二维码。
 - `Pro` 增强继续由 StoreKit 商品和 private entitlement layer 映射到 `AppCapability`。
-- 公开仓仍保持 community build 可运行，不包含 StoreKit、商品 ID、价格、receipt 或真实权益状态。
+- 公开仓仍保持 community build 可运行，不包含 StoreKit、商品 ID、价格、receipt 或真实权益状态；没有 private overlay 的 Apple runtime 只显示 free-safe 支持说明和公益说明，不显示支付宝或其他外部付款 CTA。
 
 当前相关约束：
 
@@ -21,11 +21,11 @@
 
 **Goals:**
 
-- 明确 iPhone、iPad 和 macOS App Store 版本的“支持 MemoFlow”主付款路径必须走 private IAP 支持中心。
+- 明确 iPhone、iPad 和 macOS 运行时的“支持 MemoFlow”主付款路径必须走 private IAP 支持中心。
 - 明确 Apple 版自愿打赏使用 IAP tip 商品，不承诺功能解锁、服务访问或权益状态。
 - 明确 Apple 版 `Pro` 增强使用 private StoreKit 商品，并通过 private entitlement layer 映射到 `AppCapability`。
 - 明确公益说明是项目承诺和透明记录，不是用户在 app 内直接向公益组织捐款。
-- 明确公开赞赏 fallback 仍供 Android、Windows、Linux、web、side-load / non-App-Store public builds 使用，但 Apple App Store build 不默认显示支付宝链接、二维码或其他外部付款 CTA。
+- 明确公开赞赏 fallback 仍供 Android、Windows、Linux、web 等非 Apple runtime 使用；Apple runtime 不默认显示支付宝链接、二维码或其他外部付款 CTA，包括 debug、本地 public build、TestFlight 前置验证和 App Store 发布路径。
 - 设计一个可独立进入的 public appreciation surface，避免 private IAP 页“跳到打赏页”时又回到 private contribution 主区。
 - 收紧 public/private 和模块化边界，防止公开 settings shell 出现外部 Apple 付款风险或 StoreKit 泄漏。
 
@@ -33,15 +33,15 @@
 
 - 不实现 StoreKit、商品目录、购买、恢复购买、receipt 校验或权益刷新。
 - 不决定最终商品 ID、价格层级、订阅组、IAP product type、试用策略或 App Store Connect 配置。
-- 不改变免费版基础记录、查看、编辑、本地库、基础导入导出和基础数据访问的长期可用承诺。
+- 不改变现有免费能力范围。
 - 不把公益说明建模为用户直接捐赠公益组织，也不在本 change 中创建公益募款流程。
-- 不在公开仓引入支付宝以外的新支付渠道，也不在 Apple App Store 版中默认启用任何外部付款 CTA。
+- 不在公开仓引入支付宝以外的新支付渠道，也不在任何 Apple runtime 中默认启用任何外部付款 CTA。
 
 ## Decisions
 
-### 1. Apple App Store 版支持入口统一进入 private IAP 支持中心
+### 1. Apple runtime 支持入口统一进入 private IAP 支持中心
 
-App Store 分发的 iPhone、iPad 和 macOS 版本不应根据公开页面 fallback 去展示外部付款链接或二维码。更稳的主路径是：
+iPhone、iPad 和 macOS 运行时不应根据公开页面 fallback 去展示外部付款链接或二维码。更稳的主路径是：
 
 ```text
 Support MemoFlow entry
@@ -56,7 +56,7 @@ private Apple IAP support center
         └─ public-good / appreciation explanation
 ```
 
-公开仓不负责判断“这是 App Store build 还是非 App Store build”的商业细节。公开仓只渲染 private contribution 或 route/action seam；private overlay 决定 Apple 发布版的真实支持中心。
+公开仓不负责构造 Apple 商业入口。公开仓只渲染 private contribution 或 route/action seam；private overlay 决定 Apple 发布路径的真实支持中心。没有 private contribution 时，公开仓在 Apple runtime 只能展示非付款说明。
 
 Alternative considered: 公开仓写 `if (isApplePlatform) showIapPage()`。
 Rejected because it会让 public settings shell 知道商业入口，并且很容易继续扩展成 price/product/entitlement 分支，违背现有边界。
@@ -121,24 +121,24 @@ PublicAppreciationSurface
 └─ channel-specific support CTA
 ```
 
-在 Apple App Store build 中，`PublicAppreciationSurface` 可以保留说明、公益承诺、记录入口和“也可以通过 IAP 请开发者喝咖啡”的回到 IAP action，但不得默认显示支付宝链接或二维码。非商店公开构建可显示公开赞赏链接或桌面动态二维码。
+在 Apple runtime 中，`PublicAppreciationSurface` 可以保留说明、公益承诺、记录入口和“通过 Apple 支持中心支持”的回到 private IAP action（当 private contribution 存在时），但不得默认显示支付宝链接或二维码。非 Apple runtime 可显示公开赞赏链接或桌面动态二维码。
 
 Alternative considered: 在 private contribution 内复制一份公开赞赏 UI。
 Rejected because会让同一套公益/赞赏文案出现两个 owner，后续审核规则或文案调整容易漂移。
 
-### 4. 外部支付宝链接按渠道 gate，而不是按 Apple 平台粗暴 gate
+### 4. 外部支付宝链接对 Apple runtime deny-by-default
 
-支持链接 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a` 仍可作为 public appreciation fallback 的数据源，但 Apple App Store 版不得默认展示它作为付款 CTA。更准确的判断模型是：
+支持链接 `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a` 仍可作为非 Apple public appreciation fallback 的数据源，但 Apple runtime 不得默认展示它作为付款 CTA。更简单、审核更稳的判断模型是：
 
 ```text
 public appreciation CTA policy
-├─ Apple App Store build: IAP tip only; no Alipay CTA by default
-├─ Apple non-App-Store / local public build: may show public fallback if no private support contribution
-├─ Android / Windows / Linux / web community build: public appreciation fallback
+├─ iPhone / iPad / macOS runtime: private IAP support center if available
+│      └─ no private contribution: explanation only, no Alipay CTA
+├─ Android / Windows / Linux / web runtime: public appreciation fallback
 └─ future approved entitlement / region exception: explicit separate rule
 ```
 
-公开仓可以保留非商业 fallback；private overlay 或后续发布配置负责 Apple App Store 渠道规则。任何外部购买 link entitlement、地区例外或美国 storefront 例外都必须另开 change 记录，不能默默启用支付宝 CTA。
+公开仓可以保留非 Apple fallback；Apple runtime 先按平台级 deny-by-default 处理，避免 debug、本地 public build 或测试包里意外暴露支付宝入口。任何外部购买 link entitlement、地区例外或美国 storefront 例外都必须另开 change 记录，不能默默启用支付宝 CTA。
 
 ### 5. 公益说明保持模糊承诺口径，不做 app 内公益募款
 
@@ -161,7 +161,7 @@ public appreciation CTA policy
 - StoreKit import / IAP plugin dependency。
 - product ID、price、receipt、transaction、purchase / restore implementation。
 - raw entitlement state、subscription/buyout/family sharing state。
-- Apple App Store build 中直接显示支付宝付款 CTA 的公开商业分支。
+- Apple runtime 中直接显示支付宝付款 CTA 的公开商业分支。
 
 私有 overlay verification 覆盖：
 
@@ -169,7 +169,7 @@ public appreciation CTA policy
 - IAP tip 不授予 `AppCapability`。
 - IAP Pro 权益通过 private entitlement layer 映射到 `AppCapability`。
 - restore purchase、unavailable、expired、refunded 等状态有清晰显示。
-- IAP 页进入 public appreciation explanation 时不会显示外部支付宝付款 CTA，除非测试显式启用批准渠道策略。
+- IAP 页进入 public appreciation explanation 时不会显示外部支付宝付款 CTA，除非未来 change 明确批准并覆盖对应例外规则。
 
 ## Dependency Direction
 
@@ -198,8 +198,8 @@ memoflow-macos-private StoreKit support center
 
 ## Risks / Trade-offs
 
-- [Risk] Apple 规则持续变化，外部链接可用范围随 storefront / entitlement 调整。→ Mitigation: 本 change 默认禁用 Apple App Store 版外部支付宝 CTA；任何例外必须另开 change 并重新核对 Apple 最新规则。
-- [Risk] IAP tip 和 Pro 商品并存会让用户误解打赏能解锁功能。→ Mitigation: tip 商品文案必须声明不影响基础功能、不授予 Pro；Pro 商品单独展示能力差异。
+- [Risk] Apple 规则持续变化，外部链接可用范围随 storefront / entitlement 调整。→ Mitigation: 本 change 默认禁用所有 Apple runtime 的外部支付宝 CTA；任何例外必须另开 change 并重新核对 Apple 最新规则。
+- [Risk] IAP tip 和 Pro 商品并存会让用户误解打赏能解锁功能。→ Mitigation: tip 商品文案必须声明不授予 Pro、不会承诺服务访问；Pro 商品单独展示能力差异。
 - [Risk] 公益说明被理解成 app 内公益募款。→ Mitigation: 商品名和付款页避免“公益捐赠”语义；公益仅作为项目承诺和透明记录。
 - [Risk] public appreciation surface 抽取扩大公开 interface。→ Mitigation: 只抽取非商业说明和 channel-safe CTA policy，不暴露 StoreKit 或权益状态。
 - [Risk] 私有 overlay 需要同时实现 macOS 和未来 iOS/iPadOS，工作量增加。→ Mitigation: 先以 macOS private overlay 完成 IAP support center 的模型和测试，再复用到 iOS/iPadOS。
@@ -207,15 +207,15 @@ memoflow-macos-private StoreKit support center
 
 ## Migration Plan
 
-1. 在公开仓先完成 spec / guardrail：明确 Apple App Store 版不得默认显示支付宝付款 CTA，公开 shell 不包含 StoreKit 细节。
+1. 在公开仓先完成 spec / guardrail：明确任何 Apple runtime 不得默认显示支付宝付款 CTA，公开 shell 不包含 StoreKit 细节。
 2. 抽取 public appreciation surface，并使其支持 channel-safe CTA policy。
 3. 在 private overlay 中将当前 `MemoFlow Pro` / support placeholder 升级为 IAP support center。
 4. 在 private overlay 中接入 StoreKit product catalog、purchase、restore、entitlement refresh 和 App Store 管理订阅入口。
-5. 为 IAP tip、IAP Pro、restore purchase、公益说明和 Apple App Store no-Alipay-CTA 增加 focused tests。
+5. 为 IAP tip、IAP Pro、restore purchase、公益说明和 Apple runtime no-Alipay-CTA 增加 focused tests。
 6. 提交 App Store 前重新核对 Apple Review Guidelines、目标 storefront、entitlement 和商品元数据。
 
 ## Open Questions
 
 - IAP tip 商品最终使用 consumable、non-consumable 还是其他 StoreKit product type，需要在 private StoreKit 设计中决定。
-- Apple App Store 版的 public appreciation explanation 是否展示“其他平台可通过官网支持”，需要提交前结合审核风险决定。
+- Apple runtime 的 public appreciation explanation 是否展示“其他平台可通过官网支持”，需要提交前结合审核风险决定。
 - 公益记录首版是官网静态页、应用内 WebView 还是外部浏览器打开，仍需由官网/发布策略决定。

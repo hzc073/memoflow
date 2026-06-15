@@ -1,18 +1,20 @@
 ## ADDED Requirements
 
-### Requirement: Apple App Store support SHALL use private IAP support center
-通过 App Store 分发的 iPhone、iPad 和 macOS 版本 SHALL 使用 private overlay 提供的 IAP 支持中心作为“支持 MemoFlow”的主要支持/付款入口。
+### Requirement: Apple runtime support SHALL use private IAP support center
+iPhone、iPad 和 macOS 运行时 SHALL 使用 private overlay 提供的 IAP 支持中心作为“支持 MemoFlow”的主要支持/付款入口；没有 private contribution 时 SHALL 显示 free-safe 支持说明而不是外部付款入口。
 
-#### Scenario: Apple App Store user opens Support MemoFlow
-- **WHEN** 用户在 iPhone、iPad 或 macOS App Store 版本中打开“支持 MemoFlow”
+#### Scenario: Apple user opens Support MemoFlow with private IAP center
+- **WHEN** 用户在 iPhone、iPad 或 macOS 运行时打开“支持 MemoFlow”
+- **AND** an approved private IAP support center contribution is available
 - **THEN** the app SHALL route to a private IAP support center contribution or equivalent private support route
 - **AND** the route SHALL be provided through an approved private seam such as `PrivateExtensionBundle` / `SupportMemoFlowContribution`
 - **AND** public settings code SHALL NOT construct StoreKit purchase UI, product UI, price UI, restore purchase UI, or entitlement UI directly
 
-#### Scenario: Public Apple build has no private IAP support center
+#### Scenario: Public Apple runtime has no private IAP support center
 - **WHEN** the public repository runs on an Apple platform without private overlay
-- **THEN** the support page SHALL remain buildable and usable through free-safe public support explanation or public appreciation fallback
+- **THEN** the support page SHALL remain buildable and usable through free-safe public support explanation
 - **AND** it SHALL NOT infer from Apple platform alone that IAP purchase UI is available
+- **AND** it SHALL NOT show external Alipay links, Alipay QR codes, or external payment calls to action
 
 ### Requirement: Apple IAP tip SHALL be voluntary support without entitlement
 Apple 版“打赏开发者”、“请喝咖啡”或 equivalent voluntary support SHALL be modeled as IAP tip support that does not unlock product capabilities.
@@ -21,7 +23,7 @@ Apple 版“打赏开发者”、“请喝咖啡”或 equivalent voluntary supp
 - **WHEN** an Apple App Store user purchases a tip / coffee support item
 - **THEN** the purchase SHALL be treated as voluntary project support
 - **AND** it SHALL NOT enable `Pro`, `premiumEntitlements`, `subscriptionCenter`, Apple ecosystem features, or any other feature capability by itself
-- **AND** base recording, editing, reading, local library access, and basic import/export SHALL remain available regardless of whether the user tips
+- **AND** the tip SHALL NOT be required for existing non-commercial memo workflows
 
 #### Scenario: IAP tip copy is rendered
 - **WHEN** the IAP support center displays tip / coffee support copy
@@ -43,22 +45,22 @@ Apple 版 `Pro` 功能增强 SHALL be implemented through private StoreKit produ
 - **AND** newly gated `Pro` creation, automation, or enhancement actions MAY be disabled through capability decisions
 - **AND** the user SHALL have a private support-center route to restore purchase or understand the current state
 
-### Requirement: Apple App Store builds SHALL not show external Alipay payment CTA by default
-Apple App Store distributed builds SHALL NOT show external Alipay links, Alipay QR codes, or other external payment calls to action for support by default.
+### Requirement: Apple runtime SHALL not show external Alipay payment CTA by default
+iPhone、iPad 和 macOS 运行时 SHALL NOT show external Alipay links, Alipay QR codes, or other external payment calls to action for support by default, including debug, local public builds, TestFlight preparation paths, and App Store distributed builds.
 
-#### Scenario: Apple App Store support explanation is rendered
-- **WHEN** an Apple App Store build renders public appreciation explanation or public-good explanation
+#### Scenario: Apple support explanation is rendered
+- **WHEN** an Apple runtime renders public appreciation explanation or public-good explanation
 - **THEN** it SHALL NOT show `https://qr.alipay.com/tsx16856ygfke5rugz1ao4a` as a payment CTA
 - **AND** it SHALL NOT render an Alipay QR code as a support payment method
-- **AND** it MAY route the user back to an IAP tip action or display non-payment explanatory copy
+- **AND** it MAY route the user back to an IAP tip action when private IAP contribution exists or display non-payment explanatory copy
 
 #### Scenario: Approved external purchase exception exists
 - **WHEN** a future change receives an approved Apple entitlement, storefront-specific policy path, or explicit review decision for external purchase links
 - **THEN** that exception SHALL be documented in a separate OpenSpec change
-- **AND** the implementation SHALL gate the external CTA by the approved channel rules rather than by generic Apple platform detection
+- **AND** the implementation SHALL gate the external CTA by the approved exception rules rather than enabling it in Apple runtime by default
 
-#### Scenario: Non-Apple or non-App-Store public build renders fallback
-- **WHEN** Android, Windows, Linux, web, or approved non-App-Store public builds render public appreciation fallback
+#### Scenario: Non-Apple public build renders fallback
+- **WHEN** Android, Windows, Linux, web, or another approved non-Apple public build renders public appreciation fallback
 - **THEN** they MAY use the public external support URL and generated desktop QR behavior
 - **AND** they MAY show the Beijing Han Hong Love Charity Foundation official link and public-good record link
 - **AND** the fallback SHALL remain voluntary and SHALL NOT promise digital feature unlocks or service access
@@ -84,12 +86,17 @@ Apple App Store distributed builds SHALL NOT show external Alipay links, Alipay 
 - **WHEN** a private IAP support center opens “其他支持方式”, “打赏说明”, or equivalent appreciation explanation
 - **THEN** the app SHALL show a public appreciation explanation surface rather than recursively returning to the private IAP support center
 - **AND** the surface SHALL apply the current channel's payment CTA policy
-- **AND** Apple App Store builds SHALL keep external Alipay payment CTA hidden by default
+- **AND** Apple runtimes SHALL keep external Alipay payment CTA hidden by default
 
 #### Scenario: Public fallback is opened directly
-- **WHEN** a non-Apple or non-App-Store public build opens the public appreciation surface directly
+- **WHEN** a non-Apple public build opens the public appreciation surface directly
 - **THEN** the surface MAY show the public support URL, generated desktop QR code, mobile external-link action, foundation official link, and public-good record link according to platform experience
-- **AND** it SHALL continue to explain that support is voluntary and base features remain available
+- **AND** it SHALL explain that support is voluntary without promising feature unlocks or service access
+
+#### Scenario: Apple public explanation is opened directly
+- **WHEN** an Apple runtime opens the public appreciation surface directly without private IAP contribution
+- **THEN** the surface SHALL show non-payment support explanation and public-good explanation only
+- **AND** it SHALL NOT show the public support URL, generated QR code, mobile external-link action, or any other external payment CTA
 
 ### Requirement: Apple IAP support rules SHALL preserve public/private and modularity boundaries
 Apple IAP support implementation SHALL preserve the public/private split and `evolve_modularity` constraints.
