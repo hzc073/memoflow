@@ -48,6 +48,30 @@ class FlomoImportController {
       language: language,
       account: account,
       importScopeKey: importScopeKey,
+      mode: _FlomoImportMode.flomoHtml,
+    );
+    return engine.importFile(
+      filePath: filePath,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+  }
+
+  Future<ImportResult> importMemoFlowMarkdown({
+    required FlomoImportDatabase db,
+    required AppLanguage language,
+    Account? account,
+    String? importScopeKey,
+    required String filePath,
+    required ImportProgressCallback onProgress,
+    required ImportCancelCheck isCancelled,
+  }) async {
+    final engine = _FlomoImportEngine(
+      db: db,
+      language: language,
+      account: account,
+      importScopeKey: importScopeKey,
+      mode: _FlomoImportMode.memoFlowMarkdown,
     );
     return engine.importFile(
       filePath: filePath,
@@ -57,10 +81,13 @@ class FlomoImportController {
   }
 }
 
+enum _FlomoImportMode { flomoHtml, memoFlowMarkdown }
+
 class _FlomoImportEngine {
   _FlomoImportEngine({
     required this.db,
     required this.language,
+    required this.mode,
     this.account,
     this.importScopeKey,
   });
@@ -69,12 +96,16 @@ class _FlomoImportEngine {
   final Account? account;
   final String? importScopeKey;
   final AppLanguage language;
+  final _FlomoImportMode mode;
   final QueuedAttachmentStager _queuedAttachmentStager =
       QueuedAttachmentStager();
   late final FlomoImportMutationService _mutationService =
       FlomoImportMutationService(db: db);
 
-  static const _source = 'flomo';
+  String get _source => switch (mode) {
+    _FlomoImportMode.flomoHtml => 'flomo',
+    _FlomoImportMode.memoFlowMarkdown => 'memoflow_markdown',
+  };
 
   bool _shouldEnqueueAttachmentUploadsBeforeCreate() {
     final rawVersion =
@@ -242,15 +273,32 @@ class _FlomoImportEngine {
   }) async {
     final lower = filePath.toLowerCase();
     if (lower.endsWith('.zip')) {
-      return _importZipBytes(
-        bytes: bytes,
-        fileMd5: fileMd5,
-        onProgress: onProgress,
-        isCancelled: isCancelled,
-        counters: counters,
-      );
+      return switch (mode) {
+        _FlomoImportMode.flomoHtml => _importFlomoZipBytes(
+          bytes: bytes,
+          fileMd5: fileMd5,
+          onProgress: onProgress,
+          isCancelled: isCancelled,
+          counters: counters,
+        ),
+        _FlomoImportMode.memoFlowMarkdown => _importMemoFlowZipBytes(
+          bytes: bytes,
+          fileMd5: fileMd5,
+          onProgress: onProgress,
+          isCancelled: isCancelled,
+          counters: counters,
+        ),
+      };
     }
     if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+      if (mode != _FlomoImportMode.flomoHtml) {
+        throw ImportException(
+          trByLanguageKey(
+            language: language,
+            key: 'legacy.msg_unsupported_file_type',
+          ),
+        );
+      }
       return _importHtmlBytes(
         bytes: bytes,
         htmlRootPath: p.dirname(filePath),
@@ -267,7 +315,7 @@ class _FlomoImportEngine {
     );
   }
 
-  Future<ImportResult> _importZipBytes({
+  Future<ImportResult> _importFlomoZipBytes({
     required List<int> bytes,
     required String fileMd5,
     required ImportProgressCallback onProgress,
@@ -293,16 +341,6 @@ class _FlomoImportEngine {
     );
 
     final archive = ZipDecoder().decodeBytes(bytes);
-    final memoEntries = _memoFlowMemoEntries(archive);
-    if (memoEntries.isNotEmpty || _memoFlowIndexExists(archive)) {
-      return _importMemoFlowExportZip(
-        archive: archive,
-        fileMd5: fileMd5,
-        onProgress: onProgress,
-        isCancelled: isCancelled,
-        counters: counters,
-      );
-    }
     final htmlEntry = archive.files.firstWhere(
       (f) => f.isFile && f.name.toLowerCase().endsWith('.html'),
       orElse: () => ArchiveFile('', 0, const []),
@@ -325,6 +363,41 @@ class _FlomoImportEngine {
     return _importHtmlBytes(
       bytes: htmlBytes,
       htmlRootPath: htmlRootPath,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+      counters: counters,
+    );
+  }
+
+  Future<ImportResult> _importMemoFlowZipBytes({
+    required List<int> bytes,
+    required String fileMd5,
+    required ImportProgressCallback onProgress,
+    required ImportCancelCheck isCancelled,
+    required _ImportCounters counters,
+  }) async {
+    _ensureNotCancelled(isCancelled);
+    _reportProgress(
+      onProgress,
+      progress: 0.15,
+      statusText: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_decoding_zip',
+      ),
+      progressLabel: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_parsing',
+      ),
+      progressDetail: trByLanguageKey(
+        language: language,
+        key: 'legacy.msg_preparing_file_structure',
+      ),
+    );
+
+    final archive = ZipDecoder().decodeBytes(bytes);
+    return _importMemoFlowExportZip(
+      archive: archive,
+      fileMd5: fileMd5,
       onProgress: onProgress,
       isCancelled: isCancelled,
       counters: counters,
@@ -863,17 +936,6 @@ class _FlomoImportEngine {
       }
     }
     return entries;
-  }
-
-  bool _memoFlowIndexExists(Archive archive) {
-    for (final file in archive.files) {
-      if (!file.isFile) continue;
-      final normalized = _normalizeArchivePath(file.name).toLowerCase();
-      if (normalized == 'index.md' || normalized.endsWith('memos/index.md')) {
-        return true;
-      }
-    }
-    return false;
   }
 
   bool _isMemoFlowMemoEntry(ArchiveFile file) {

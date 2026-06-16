@@ -343,6 +343,63 @@ legacy:
   msg_no_notifications: "暂无通知"
   msg_import_markdown: "从 Markdown 导入"
   msg_upload_zip_package_md_files: "请上传包含 .md 文件的 .zip 压缩包"
+  msg_import_source_flomo_package: "Flomo 导出包"
+  msg_import_source_swashbuckler_diary_package: "侠客日记导出包"
+  msg_import_source_memoflow_markdown_package: "MemoFlow Markdown 包"
+  msg_import_source_generic_markdown_package: "通用 Markdown 包"
+  msg_import_format_help: "格式说明"
+  msg_import_failed_title: "导入失败"
+  msg_import_flomo_format_help: "支持 Flomo 导出的 .html 文件，或包含导出 .html 文件的 .zip 压缩包。"
+  msg_import_swashbuckler_format_help: "支持侠客日记导出的 JSON、Markdown 或 TXT ZIP 压缩包。"
+  msg_import_memoflow_markdown_format_help: "仅支持 MemoFlow 导出的 Markdown ZIP 压缩包。压缩包内至少需要一个 memos/ 目录下的笔记文件。"
+  msg_import_generic_markdown_format_help: "支持包含一个或多个 .md 文件的 ZIP 压缩包。每个 Markdown 文件会导入为一条笔记，README.md 和 index.md 也会导入。"
+  msg_import_flomo_structure: |-
+    合格结构：
+    export.html
+
+    或：
+    export.zip
+        *.html
+
+    说明：
+    *.html：笔记导出文件。
+  msg_import_swashbuckler_structure: |-
+    合格结构：
+    export.zip
+        *.json
+        *.md
+        *.txt
+        appdata/
+
+    说明：
+    *.json/*.md/*.txt：日记文件。
+    appdata/：资源文件夹。
+  msg_import_memoflow_markdown_structure: |-
+    合格结构：
+    export.zip
+        index.md
+        memos/
+        attachments/
+
+    说明：
+    index.md：索引文件。
+    memos/：存放笔记文件夹。
+    attachments/：存放附件文件夹。
+  msg_import_generic_markdown_structure: |-
+    合格结构：
+    markdown.zip
+        index.md
+        README.md
+        note.md
+        folder/
+        assets/
+
+    说明：
+    index.md：笔记文件。
+    README.md：笔记文件。
+    note.md：笔记文件。
+    folder/：存放笔记文件夹。
+    assets/：存放附件文件夹。
   msg_request_send_timeout_try: "请求发送超时，请稍后重试"
   msg_select_date_range: "选择时间范围"
   msg_delete_shortcut: "删除快捷筛选"
@@ -1148,6 +1205,7 @@ legacy:
   msg_backup_settings: "备份设置"
   msg_mode: "提醒模式"
   msg_no_markdown_memos_found_zip: "压缩包内未找到 Markdown 笔记"
+  msg_no_generic_markdown_files_found_zip: "压缩包内未找到可导入的 Markdown 文件"
   msg_archived: "已归档"
   msg_update_failed: "更新失败：$e"
   msg_enable_app_lock: "启用应用锁"

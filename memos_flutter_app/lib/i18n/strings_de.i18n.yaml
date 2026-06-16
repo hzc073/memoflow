@@ -343,6 +343,63 @@ legacy:
   msg_no_notifications: "Keine Benachrichtigungen"
   msg_import_markdown: "Aus Markdown importieren"
   msg_upload_zip_package_md_files: "Laden Sie ein .zip-Paket mit .md-Dateien hoch"
+  msg_import_source_flomo_package: "Flomo export package"
+  msg_import_source_swashbuckler_diary_package: "Swashbuckler Diary export package"
+  msg_import_source_memoflow_markdown_package: "MemoFlow Markdown package"
+  msg_import_source_generic_markdown_package: "Generic Markdown package"
+  msg_import_format_help: "Format help"
+  msg_import_failed_title: "Import failed"
+  msg_import_flomo_format_help: "Supports a Flomo exported .html file, or a .zip package that contains an exported .html file."
+  msg_import_swashbuckler_format_help: "Supports Swashbuckler Diary exported JSON, Markdown, or TXT ZIP packages."
+  msg_import_memoflow_markdown_format_help: "Supports only MemoFlow exported Markdown ZIP packages. At least one memo must be stored under memos/."
+  msg_import_generic_markdown_format_help: "Supports a ZIP package with one or more .md files. Each Markdown file becomes one memo. README.md and index.md are imported."
+  msg_import_flomo_structure: |-
+    Supported structure:
+    export.html
+
+    Or:
+    export.zip
+        *.html
+
+    Notes:
+    *.html: memo export file.
+  msg_import_swashbuckler_structure: |-
+    Supported structure:
+    export.zip
+        *.json
+        *.md
+        *.txt
+        appdata/
+
+    Notes:
+    *.json/*.md/*.txt: diary files.
+    appdata/: resource folder.
+  msg_import_memoflow_markdown_structure: |-
+    Supported structure:
+    export.zip
+        index.md
+        memos/
+        attachments/
+
+    Notes:
+    index.md: index file.
+    memos/: memo folder.
+    attachments/: attachment folder.
+  msg_import_generic_markdown_structure: |-
+    Supported structure:
+    markdown.zip
+        index.md
+        README.md
+        note.md
+        folder/
+        assets/
+
+    Notes:
+    index.md: memo file.
+    README.md: memo file.
+    note.md: memo file.
+    folder/: memo folder.
+    assets/: attachment folder.
   msg_request_send_timeout_try: "Zeitüberschreitung beim Senden der Anfrage. Versuchen Sie es erneut."
   msg_select_date_range: "Datumsbereich auswählen"
   msg_delete_shortcut: "Verknüpfung löschen"
@@ -1147,6 +1204,7 @@ legacy:
   msg_backup_settings: "Sicherungseinstellungen"
   msg_mode: "Modus"
   msg_no_markdown_memos_found_zip: "Keine Markdown-Notizen in der ZIP gefunden."
+  msg_no_generic_markdown_files_found_zip: "No importable Markdown files found in ZIP."
   msg_archived: "Archiviert"
   msg_update_failed: "Aktualisierung fehlgeschlagen: $e"
   msg_enable_app_lock: "App-Sperre aktivieren"

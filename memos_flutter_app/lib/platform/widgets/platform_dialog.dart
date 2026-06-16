@@ -146,16 +146,31 @@ class _PlatformAlertDialogContent extends StatelessWidget {
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: apple
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasMessage) Text(resolvedMessage),
+        if (hasMessage)
+          Align(
+            alignment: apple
+                ? AlignmentDirectional.center
+                : AlignmentDirectional.centerStart,
+            child: Text(
+              resolvedMessage,
+              textAlign: apple ? TextAlign.center : TextAlign.start,
+            ),
+          ),
         if (hasMessage && hasDetails) const SizedBox(height: 12),
         if (hasDetails)
-          Text(
-            resolvedDetails,
-            style: const TextStyle(fontWeight: FontWeight.w700),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              resolvedDetails,
+              textAlign: TextAlign.start,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
           ),
       ],
     );

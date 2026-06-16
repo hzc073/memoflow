@@ -16,6 +16,7 @@ import '../../core/memoflow_palette.dart';
 import '../../core/top_toast.dart';
 import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
+import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_page.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../application/sync/sync_request.dart';
@@ -26,25 +27,31 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../memos/memos_list_screen.dart';
 import 'flomo_import_service.dart';
+import 'generic_markdown_import_service.dart';
+import 'import_source_format.dart';
+import 'import_source_kind.dart';
 import 'swashbuckler_diary_import_service.dart' as swashbuckler_diary;
 import '../../i18n/strings.g.dart';
 
 const _flomoImportIconAsset = 'assets/images/flomo_import_logo.svg';
 const _swashbucklerDiaryImportIconAsset =
     'assets/images/swashbuckler_diary_import_logo.png';
-
-enum ImportSourceKind { flomoLike, swashbucklerDiary }
+const _memoFlowImportIconAsset = 'assets/splash/splash_logo.png';
 
 class ImportSourceScreen extends StatelessWidget {
   const ImportSourceScreen({
     super.key,
     this.onSelectFlomo,
     this.onSelectMarkdown,
+    this.onSelectMemoFlowMarkdown,
+    this.onSelectGenericMarkdown,
     this.onSelectSwashbucklerDiary,
   });
 
   final VoidCallback? onSelectFlomo;
   final VoidCallback? onSelectMarkdown;
+  final VoidCallback? onSelectMemoFlowMarkdown;
+  final VoidCallback? onSelectGenericMarkdown;
   final VoidCallback? onSelectSwashbucklerDiary;
 
   String _sanitizeFilename(String input, {required String fallbackExtension}) {
@@ -137,15 +144,23 @@ class ImportSourceScreen extends StatelessWidget {
     return _openImportRunScreen(
       context,
       allowedExtensions: const ['zip', 'html', 'htm'],
-      sourceKind: ImportSourceKind.flomoLike,
+      sourceKind: ImportSourceKind.flomo,
     );
   }
 
-  Future<void> _selectMarkdownZip(BuildContext context) {
+  Future<void> _selectMemoFlowMarkdownZip(BuildContext context) {
     return _openImportRunScreen(
       context,
       allowedExtensions: const ['zip'],
-      sourceKind: ImportSourceKind.flomoLike,
+      sourceKind: ImportSourceKind.memoFlowMarkdown,
+    );
+  }
+
+  Future<void> _selectGenericMarkdownZip(BuildContext context) {
+    return _openImportRunScreen(
+      context,
+      allowedExtensions: const ['zip'],
+      sourceKind: ImportSourceKind.genericMarkdown,
     );
   }
 
@@ -154,6 +169,26 @@ class ImportSourceScreen extends StatelessWidget {
       context,
       allowedExtensions: const ['zip'],
       sourceKind: ImportSourceKind.swashbucklerDiary,
+    );
+  }
+
+  Future<void> _showSourceHelp(
+    BuildContext context,
+    ImportSourceKind sourceKind,
+  ) async {
+    final description = importSourceFormatDescription(context, sourceKind);
+    await showPlatformAlertDialog<bool>(
+      context: context,
+      title: description.title,
+      message: description.help,
+      details: description.structure,
+      actions: [
+        PlatformDialogAction<bool>(
+          value: true,
+          label: context.t.strings.legacy.msg_got_it,
+          isDefault: true,
+        ),
+      ],
     );
   }
 
@@ -226,12 +261,10 @@ class ImportSourceScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 16),
                           _ImportSourceTile(
-                            title: context.t.strings.legacy.msg_import_flomo,
-                            subtitle: context
-                                .t
-                                .strings
-                                .legacy
-                                .msg_import_exported_html_zip_package,
+                            title: importSourceFormatDescription(
+                              context,
+                              ImportSourceKind.flomo,
+                            ).title,
                             icon: SvgPicture.asset(
                               _flomoImportIconAsset,
                               width: 24,
@@ -245,22 +278,20 @@ class ImportSourceScreen extends StatelessWidget {
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
+                            onHelp: () => _showSourceHelp(
+                              context,
+                              ImportSourceKind.flomo,
+                            ),
                             onTap:
                                 onSelectFlomo ??
                                 () => _selectFlomoFile(context),
                           ),
                           const SizedBox(height: 12),
                           _ImportSourceTile(
-                            title: context
-                                .t
-                                .strings
-                                .legacy
-                                .msg_import_swashbuckler_diary,
-                            subtitle: context
-                                .t
-                                .strings
-                                .legacy
-                                .msg_supported_json_markdown_txt_zip,
+                            title: importSourceFormatDescription(
+                              context,
+                              ImportSourceKind.swashbucklerDiary,
+                            ).title,
                             icon: Image.asset(
                               _swashbucklerDiaryImportIconAsset,
                               width: 24,
@@ -277,28 +308,25 @@ class ImportSourceScreen extends StatelessWidget {
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
+                            onHelp: () => _showSourceHelp(
+                              context,
+                              ImportSourceKind.swashbucklerDiary,
+                            ),
                             onTap:
                                 onSelectSwashbucklerDiary ??
                                 () => _selectSwashbucklerDiaryZip(context),
                           ),
                           const SizedBox(height: 12),
                           _ImportSourceTile(
-                            title: context.t.strings.legacy.msg_import_markdown,
-                            subtitle: context
-                                .t
-                                .strings
-                                .legacy
-                                .msg_upload_zip_package_md_files,
-                            icon: Text(
-                              'md',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.4,
-                                color: MemoFlowPalette.primary.withValues(
-                                  alpha: 0.92,
-                                ),
-                              ),
+                            title: importSourceFormatDescription(
+                              context,
+                              ImportSourceKind.memoFlowMarkdown,
+                            ).title,
+                            icon: Image.asset(
+                              _memoFlowImportIconAsset,
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.contain,
                             ),
                             iconBg: MemoFlowPalette.primary.withValues(
                               alpha: isDark ? 0.2 : 0.1,
@@ -310,9 +338,48 @@ class ImportSourceScreen extends StatelessWidget {
                             textMain: textMain,
                             textMuted: textMuted,
                             shadow: shadow,
+                            onHelp: () => _showSourceHelp(
+                              context,
+                              ImportSourceKind.memoFlowMarkdown,
+                            ),
                             onTap:
+                                onSelectMemoFlowMarkdown ??
                                 onSelectMarkdown ??
-                                () => _selectMarkdownZip(context),
+                                () => _selectMemoFlowMarkdownZip(context),
+                          ),
+                          const SizedBox(height: 12),
+                          _ImportSourceTile(
+                            title: importSourceFormatDescription(
+                              context,
+                              ImportSourceKind.genericMarkdown,
+                            ).title,
+                            icon: Text(
+                              'md',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: MemoFlowPalette.primary.withValues(
+                                  alpha: 0.92,
+                                ),
+                              ),
+                            ),
+                            iconBg: MemoFlowPalette.primary.withValues(
+                              alpha: isDark ? 0.18 : 0.09,
+                            ),
+                            iconColor: MemoFlowPalette.primary.withValues(
+                              alpha: 0.9,
+                            ),
+                            card: card,
+                            textMain: textMain,
+                            textMuted: textMuted,
+                            shadow: shadow,
+                            onHelp: () => _showSourceHelp(
+                              context,
+                              ImportSourceKind.genericMarkdown,
+                            ),
+                            onTap:
+                                onSelectGenericMarkdown ??
+                                () => _selectGenericMarkdownZip(context),
                           ),
                           const Spacer(),
                           _ImportNoteCard(
@@ -338,17 +405,25 @@ class ImportSourceScreen extends StatelessWidget {
   }
 }
 
+typedef ImportRunOverride =
+    Future<ImportResult> Function({
+      required ImportProgressCallback onProgress,
+      required ImportCancelCheck isCancelled,
+    });
+
 class ImportRunScreen extends ConsumerStatefulWidget {
   const ImportRunScreen({
     super.key,
     required this.filePath,
     required this.fileName,
-    this.sourceKind = ImportSourceKind.flomoLike,
+    this.sourceKind = ImportSourceKind.flomo,
+    this.importOverride,
   });
 
   final String filePath;
   final String fileName;
   final ImportSourceKind sourceKind;
+  final ImportRunOverride? importOverride;
 
   @override
   ConsumerState<ImportRunScreen> createState() => _ImportRunScreenState();
@@ -404,6 +479,13 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
     final db = ref.read(databaseProvider);
     final language = ref.read(devicePreferencesProvider).language;
     Future<ImportResult> runImport() {
+      final override = widget.importOverride;
+      if (override != null) {
+        return override(
+          onProgress: _handleProgress,
+          isCancelled: () => _cancelRequested,
+        );
+      }
       return switch (widget.sourceKind) {
         ImportSourceKind.swashbucklerDiary =>
           swashbuckler_diary.SwashbucklerDiaryImportService(
@@ -416,8 +498,30 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             onProgress: _handleProgress,
             isCancelled: () => _cancelRequested,
           ),
-        ImportSourceKind.flomoLike =>
+        ImportSourceKind.flomo =>
           FlomoImportService(
+            db: db,
+            account: account,
+            importScopeKey: session?.currentKey,
+            language: language,
+          ).importFile(
+            filePath: widget.filePath,
+            onProgress: _handleProgress,
+            isCancelled: () => _cancelRequested,
+          ),
+        ImportSourceKind.memoFlowMarkdown =>
+          FlomoImportService(
+            db: db,
+            account: account,
+            importScopeKey: session?.currentKey,
+            language: language,
+          ).importMemoFlowMarkdownFile(
+            filePath: widget.filePath,
+            onProgress: _handleProgress,
+            isCancelled: () => _cancelRequested,
+          ),
+        ImportSourceKind.genericMarkdown =>
+          GenericMarkdownImportService(
             db: db,
             account: account,
             importScopeKey: session?.currentKey,
@@ -489,19 +593,37 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
       context.safePop();
     } on ImportException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      await _showImportFailure(e.message);
+      if (!mounted) return;
       context.safePop();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(context.t.strings.legacy.msg_import_failed(e: e)),
-        ),
+      await _showImportFailure(
+        context.t.strings.legacy.msg_import_failed(e: e),
       );
+      if (!mounted) return;
       context.safePop();
     }
+  }
+
+  Future<void> _showImportFailure(String message) async {
+    final description = importSourceFormatDescription(
+      context,
+      widget.sourceKind,
+    );
+    await showPlatformAlertDialog<bool>(
+      context: context,
+      title: context.t.strings.legacy.msg_import_failed_title,
+      message: message,
+      details: description.structure,
+      actions: [
+        PlatformDialogAction<bool>(
+          value: true,
+          label: context.t.strings.legacy.msg_got_it,
+          isDefault: true,
+        ),
+      ],
+    );
   }
 
   void _handleProgress(ImportProgressUpdate update) {
@@ -980,7 +1102,6 @@ class ImportedMemosScreen extends StatelessWidget {
 class _ImportSourceTile extends StatelessWidget {
   const _ImportSourceTile({
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.iconBg,
     required this.iconColor,
@@ -988,11 +1109,11 @@ class _ImportSourceTile extends StatelessWidget {
     required this.textMain,
     required this.textMuted,
     required this.shadow,
+    this.onHelp,
     this.onTap,
   });
 
   final String title;
-  final String subtitle;
   final Widget icon;
   final Color iconBg;
   final Color iconColor;
@@ -1000,6 +1121,7 @@ class _ImportSourceTile extends StatelessWidget {
   final Color textMain;
   final Color textMuted;
   final List<BoxShadow>? shadow;
+  final VoidCallback? onHelp;
   final VoidCallback? onTap;
 
   @override
@@ -1037,25 +1159,36 @@ class _ImportSourceTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: textMain,
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textMain,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        color: textMuted,
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: context.t.strings.legacy.msg_import_format_help,
+                      icon: const Icon(Icons.help_outline_rounded),
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 30,
+                        height: 30,
                       ),
+                      style: IconButton.styleFrom(
+                        shape: const CircleBorder(),
+                        foregroundColor: textMuted,
+                      ),
+                      onPressed: onHelp,
                     ),
                   ],
                 ),
@@ -1087,24 +1220,16 @@ class _ImportNoteCard extends StatelessWidget {
         ? MemoFlowPalette.borderDark
         : MemoFlowPalette.borderLight;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border.withValues(alpha: 0.75)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline, size: 18, color: MemoFlowPalette.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(fontSize: 12, height: 1.4, color: textMuted),
-            ),
-          ),
-        ],
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12.5, height: 1.4, color: textMuted),
       ),
     );
   }

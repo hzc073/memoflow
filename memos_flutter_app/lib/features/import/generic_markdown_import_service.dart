@@ -2,18 +2,18 @@ export '../../state/memos/flomo_import_models.dart';
 
 import '../../data/models/account.dart';
 import '../../data/models/app_preferences.dart';
-import '../../state/memos/flomo_import_controller.dart';
 import '../../state/memos/flomo_import_models.dart';
+import '../../state/memos/generic_markdown_import_controller.dart';
 
-class FlomoImportService {
-  FlomoImportService({
+class GenericMarkdownImportService {
+  GenericMarkdownImportService({
     required this.db,
     required this.language,
     this.account,
     this.importScopeKey,
   });
 
-  final FlomoImportDatabase db;
+  final GenericMarkdownImportDatabase db;
   final Account? account;
   final String? importScopeKey;
   final AppLanguage language;
@@ -23,23 +23,7 @@ class FlomoImportService {
     required ImportProgressCallback onProgress,
     required ImportCancelCheck isCancelled,
   }) async {
-    return const FlomoImportController().importFlomo(
-      db: db,
-      language: language,
-      account: account,
-      importScopeKey: importScopeKey,
-      filePath: filePath,
-      onProgress: onProgress,
-      isCancelled: isCancelled,
-    );
-  }
-
-  Future<ImportResult> importMemoFlowMarkdownFile({
-    required String filePath,
-    required ImportProgressCallback onProgress,
-    required ImportCancelCheck isCancelled,
-  }) async {
-    return const FlomoImportController().importMemoFlowMarkdown(
+    return const GenericMarkdownImportController().importArchive(
       db: db,
       language: language,
       account: account,
