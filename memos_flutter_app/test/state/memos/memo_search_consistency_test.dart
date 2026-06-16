@@ -310,10 +310,13 @@ void main() {
   );
 
   test(
-    'memosStreamProvider still returns matches while the substring index backlog is only partially drained',
+    'memosStreamProvider sees dirty matches after bounded index maintenance',
     () async {
       final dbName = uniqueDbName('memo_search_provider_dirty_backlog');
-      final db = AppDatabase(dbName: dbName);
+      final db = AppDatabase(
+        dbName: dbName,
+        enableMemoSearchBackgroundMaintenance: false,
+      );
       final nowSec =
           DateTime.utc(2026, 4, 18, 8, 0).millisecondsSinceEpoch ~/ 1000;
 
@@ -322,7 +325,7 @@ void main() {
         await _insertMemo(
           db,
           uid: 'memo-$id',
-          content: index == 69 ? 'provider needle body' : 'provider body $id',
+          content: index == 0 ? 'provider needle body' : 'provider body $id',
           createTimeSec: nowSec + index,
         );
       }
@@ -347,8 +350,23 @@ void main() {
         sortOrder: MemoSortOrder.createDesc,
       );
 
-      final results = await container.read(memosStreamProvider(query).future);
-      final uids = results.map((memo) => memo.uid).toList(growable: false);
+      final initialResults = await container.read(
+        memosStreamProvider(query).future,
+      );
+      final initialUids = initialResults
+          .map((memo) => memo.uid)
+          .toList(growable: false);
+
+      expect(initialUids, isNot(contains('memo-000')));
+
+      expect(await db.drainMemoSearchDirtyEntries(limit: 64), 64);
+
+      final maintainedResults = await container.refresh(
+        memosStreamProvider(query).future,
+      );
+      final maintainedUids = maintainedResults
+          .map((memo) => memo.uid)
+          .toList(growable: false);
       final dirtyCountRows = await (await db.db).rawQuery(
         'SELECT COUNT(*) AS c FROM memo_search_dirty;',
       );
@@ -359,8 +377,8 @@ void main() {
         _ => int.tryParse(dirtyValue.toString()) ?? 0,
       };
 
-      expect(uids, contains('memo-069'));
-      expect(dirtyCount, greaterThan(0));
+      expect(maintainedUids, contains('memo-000'));
+      expect(dirtyCount, 6);
     },
   );
 }

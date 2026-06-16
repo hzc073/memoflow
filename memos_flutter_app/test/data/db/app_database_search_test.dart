@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'package:memos_flutter_app/data/db/app_database.dart';
+import 'package:memos_flutter_app/data/db/memo_search_db_persistence.dart';
 import 'package:memos_flutter_app/data/models/memo_clip_card_metadata.dart';
+import 'package:memos_flutter_app/data/models/memo_location.dart';
 import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 
 import '../../test_support.dart';
@@ -226,84 +228,188 @@ void main() {
     await deleteTestDatabase(dbName);
   });
 
-  test(
-    'listMemos returns still-dirty matches beyond the drain batch and keeps backlog incremental',
-    () async {
-      final dbName = uniqueDbName('memo_search_dirty_backlog');
-      final db = AppDatabase(dbName: dbName);
-      final now =
-          DateTime.utc(2026, 4, 18, 10, 0).millisecondsSinceEpoch ~/ 1000;
+  test('listMemos bounds dirty fallback across backlog sizes', () async {
+    final now = DateTime.utc(2026, 4, 18, 10, 0).millisecondsSinceEpoch ~/ 1000;
 
-      for (var index = 0; index < 70; index += 1) {
-        final id = index.toString().padLeft(3, '0');
-        final content = index == 69 ? 'tail needle body' : 'body $id';
-        await _insertMemo(
-          db,
-          uid: 'memo-$id',
-          content: content,
-          createTimeSec: now + index,
-        );
+    for (final backlogSize in const <int>[0, 64, 500, 2000]) {
+      final dbName = uniqueDbName('memo_search_dirty_backlog_$backlogSize');
+      final db = AppDatabase(
+        dbName: dbName,
+        enableMemoSearchBackgroundMaintenance: false,
+      );
+      final sqlite = await db.db;
+      await _insertDirtyMemoBacklog(
+        sqlite,
+        count: backlogSize,
+        createTimeStartSec: now,
+        needleIndex: backlogSize == 0 ? null : 0,
+      );
+
+      final initialRows = await db.listMemos(searchQuery: 'needle');
+      final initialUids = initialRows.map((row) => row['uid']);
+
+      if (backlogSize == 0) {
+        expect(initialUids, isEmpty);
+        expect(await _countTable(sqlite, 'memo_search_dirty'), 0);
+        await db.close();
+        await deleteTestDatabase(dbName);
+        continue;
       }
 
-      final rows = await db.listMemos(searchQuery: 'needle');
-      final sqlite = await db.db;
-      final dirtyCount = await _countTable(sqlite, 'memo_search_dirty');
+      if (backlogSize <= MemoSearchDbPersistence.defaultDirtyFallbackLimit) {
+        expect(initialUids, contains('memo-0000'));
+      } else {
+        expect(initialUids, isNot(contains('memo-0000')));
+      }
+      expect(await _countTable(sqlite, 'memo_search_dirty'), backlogSize);
 
-      expect(rows.map((row) => row['uid']), contains('memo-069'));
-      expect(dirtyCount, greaterThan(0));
-      expect(dirtyCount, lessThan(70));
+      final processed = await db.drainMemoSearchDirtyEntries(limit: 64);
+      final maintainedRows = await db.listMemos(searchQuery: 'needle');
+
+      expect(processed, backlogSize < 64 ? backlogSize : 64);
+      expect(maintainedRows.map((row) => row['uid']), contains('memo-0000'));
+      expect(
+        await _countTable(sqlite, 'memo_search_dirty'),
+        backlogSize > 64 ? backlogSize - 64 : 0,
+      );
+
+      await db.close();
+      await deleteTestDatabase(dbName);
+    }
+  });
+
+  test(
+    'dirty fallback keeps an edited memo searchable before maintenance',
+    () async {
+      final dbName = uniqueDbName('memo_search_incremental');
+      final db = AppDatabase(
+        dbName: dbName,
+        enableMemoSearchBackgroundMaintenance: false,
+      );
+      final now =
+          DateTime.utc(2026, 4, 18, 11, 0).millisecondsSinceEpoch ~/ 1000;
+
+      await _insertMemo(
+        db,
+        uid: 'memo-a',
+        content: 'alpha body',
+        createTimeSec: now,
+      );
+      await _insertMemo(
+        db,
+        uid: 'memo-b',
+        content: 'beta body',
+        createTimeSec: now + 1,
+      );
+
+      final sqlite = await db.db;
+      await db.drainMemoSearchDirtyEntries(limit: 64);
+      expect(await _countTable(sqlite, 'memo_search_dirty'), 0);
+      expect(await _countTable(sqlite, 'memo_search_documents'), 2);
+
+      await db.upsertMemo(
+        uid: 'memo-b',
+        content: 'beta updated needle',
+        visibility: 'PRIVATE',
+        pinned: false,
+        state: 'NORMAL',
+        createTimeSec: now + 1,
+        updateTimeSec: now + 2,
+        tags: const <String>[],
+        attachments: const <Map<String, dynamic>>[],
+        location: null,
+        relationCount: 0,
+        syncState: 0,
+        lastError: null,
+      );
+
+      expect(await _countTable(sqlite, 'memo_search_dirty'), 1);
+      expect(
+        (await db.listMemos(searchQuery: 'needle')).map((row) => row['uid']),
+        contains('memo-b'),
+      );
+      expect(await _countTable(sqlite, 'memo_search_dirty'), 1);
+      expect(await db.drainMemoSearchDirtyEntries(limit: 64), 1);
+      expect(await _countTable(sqlite, 'memo_search_dirty'), 0);
+      expect(await _countTable(sqlite, 'memo_search_documents'), 2);
 
       await db.close();
       await deleteTestDatabase(dbName);
     },
   );
 
-  test('listMemos rebuilds only the touched memo after an edit', () async {
-    final dbName = uniqueDbName('memo_search_incremental');
-    final db = AppDatabase(dbName: dbName);
-    final now = DateTime.utc(2026, 4, 18, 11, 0).millisecondsSinceEpoch ~/ 1000;
+  test('listMemos applies SQLite-owned advanced filter candidates', () async {
+    final dbName = uniqueDbName('memo_search_sql_filters');
+    final db = AppDatabase(
+      dbName: dbName,
+      enableMemoSearchBackgroundMaintenance: false,
+    );
+    final now = DateTime.utc(2026, 4, 18, 13, 0).millisecondsSinceEpoch ~/ 1000;
 
     await _insertMemo(
       db,
-      uid: 'memo-a',
-      content: 'alpha body',
+      uid: 'memo-match',
+      content: 'needle with all sql filters',
       createTimeSec: now,
+      attachments: const <Map<String, dynamic>>[
+        <String, dynamic>{'filename': 'photo.jpg', 'type': 'image/jpeg'},
+      ],
+      location: const MemoLocation(
+        placeholder: 'Shanghai',
+        latitude: 31.2,
+        longitude: 121.5,
+      ),
+      relationCount: 2,
     );
     await _insertMemo(
       db,
-      uid: 'memo-b',
-      content: 'beta body',
-      createTimeSec: now + 1,
+      uid: 'memo-no-location',
+      content: 'needle without location',
+      createTimeSec: now,
+      attachments: const <Map<String, dynamic>>[
+        <String, dynamic>{'filename': 'photo.jpg', 'type': 'image/jpeg'},
+      ],
+      relationCount: 2,
+    );
+    await _insertMemo(
+      db,
+      uid: 'memo-no-attachment',
+      content: 'needle without attachment',
+      createTimeSec: now,
+      location: const MemoLocation(
+        placeholder: 'Shanghai',
+        latitude: 31.2,
+        longitude: 121.5,
+      ),
+      relationCount: 2,
+    );
+    await _insertMemo(
+      db,
+      uid: 'memo-no-relation',
+      content: 'needle without relation',
+      createTimeSec: now,
+      attachments: const <Map<String, dynamic>>[
+        <String, dynamic>{'filename': 'photo.jpg', 'type': 'image/jpeg'},
+      ],
+      location: const MemoLocation(
+        placeholder: 'Shanghai',
+        latitude: 31.2,
+        longitude: 121.5,
+      ),
     );
 
-    await db.listMemos(searchQuery: 'body');
-    final sqlite = await db.db;
-    expect(await _countTable(sqlite, 'memo_search_dirty'), 0);
-    expect(await _countTable(sqlite, 'memo_search_documents'), 2);
+    await db.drainMemoSearchDirtyEntries(limit: 64);
 
-    await db.upsertMemo(
-      uid: 'memo-b',
-      content: 'beta updated needle',
-      visibility: 'PRIVATE',
-      pinned: false,
-      state: 'NORMAL',
-      createTimeSec: now + 1,
-      updateTimeSec: now + 2,
-      tags: const <String>[],
-      attachments: const <Map<String, dynamic>>[],
-      location: null,
-      relationCount: 0,
-      syncState: 0,
-      lastError: null,
+    final rows = await db.listMemos(
+      searchQuery: 'needle',
+      searchFilters: const MemoSearchDbFilters(
+        hasLocation: true,
+        hasAttachments: true,
+        hasRelations: true,
+      ),
     );
 
-    expect(await _countTable(sqlite, 'memo_search_dirty'), 1);
-    expect(
-      (await db.listMemos(searchQuery: 'needle')).map((row) => row['uid']),
-      contains('memo-b'),
-    );
-    expect(await _countTable(sqlite, 'memo_search_dirty'), 0);
-    expect(await _countTable(sqlite, 'memo_search_documents'), 2);
+    expect(rows.map((row) => row['uid']), <String>['memo-match']);
 
     await db.close();
     await deleteTestDatabase(dbName);
@@ -358,6 +464,9 @@ Future<void> _insertMemo(
   int? updateTimeSec,
   String state = 'NORMAL',
   List<String> tags = const <String>[],
+  List<Map<String, dynamic>> attachments = const <Map<String, dynamic>>[],
+  MemoLocation? location,
+  int relationCount = 0,
 }) {
   return db.upsertMemo(
     uid: uid,
@@ -368,9 +477,9 @@ Future<void> _insertMemo(
     createTimeSec: createTimeSec,
     updateTimeSec: updateTimeSec ?? createTimeSec,
     tags: tags,
-    attachments: const <Map<String, dynamic>>[],
-    location: null,
-    relationCount: 0,
+    attachments: attachments,
+    location: location,
+    relationCount: relationCount,
     syncState: 0,
     lastError: null,
   );
@@ -382,4 +491,44 @@ Future<int> _countTable(Database sqlite, String table) async {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse(value.toString()) ?? 0;
+}
+
+Future<void> _insertDirtyMemoBacklog(
+  Database sqlite, {
+  required int count,
+  required int createTimeStartSec,
+  required int? needleIndex,
+}) async {
+  if (count <= 0) return;
+  await sqlite.transaction((txn) async {
+    final batch = txn.batch();
+    final updatedMs = DateTime.utc(2026, 4, 18, 10).millisecondsSinceEpoch;
+    for (var index = 0; index < count; index += 1) {
+      final uid = 'memo-${index.toString().padLeft(4, '0')}';
+      batch.insert('memos', <String, Object?>{
+        'uid': uid,
+        'content': index == needleIndex ? 'oldest needle body' : 'body $index',
+        'visibility': 'PRIVATE',
+        'pinned': 0,
+        'state': 'NORMAL',
+        'create_time': createTimeStartSec + index,
+        'display_time': createTimeStartSec + index,
+        'update_time': createTimeStartSec + index,
+        'tags': '',
+        'attachments_json': '[]',
+        'location_placeholder': null,
+        'location_lat': null,
+        'location_lng': null,
+        'relation_count': 0,
+        'sync_state': 0,
+        'last_error': null,
+      });
+      batch.insert('memo_search_dirty', <String, Object?>{
+        'memo_uid': uid,
+        'memo_row_id': index + 1,
+        'updated_time': updatedMs + index,
+      });
+    }
+    await batch.commit(noResult: true);
+  });
 }

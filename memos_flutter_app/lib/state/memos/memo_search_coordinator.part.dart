@@ -13,7 +13,13 @@ class MemoSearchCoordinator {
     final search = MemoSearchMatcher.normalizeQuery(query.searchQuery);
     final pageSize = query.pageSize > 0 ? query.pageSize : 200;
     final advancedFilters = query.advancedFilters.normalized();
-    final localCandidateLimit = advancedFilters.isEmpty ? pageSize : null;
+    final localCandidateLimit = _localCandidateLimitForAdvancedFilters(
+      advancedFilters,
+      pageSize,
+    );
+    final searchFilters = _memoSearchDbFiltersForAdvancedFilters(
+      advancedFilters,
+    );
     final db = _ref.read(databaseProvider);
     return db
         .watchMemos(
@@ -24,6 +30,7 @@ class MemoSearchCoordinator {
           endTimeSecExclusive: query.endTimeSecExclusive,
           sortOrder: query.sortOrder,
           limit: localCandidateLimit,
+          searchFilters: searchFilters,
         )
         .map(
           (rows) => _applyAdvancedFiltersToRows(
@@ -49,6 +56,9 @@ class MemoSearchCoordinator {
     final normalizedSearch = MemoSearchMatcher.normalizeQuery(searchQuery);
     final normalizedTag = _normalizeTagInput(tag);
     final normalizedFilters = advancedFilters.normalized();
+    final searchFilters = _memoSearchDbFiltersForAdvancedFilters(
+      normalizedFilters,
+    );
     return db
         .watchMemos(
           searchQuery: normalizedSearch.isEmpty ? null : normalizedSearch,
@@ -57,6 +67,7 @@ class MemoSearchCoordinator {
           startTimeSec: startTimeSec,
           endTimeSecExclusive: endTimeSecExclusive,
           limit: candidateLimit,
+          searchFilters: searchFilters,
         )
         .map((rows) {
           final filtered = _filterShortcutMemosFromRows(rows, predicate);
@@ -87,7 +98,10 @@ class MemoSearchCoordinator {
     final normalizedTag = _normalizeTagInput(query.tag);
     final pageSize = query.pageSize > 0 ? query.pageSize : 200;
     final advancedFilters = query.advancedFilters.normalized();
-    final localCandidateLimit = advancedFilters.isEmpty ? pageSize : null;
+    final localCandidateLimit = _localCandidateLimitForAdvancedFilters(
+      advancedFilters,
+      pageSize,
+    );
     final startTimeSec = query.startTimeSec;
     final endTimeSecExclusive = query.endTimeSecExclusive;
 
@@ -384,6 +398,7 @@ class MemoSearchCoordinator {
         endTimeSecExclusive: query.endTimeSecExclusive,
         sortOrder: query.sortOrder,
         limit: localCandidateLimit,
+        searchFilters: _memoSearchDbFiltersForAdvancedFilters(advancedFilters),
       );
       final seed = _applyAdvancedFiltersToRows(
         rows,
@@ -409,7 +424,10 @@ class MemoSearchCoordinator {
     final normalizedTag = _normalizeTagInput(query.tag);
     final pageSize = query.pageSize > 0 ? query.pageSize : 200;
     final advancedFilters = query.advancedFilters.normalized();
-    final localCandidateLimit = advancedFilters.isEmpty ? pageSize : null;
+    final localCandidateLimit = _localCandidateLimitForAdvancedFilters(
+      advancedFilters,
+      pageSize,
+    );
     final refreshed = await _refreshRemoteSeedWithLocal(seed: seed, db: db);
     final localMatches = await _loadLocalSearchMemos(
       db: db,

@@ -267,6 +267,59 @@ List<LocalMemo> _applyAdvancedFiltersToMemos(
   return filtered;
 }
 
+int? _localCandidateLimitForAdvancedFilters(
+  AdvancedSearchFilters advancedFilters,
+  int pageSize,
+) {
+  final normalizedFilters = advancedFilters.normalized();
+  if (_advancedFiltersRequireDartPostFilter(normalizedFilters)) {
+    return null;
+  }
+  return pageSize > 0 ? pageSize : null;
+}
+
+bool _advancedFiltersRequireDartPostFilter(
+  AdvancedSearchFilters advancedFilters,
+) {
+  final filters = advancedFilters.normalized();
+  return filters.locationContains.isNotEmpty ||
+      filters.attachmentNameContains.isNotEmpty ||
+      filters.attachmentType != null;
+}
+
+MemoSearchDbFilters _memoSearchDbFiltersForAdvancedFilters(
+  AdvancedSearchFilters advancedFilters,
+) {
+  final filters = advancedFilters.normalized();
+  final range = filters.createdDateRange;
+  final startTimeSec = range == null ? null : _toEpochSecond(range.start);
+  final endTimeSecExclusive = range == null
+      ? null
+      : _toEpochSecond(
+          _normalizeLocalDay(range.end).add(const Duration(days: 1)),
+        );
+
+  return MemoSearchDbFilters(
+    createdStartTimeSec: startTimeSec,
+    createdEndTimeSecExclusive: endTimeSecExclusive,
+    hasLocation: _toggleFilterToBool(filters.hasLocation),
+    hasAttachments: _toggleFilterToBool(filters.hasAttachments),
+    hasRelations: _toggleFilterToBool(filters.hasRelations),
+  );
+}
+
+bool? _toggleFilterToBool(SearchToggleFilter filter) {
+  return switch (filter) {
+    SearchToggleFilter.any => null,
+    SearchToggleFilter.yes => true,
+    SearchToggleFilter.no => false,
+  };
+}
+
+int _toEpochSecond(DateTime value) {
+  return value.toUtc().millisecondsSinceEpoch ~/ 1000;
+}
+
 String? _buildShortcutFilter({
   required int? creatorId,
   required String searchQuery,
@@ -492,6 +545,7 @@ Future<List<LocalMemo>?> _tryListShortcutMemosLocally({
     startTimeSec: startTimeSec,
     endTimeSecExclusive: endTimeSecExclusive,
     limit: candidateLimit,
+    searchFilters: _memoSearchDbFiltersForAdvancedFilters(advancedFilters),
   );
 
   final memos = rows
@@ -526,6 +580,7 @@ Future<List<LocalMemo>> _loadLocalSearchMemos({
     endTimeSecExclusive: endTimeSecExclusive,
     sortOrder: sortOrder,
     limit: candidateLimit,
+    searchFilters: _memoSearchDbFiltersForAdvancedFilters(advancedFilters),
   );
   return _applyAdvancedFiltersToRows(
     rows,

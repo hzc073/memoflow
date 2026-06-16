@@ -5,8 +5,35 @@ import '../../core/memo_search_matcher.dart';
 import '../models/memo_sort_order.dart';
 import 'app_database_write_dao.dart';
 
+final class MemoSearchDbFilters {
+  const MemoSearchDbFilters({
+    this.createdStartTimeSec,
+    this.createdEndTimeSecExclusive,
+    this.hasLocation,
+    this.hasAttachments,
+    this.hasRelations,
+  });
+
+  static const empty = MemoSearchDbFilters();
+
+  final int? createdStartTimeSec;
+  final int? createdEndTimeSecExclusive;
+  final bool? hasLocation;
+  final bool? hasAttachments;
+  final bool? hasRelations;
+
+  bool get isEmpty =>
+      createdStartTimeSec == null &&
+      createdEndTimeSecExclusive == null &&
+      hasLocation == null &&
+      hasAttachments == null &&
+      hasRelations == null;
+}
+
 final class MemoSearchDbPersistence {
   const MemoSearchDbPersistence._();
+
+  static const int defaultDirtyFallbackLimit = 64;
 
   static Future<List<Map<String, dynamic>>> listRows(
     Database db, {
@@ -17,7 +44,8 @@ final class MemoSearchDbPersistence {
     int? endTimeSecExclusive,
     MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
-    int dirtyDrainLimit = 64,
+    int dirtyFallbackLimit = defaultDirtyFallbackLimit,
+    MemoSearchDbFilters filters = MemoSearchDbFilters.empty,
   }) async {
     final trimmedTag = (tag ?? '').trim();
     final withoutHash = trimmedTag.startsWith('#')
@@ -32,22 +60,15 @@ final class MemoSearchDbPersistence {
 
     final baseWhereClauses = <String>[];
     final baseWhereArgs = <Object?>[];
-    if (normalizedState.isNotEmpty) {
-      baseWhereClauses.add('state = ?');
-      baseWhereArgs.add(normalizedState);
-    }
-    if (normalizedTag.isNotEmpty) {
-      baseWhereClauses.add("(' ' || tags || ' ') LIKE ?");
-      baseWhereArgs.add('% $normalizedTag %');
-    }
-    if (startTimeSec != null) {
-      baseWhereClauses.add('COALESCE(display_time, create_time) >= ?');
-      baseWhereArgs.add(startTimeSec);
-    }
-    if (endTimeSecExclusive != null) {
-      baseWhereClauses.add('COALESCE(display_time, create_time) < ?');
-      baseWhereArgs.add(endTimeSecExclusive);
-    }
+    _appendBaseMemoWhere(
+      baseWhereClauses,
+      baseWhereArgs,
+      normalizedState: normalizedState,
+      normalizedTag: normalizedTag,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+    );
+    _appendFilterWhere(baseWhereClauses, baseWhereArgs, filters: filters);
 
     Future<List<Map<String, dynamic>>> listBase() {
       return db.query(
@@ -64,13 +85,24 @@ final class MemoSearchDbPersistence {
     }
 
     final like = MemoSearchMatcher.toSqlLikePattern(normalizedSearch);
-    final literalSearchClauses = <String>[
-      if (normalizedState.isNotEmpty) 'm.state = ?',
-      if (normalizedTag.isNotEmpty) "(' ' || m.tags || ' ') LIKE ?",
-      if (startTimeSec != null) 'COALESCE(m.display_time, m.create_time) >= ?',
-      if (endTimeSecExclusive != null)
-        'COALESCE(m.display_time, m.create_time) < ?',
-      '''
+    final literalSearchClauses = <String>[];
+    final literalSearchArgs = <Object?>[];
+    _appendBaseMemoWhere(
+      literalSearchClauses,
+      literalSearchArgs,
+      alias: 'm',
+      normalizedState: normalizedState,
+      normalizedTag: normalizedTag,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+    );
+    _appendFilterWhere(
+      literalSearchClauses,
+      literalSearchArgs,
+      alias: 'm',
+      filters: filters,
+    );
+    literalSearchClauses.add('''
 (
   m.content LIKE ? ESCAPE '\\'
   OR m.tags LIKE ? ESCAPE '\\'
@@ -78,15 +110,11 @@ final class MemoSearchDbPersistence {
   OR COALESCE(c.author_name, '') LIKE ? ESCAPE '\\'
   OR COALESCE(c.source_url, '') LIKE ? ESCAPE '\\'
 )
-''',
-    ];
+''');
 
     Future<List<Map<String, dynamic>>> listByLiteralSearch() {
       final args = <Object?>[
-        if (normalizedState.isNotEmpty) normalizedState,
-        if (normalizedTag.isNotEmpty) '% $normalizedTag %',
-        if (startTimeSec != null) startTimeSec,
-        if (endTimeSecExclusive != null) endTimeSecExclusive,
+        ...literalSearchArgs,
         like,
         like,
         like,
@@ -108,14 +136,15 @@ $limitClause;
     }
 
     try {
-      await drainDirtyEntries(db, limit: dirtyDrainLimit);
-
       final dirtyRows = await _listDirtyRows(
         db,
         normalizedState: normalizedState,
         normalizedTag: normalizedTag,
         startTimeSec: startTimeSec,
         endTimeSecExclusive: endTimeSecExclusive,
+        filters: filters,
+        sortOrder: sortOrder,
+        limit: dirtyFallbackLimit,
       );
       final dirtyMatched = <Map<String, dynamic>>[];
       for (final row in dirtyRows) {
@@ -154,22 +183,28 @@ $limitClause;
       final indexedLike = MemoSearchMatcher.toSqlLikePattern(
         normalizedSearch.toLowerCase(),
       );
-      final cleanWhereClauses = <String>[
-        if (normalizedState.isNotEmpty) 'm.state = ?',
-        if (normalizedTag.isNotEmpty) "(' ' || m.tags || ' ') LIKE ?",
-        if (startTimeSec != null)
-          'COALESCE(m.display_time, m.create_time) >= ?',
-        if (endTimeSecExclusive != null)
-          'COALESCE(m.display_time, m.create_time) < ?',
-        "sd.document LIKE ? ESCAPE '\\'",
-      ];
+      final cleanWhereClauses = <String>[];
+      final cleanMemoWhereArgs = <Object?>[];
+      _appendBaseMemoWhere(
+        cleanWhereClauses,
+        cleanMemoWhereArgs,
+        alias: 'm',
+        normalizedState: normalizedState,
+        normalizedTag: normalizedTag,
+        startTimeSec: startTimeSec,
+        endTimeSecExclusive: endTimeSecExclusive,
+      );
+      _appendFilterWhere(
+        cleanWhereClauses,
+        cleanMemoWhereArgs,
+        alias: 'm',
+        filters: filters,
+      );
+      cleanWhereClauses.add("sd.document LIKE ? ESCAPE '\\'");
       final cleanWhereArgs = <Object?>[
         ...grams,
         grams.length,
-        if (normalizedState.isNotEmpty) normalizedState,
-        if (normalizedTag.isNotEmpty) '% $normalizedTag %',
-        if (startTimeSec != null) startTimeSec,
-        if (endTimeSecExclusive != null) endTimeSecExclusive,
+        ...cleanMemoWhereArgs,
         indexedLike,
       ];
       final cleanRows = await db.rawQuery('''
@@ -449,18 +484,19 @@ SELECT
     await _deleteDirtyEntry(executor, memoUid: memoUid);
   }
 
-  static Future<void> drainDirtyEntries(
+  static Future<int> drainDirtyEntries(
     Database db, {
     required int limit,
   }) async {
-    if (limit <= 0) return;
+    if (limit <= 0) return 0;
     final dirtyRows = await db.query(
       'memo_search_dirty',
       columns: const ['memo_uid', 'memo_row_id'],
       orderBy: 'updated_time ASC, memo_uid ASC',
       limit: limit,
     );
-    if (dirtyRows.isEmpty) return;
+    if (dirtyRows.isEmpty) return 0;
+    var processed = 0;
     await AppDatabaseWriteDao.runTransaction(db, (txn) async {
       for (final dirtyRow in dirtyRows) {
         final memoUid = (dirtyRow['memo_uid'] as String? ?? '').trim();
@@ -485,12 +521,14 @@ LIMIT 1;
         );
         if (memoRows.isEmpty) {
           await deleteIndexEntry(txn, rowId: rowIdHint, memoUid: memoUid);
+          processed += 1;
           continue;
         }
         final memoRow = memoRows.first;
         final rowId = _readInt(memoRow['id']) ?? rowIdHint;
         if (rowId <= 0) {
           await _deleteDirtyEntry(txn, memoUid: memoUid);
+          processed += 1;
           continue;
         }
         final document = MemoSearchDocumentBuilder.buildCanonical(
@@ -507,8 +545,19 @@ LIMIT 1;
           document: document,
         );
         await _deleteDirtyEntry(txn, memoUid: memoUid);
+        processed += 1;
       }
     });
+    return processed;
+  }
+
+  static Future<bool> hasDirtyEntries(DatabaseExecutor executor) async {
+    final rows = await executor.query(
+      'memo_search_dirty',
+      columns: const ['memo_uid'],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
   }
 
   static Future<void> _ensureIndexTables(Database db) async {
@@ -572,24 +621,29 @@ CREATE TABLE IF NOT EXISTS memo_search_dirty (
     required String normalizedTag,
     required int? startTimeSec,
     required int? endTimeSecExclusive,
+    required MemoSearchDbFilters filters,
+    required MemoSortOrder sortOrder,
+    required int limit,
   }) async {
-    final whereClauses = <String>[
-      if (normalizedState.isNotEmpty) 'm.state = ?',
-      if (normalizedTag.isNotEmpty) "(' ' || m.tags || ' ') LIKE ?",
-      if (startTimeSec != null) 'COALESCE(m.display_time, m.create_time) >= ?',
-      if (endTimeSecExclusive != null)
-        'COALESCE(m.display_time, m.create_time) < ?',
-    ];
-    final whereArgs = <Object?>[
-      if (normalizedState.isNotEmpty) normalizedState,
-      if (normalizedTag.isNotEmpty) '% $normalizedTag %',
-      if (startTimeSec != null) startTimeSec,
-      if (endTimeSecExclusive != null) endTimeSecExclusive,
-    ];
+    if (limit <= 0) return const <Map<String, dynamic>>[];
+    final whereClauses = <String>[];
+    final whereArgs = <Object?>[];
+    _appendBaseMemoWhere(
+      whereClauses,
+      whereArgs,
+      alias: 'm',
+      normalizedState: normalizedState,
+      normalizedTag: normalizedTag,
+      startTimeSec: startTimeSec,
+      endTimeSecExclusive: endTimeSecExclusive,
+    );
+    _appendFilterWhere(whereClauses, whereArgs, alias: 'm', filters: filters);
     final whereClause = whereClauses.isEmpty
         ? ''
         : 'WHERE ${whereClauses.join(' AND ')}';
-    return db.rawQuery('''
+    final orderBy = _orderBy(sortOrder, alias: 'm');
+    return db.rawQuery(
+      '''
 SELECT DISTINCT
   m.*,
   c.source_name,
@@ -599,8 +653,92 @@ FROM memo_search_dirty d
 JOIN memos m ON m.uid = d.memo_uid
 LEFT JOIN memo_clip_cards c ON c.memo_uid = m.uid
 $whereClause
-ORDER BY m.pinned DESC, COALESCE(m.display_time, m.create_time) DESC;
-''', whereArgs);
+ORDER BY $orderBy
+LIMIT ?;
+''',
+      <Object?>[...whereArgs, limit],
+    );
+  }
+
+  static void _appendBaseMemoWhere(
+    List<String> clauses,
+    List<Object?> args, {
+    String alias = '',
+    required String normalizedState,
+    required String normalizedTag,
+    required int? startTimeSec,
+    required int? endTimeSecExclusive,
+  }) {
+    final prefix = _columnPrefix(alias);
+    if (normalizedState.isNotEmpty) {
+      clauses.add('${prefix}state = ?');
+      args.add(normalizedState);
+    }
+    if (normalizedTag.isNotEmpty) {
+      clauses.add("(' ' || ${prefix}tags || ' ') LIKE ?");
+      args.add('% $normalizedTag %');
+    }
+    if (startTimeSec != null) {
+      clauses.add('COALESCE(${prefix}display_time, ${prefix}create_time) >= ?');
+      args.add(startTimeSec);
+    }
+    if (endTimeSecExclusive != null) {
+      clauses.add('COALESCE(${prefix}display_time, ${prefix}create_time) < ?');
+      args.add(endTimeSecExclusive);
+    }
+  }
+
+  static void _appendFilterWhere(
+    List<String> clauses,
+    List<Object?> args, {
+    String alias = '',
+    required MemoSearchDbFilters filters,
+  }) {
+    if (filters.isEmpty) return;
+    final prefix = _columnPrefix(alias);
+    final createdStart = filters.createdStartTimeSec;
+    if (createdStart != null) {
+      clauses.add('${prefix}create_time >= ?');
+      args.add(createdStart);
+    }
+    final createdEndExclusive = filters.createdEndTimeSecExclusive;
+    if (createdEndExclusive != null) {
+      clauses.add('${prefix}create_time < ?');
+      args.add(createdEndExclusive);
+    }
+
+    final hasLocation = filters.hasLocation;
+    if (hasLocation != null) {
+      clauses.add(
+        hasLocation
+            ? '(${prefix}location_lat IS NOT NULL AND ${prefix}location_lng IS NOT NULL)'
+            : '(${prefix}location_lat IS NULL OR ${prefix}location_lng IS NULL)',
+      );
+    }
+
+    final hasAttachments = filters.hasAttachments;
+    if (hasAttachments != null) {
+      final expression = "TRIM(COALESCE(${prefix}attachments_json, '[]'))";
+      clauses.add(
+        hasAttachments
+            ? "$expression NOT IN ('', '[]')"
+            : "$expression IN ('', '[]')",
+      );
+    }
+
+    final hasRelations = filters.hasRelations;
+    if (hasRelations != null) {
+      clauses.add(
+        hasRelations
+            ? '${prefix}relation_count > 0'
+            : '${prefix}relation_count <= 0',
+      );
+    }
+  }
+
+  static String _columnPrefix(String alias) {
+    final trimmed = alias.trim();
+    return trimmed.isEmpty ? '' : '$trimmed.';
   }
 
   static List<Map<String, dynamic>> _mergeRows({

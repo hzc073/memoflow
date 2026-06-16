@@ -30,19 +30,24 @@ import '../models/memo_sort_order.dart';
 import '../models/quick_clip_recovery_job.dart';
 
 export 'tag_db_persistence.dart' show ResolvedTag;
+export 'memo_search_db_persistence.dart' show MemoSearchDbFilters;
 
 class AppDatabase {
   AppDatabase({
     String dbName = 'memos_app.db',
     String? workspaceKey,
     DesktopDbWriteGateway? writeGateway,
+    bool enableMemoSearchBackgroundMaintenance = true,
   }) : _dbName = dbName,
        _workspaceKey = workspaceKey ?? dbName,
-       _writeGateway = writeGateway;
+       _writeGateway = writeGateway,
+       _enableMemoSearchBackgroundMaintenance =
+           enableMemoSearchBackgroundMaintenance;
 
   final String _dbName;
   final String _workspaceKey;
   final DesktopDbWriteGateway? _writeGateway;
+  final bool _enableMemoSearchBackgroundMaintenance;
   late final AppDatabaseWriteDao _writeDao = AppDatabaseWriteDao(db: this);
   static const Object _displayTimeUnspecified = Object();
   static const _dbVersion = 32;
@@ -62,6 +67,8 @@ class AppDatabase {
   Database? _db;
   Future<Database>? _openingDb;
   final _changes = StreamController<void>.broadcast();
+  Timer? _memoSearchMaintenanceTimer;
+  bool _memoSearchMaintenanceRunning = false;
   int _localWriteDepth = 0;
 
   Stream<void> get changes => _changes.stream;
@@ -275,6 +282,8 @@ class AppDatabase {
   }
 
   Future<void> close() async {
+    _memoSearchMaintenanceTimer?.cancel();
+    _memoSearchMaintenanceTimer = null;
     final existing = _db;
     if (existing != null) {
       await existing.close();
@@ -506,6 +515,12 @@ class AppDatabase {
       case 'rebuildMemoSearchIndex':
         await _runLocalWrite(rebuildMemoSearchIndex);
         return null;
+      case 'drainMemoSearchDirtyEntries':
+        return _runLocalWrite(
+          () => drainMemoSearchDirtyEntries(
+            limit: _optionalInt(payload, 'limit') ?? _memoSearchDrainBatchSize,
+          ),
+        );
       case 'deleteMemoDeleteTombstone':
         await _runLocalWrite(
           () => deleteMemoDeleteTombstone(_requiredString(payload, 'memoUid')),
@@ -1020,6 +1035,44 @@ class AppDatabase {
 
   void notifyDataChanged() {
     _notifyChanged();
+    _scheduleMemoSearchMaintenance();
+  }
+
+  void _scheduleMemoSearchMaintenance({
+    Duration delay = const Duration(milliseconds: 80),
+  }) {
+    if (!_enableMemoSearchBackgroundMaintenance ||
+        _changes.isClosed ||
+        _memoSearchMaintenanceTimer != null ||
+        _memoSearchMaintenanceRunning) {
+      return;
+    }
+    _memoSearchMaintenanceTimer = Timer(delay, () {
+      _memoSearchMaintenanceTimer = null;
+      unawaited(_runScheduledMemoSearchMaintenance());
+    });
+  }
+
+  Future<void> _runScheduledMemoSearchMaintenance() async {
+    if (_changes.isClosed || _memoSearchMaintenanceRunning) return;
+    _memoSearchMaintenanceRunning = true;
+    var hasMore = false;
+    try {
+      final processed = await drainMemoSearchDirtyEntries(
+        limit: _memoSearchDrainBatchSize,
+      );
+      if (processed > 0 && !_changes.isClosed) {
+        final sqlite = await db;
+        hasMore = await MemoSearchDbPersistence.hasDirtyEntries(sqlite);
+      }
+    } catch (_) {
+      hasMore = false;
+    } finally {
+      _memoSearchMaintenanceRunning = false;
+    }
+    if (hasMore && !_changes.isClosed) {
+      _scheduleMemoSearchMaintenance(delay: const Duration(milliseconds: 20));
+    }
   }
 
   static List<String> _normalizeTags(List<String> tags) {
@@ -1692,6 +1745,28 @@ class AppDatabase {
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     _notifyChanged();
+  }
+
+  Future<int> drainMemoSearchDirtyEntries({
+    int limit = _memoSearchDrainBatchSize,
+  }) async {
+    final normalizedLimit = limit > 0 ? limit : _memoSearchDrainBatchSize;
+    if (_writeProxyEnabled && _localWriteDepth == 0) {
+      return _dispatchWriteCommand<int>(
+        operation: 'drainMemoSearchDirtyEntries',
+        payload: <String, dynamic>{'limit': normalizedLimit},
+        decode: _decodeIntResult,
+      );
+    }
+    final db = await this.db;
+    final processed = await MemoSearchDbPersistence.drainDirtyEntries(
+      db,
+      limit: normalizedLimit,
+    );
+    if (processed > 0) {
+      _notifyChanged();
+    }
+    return processed;
   }
 
   Future<void> deleteMemoDeleteTombstone(String memoUid) async {
@@ -2812,6 +2887,7 @@ class AppDatabase {
     int? endTimeSecExclusive,
     MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
+    MemoSearchDbFilters searchFilters = MemoSearchDbFilters.empty,
   }) async {
     final db = await this.db;
     return MemoSearchDbPersistence.listRows(
@@ -2823,7 +2899,8 @@ class AppDatabase {
       endTimeSecExclusive: endTimeSecExclusive,
       sortOrder: sortOrder,
       limit: limit,
-      dirtyDrainLimit: _memoSearchDrainBatchSize,
+      dirtyFallbackLimit: MemoSearchDbPersistence.defaultDirtyFallbackLimit,
+      filters: searchFilters,
     );
   }
 
@@ -2875,6 +2952,7 @@ class AppDatabase {
     int? endTimeSecExclusive,
     MemoSortOrder sortOrder = MemoSortOrder.createDesc,
     int? limit = 100,
+    MemoSearchDbFilters searchFilters = MemoSearchDbFilters.empty,
   }) async* {
     yield await listMemos(
       searchQuery: searchQuery,
@@ -2884,6 +2962,7 @@ class AppDatabase {
       endTimeSecExclusive: endTimeSecExclusive,
       sortOrder: sortOrder,
       limit: limit,
+      searchFilters: searchFilters,
     );
     await for (final _ in changes) {
       yield await listMemos(
@@ -2894,6 +2973,7 @@ class AppDatabase {
         endTimeSecExclusive: endTimeSecExclusive,
         sortOrder: sortOrder,
         limit: limit,
+        searchFilters: searchFilters,
       );
     }
   }
