@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart' show Axis;
 
 import 'memos_list_viewport_coordinator.dart';
@@ -22,10 +23,7 @@ class MemoFloatingCollapseGeometry {
   final double toggleTopOffset;
   final double toggleBottomOffset;
 
-  bool isCloseTo(
-    MemoFloatingCollapseGeometry other, {
-    double tolerance = 0.5,
-  }) {
+  bool isCloseTo(MemoFloatingCollapseGeometry other, {double tolerance = 0.5}) {
     return (cardTopOffset - other.cardTopOffset).abs() <= tolerance &&
         (cardBottomOffset - other.cardBottomOffset).abs() <= tolerance &&
         (toggleTopOffset - other.toggleTopOffset).abs() <= tolerance &&
@@ -86,6 +84,9 @@ class MemosListFloatingCollapseController
       LinkedHashMap<String, MemoFloatingCollapseGeometry>();
 
   MemosListViewportMetrics? _lastMetrics;
+  MemosListFloatingCollapseState? _pendingValue;
+  bool _pendingValueFlushScheduled = false;
+  bool _disposed = false;
 
   void updateViewportMetrics(MemosListViewportMetrics metrics) {
     _lastMetrics = metrics;
@@ -104,11 +105,53 @@ class MemosListFloatingCollapseController
       MemosListViewportScrollEventKind.end => false,
     };
 
-    if (nextScrolling == value.scrolling) return;
-    value = MemosListFloatingCollapseState(
-      memoUid: value.memoUid,
-      scrolling: nextScrolling,
+    final current = _effectiveValue;
+    if (nextScrolling == current.scrolling) return;
+    _setValue(
+      MemosListFloatingCollapseState(
+        memoUid: current.memoUid,
+        scrolling: nextScrolling,
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _pendingValue = null;
+    super.dispose();
+  }
+
+  MemosListFloatingCollapseState get _effectiveValue => _pendingValue ?? value;
+
+  void _setValue(MemosListFloatingCollapseState next) {
+    if (_disposed) return;
+    final current = _effectiveValue;
+    if (next == current) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      _pendingValue = next;
+      _schedulePendingValueFlush();
+      return;
+    }
+    _pendingValue = null;
+    value = next;
+  }
+
+  void _schedulePendingValueFlush() {
+    if (_pendingValueFlushScheduled) return;
+    _pendingValueFlushScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _pendingValueFlushScheduled = false;
+      if (_disposed) {
+        _pendingValue = null;
+        return;
+      }
+      final pending = _pendingValue;
+      _pendingValue = null;
+      if (pending == null || pending == value) return;
+      value = pending;
+    });
   }
 
   void upsertGeometry(String memoUid, MemoFloatingCollapseGeometry geometry) {
@@ -159,7 +202,8 @@ class MemosListFloatingCollapseController
       )) {
         continue;
       }
-      if (nextCandidate == null || visibleHeight > nextCandidate.visibleHeight) {
+      if (nextCandidate == null ||
+          visibleHeight > nextCandidate.visibleHeight) {
         nextCandidate = _FloatingCollapseCandidate(
           memoUid: entry.key,
           visibleHeight: visibleHeight,
@@ -171,10 +215,13 @@ class MemosListFloatingCollapseController
   }
 
   void _updateMemoUid(String? memoUid) {
-    if (memoUid == value.memoUid) return;
-    value = MemosListFloatingCollapseState(
-      memoUid: memoUid,
-      scrolling: value.scrolling,
+    final current = _effectiveValue;
+    if (memoUid == current.memoUid) return;
+    _setValue(
+      MemosListFloatingCollapseState(
+        memoUid: memoUid,
+        scrolling: current.scrolling,
+      ),
     );
   }
 }

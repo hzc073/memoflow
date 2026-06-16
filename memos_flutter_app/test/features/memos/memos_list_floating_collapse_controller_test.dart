@@ -1,6 +1,12 @@
-import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/rendering.dart' show RenderProxyBox, ScrollDirection;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/widgets.dart' show Axis;
+import 'package:flutter/widgets.dart'
+    show
+        Axis,
+        BuildContext,
+        SingleChildRenderObjectWidget,
+        SizedBox,
+        ValueListenableBuilder;
 import 'package:memos_flutter_app/features/memos/memos_list_floating_collapse_controller.dart';
 import 'package:memos_flutter_app/features/memos/memos_list_viewport_coordinator.dart';
 
@@ -199,6 +205,78 @@ void main() {
     );
     expect(controller.value.scrolling, isFalse);
   });
+
+  testWidgets('handleScrollEvent defers notifications during layout', (
+    tester,
+  ) async {
+    final controller = MemosListFloatingCollapseController();
+    addTearDown(controller.dispose);
+    final metrics = _metrics(pixels: 120, maxScrollExtent: 1000, viewport: 300);
+    var layoutActive = false;
+    var listenerCalledDuringLayout = false;
+    var listenerCalls = 0;
+    controller.addListener(() {
+      listenerCalls += 1;
+      listenerCalledDuringLayout = listenerCalledDuringLayout || layoutActive;
+    });
+
+    await tester.pumpWidget(
+      ValueListenableBuilder<MemosListFloatingCollapseState>(
+        valueListenable: controller,
+        builder: (context, state, _) {
+          return _LayoutCallback(
+            onLayout: () {
+              layoutActive = true;
+              controller.handleScrollEvent(
+                _event(
+                  MemosListViewportScrollEventKind.start,
+                  metrics: metrics,
+                ),
+              );
+              layoutActive = false;
+            },
+            child: SizedBox(width: state.scrolling ? 2 : 1, height: 1),
+          );
+        },
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(listenerCalledDuringLayout, isFalse);
+    expect(listenerCalls, 1);
+    expect(controller.value.scrolling, isTrue);
+
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('layout-phase scroll events coalesce to the latest state', (
+    tester,
+  ) async {
+    final controller = MemosListFloatingCollapseController();
+    addTearDown(controller.dispose);
+    final metrics = _metrics(pixels: 120, maxScrollExtent: 1000, viewport: 300);
+    var listenerCalls = 0;
+    controller.addListener(() => listenerCalls += 1);
+
+    await tester.pumpWidget(
+      _LayoutCallback(
+        onLayout: () {
+          controller.handleScrollEvent(
+            _event(MemosListViewportScrollEventKind.start, metrics: metrics),
+          );
+          controller.handleScrollEvent(
+            _event(MemosListViewportScrollEventKind.end, metrics: metrics),
+          );
+        },
+        child: const SizedBox(width: 1, height: 1),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(listenerCalls, 0);
+    expect(controller.value.scrolling, isFalse);
+  });
 }
 
 MemosListViewportMetrics _metrics({
@@ -229,4 +307,35 @@ MemosListViewportScrollEvent _event(
     overscroll: overscroll,
     userDirection: userDirection,
   );
+}
+
+class _LayoutCallback extends SingleChildRenderObjectWidget {
+  const _LayoutCallback({required this.onLayout, super.child});
+
+  final void Function() onLayout;
+
+  @override
+  _LayoutCallbackRenderBox createRenderObject(BuildContext context) {
+    return _LayoutCallbackRenderBox(onLayout);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _LayoutCallbackRenderBox renderObject,
+  ) {
+    renderObject.onLayout = onLayout;
+  }
+}
+
+class _LayoutCallbackRenderBox extends RenderProxyBox {
+  _LayoutCallbackRenderBox(this.onLayout);
+
+  void Function() onLayout;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    onLayout();
+  }
 }
