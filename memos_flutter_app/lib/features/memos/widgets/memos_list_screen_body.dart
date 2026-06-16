@@ -117,6 +117,7 @@ class MemosListScreenBodyData {
     required this.memosLoading,
     required this.memosError,
     required this.visibleMemos,
+    required this.canSubmitSearch,
     required this.showBlankSearchWaiting,
     required this.showLoadMoreHint,
     required this.loadMoreHintDisplayText,
@@ -143,6 +144,7 @@ class MemosListScreenBodyData {
   final bool memosLoading;
   final Object? memosError;
   final List<LocalMemo> visibleMemos;
+  final bool canSubmitSearch;
   final bool showBlankSearchWaiting;
   final bool showLoadMoreHint;
   final String loadMoreHintDisplayText;
@@ -480,6 +482,7 @@ class MemosListScreenBody extends StatelessWidget {
     required this.showBackToTopListenable,
     required this.floatingCollapseListenable,
     required this.onCloseSearch,
+    required this.onSubmitSearch,
     required this.onOpenSearch,
     required this.onToggleDesktopHeaderSearch,
     required this.onToggleQuickSearchKind,
@@ -530,6 +533,7 @@ class MemosListScreenBody extends StatelessWidget {
   final ValueListenable<MemosListFloatingCollapseState>
   floatingCollapseListenable;
   final VoidCallback onCloseSearch;
+  final VoidCallback onSubmitSearch;
   final VoidCallback onOpenSearch;
   final VoidCallback onToggleDesktopHeaderSearch;
   final ValueChanged<QuickSearchKind> onToggleQuickSearchKind;
@@ -568,8 +572,9 @@ class MemosListScreenBody extends StatelessWidget {
       AppMotion.medium,
     );
     final query = data.viewState.query;
-    final statusChild =
-        data.showBlankSearchWaiting || data.viewState.query.showSearchLanding
+    final statusChild = data.showBlankSearchWaiting
+        ? _buildKeywordSearchLoadingStatus(context)
+        : query.showSearchLanding
         ? null
         : data.memosError != null
         ? _buildErrorStatus(context, data.memosError!, query.useAiSearch)
@@ -578,8 +583,9 @@ class MemosListScreenBody extends StatelessWidget {
         : (data.visibleMemos.isEmpty)
         ? _buildEmptyStatus(context, data)
         : null;
-    final statusKey =
-        data.showBlankSearchWaiting || data.viewState.query.showSearchLanding
+    final statusKey = data.showBlankSearchWaiting
+        ? 'search-loading'
+        : query.showSearchLanding
         ? null
         : data.memosError != null
         ? (query.useAiSearch ? 'ai-error' : 'error')
@@ -711,16 +717,21 @@ class MemosListScreenBody extends StatelessWidget {
                                             ),
                                           if (data.searching)
                                             TextButton(
-                                              onPressed: onCloseSearch,
+                                              onPressed: data.canSubmitSearch
+                                                  ? onSubmitSearch
+                                                  : null,
                                               child: Text(
                                                 context
                                                     .t
                                                     .strings
                                                     .legacy
-                                                    .msg_cancel_2,
+                                                    .msg_search,
                                                 style: TextStyle(
-                                                  color:
-                                                      MemoFlowPalette.primary,
+                                                  color: data.canSubmitSearch
+                                                      ? MemoFlowPalette.primary
+                                                      : Theme.of(
+                                                          context,
+                                                        ).disabledColor,
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
@@ -863,12 +874,7 @@ class MemosListScreenBody extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                              if (data.showBlankSearchWaiting)
-                                const SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: SizedBox.shrink(),
-                                )
-                              else if (statusChild != null)
+                              if (statusChild != null)
                                 SliverFillRemaining(
                                   hasScrollBody: false,
                                   child: AnimatedSwitcher(
@@ -1106,6 +1112,8 @@ class MemosListScreenBody extends StatelessWidget {
                   ? const <HomeQuickActionChipData>[]
                   : quickActions,
               onOpenSearch: onOpenSearch,
+              canSubmitSearch: data.canSubmitSearch,
+              onSubmitSearch: onSubmitSearch,
               onCloseSearch: onCloseSearch,
               searchTooltip: context.t.strings.legacy.msg_search,
               cancelTooltip: context.t.strings.legacy.msg_cancel_2,
@@ -1170,6 +1178,8 @@ class MemosListScreenBody extends StatelessWidget {
                     ? const SizedBox.shrink()
                     : searchFieldChild,
                 sortButton: desktopPrimaryContentOverridden ? null : sortButton,
+                canSubmitSearch: data.canSubmitSearch,
+                onSubmitSearch: onSubmitSearch,
                 onToggleSearch: onToggleDesktopHeaderSearch,
                 quickActions: desktopPrimaryContentOverridden
                     ? const <HomeQuickActionChipData>[]
@@ -1235,6 +1245,8 @@ class MemosListScreenBody extends StatelessWidget {
                     ? const <HomeQuickActionChipData>[]
                     : quickActions,
                 onOpenSearch: onOpenSearch,
+                canSubmitSearch: data.canSubmitSearch,
+                onSubmitSearch: onSubmitSearch,
                 onCloseSearch: onCloseSearch,
                 searchTooltip: context.t.strings.legacy.msg_search,
                 cancelTooltip: context.t.strings.legacy.msg_cancel_2,
@@ -1277,6 +1289,17 @@ class MemosListScreenBody extends StatelessWidget {
       icon: Icons.auto_awesome_outlined,
       title: legacy.msg_ai_search_loading_title,
       message: legacy.msg_ai_search_loading_message,
+      action: const CircularProgressIndicator(),
+    );
+  }
+
+  Widget _buildKeywordSearchLoadingStatus(BuildContext context) {
+    final legacy = context.t.strings.legacy;
+    return _buildStatusCard(
+      context,
+      icon: Icons.search,
+      title: legacy.msg_bridge_action_searching,
+      message: legacy.msg_search_title_content_tags,
       action: const CircularProgressIndicator(),
     );
   }

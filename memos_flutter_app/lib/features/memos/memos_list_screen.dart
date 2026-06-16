@@ -339,7 +339,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   MemosListScreenLayoutState debugBuildCurrentLayoutState() {
     final mediaQuery = MediaQuery.of(context);
     final queryState = buildMemosListScreenQueryState(
-      searchQuery: _searchController.text,
+      searchQuery: _submittedSearchQuery,
+      draftSearchQuery: _draftSearchQuery,
       filterDay: _effectiveDayFilter,
       state: widget.state,
       pageSize: _pageSize,
@@ -373,6 +374,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _headerController.searchController;
   FocusNode get _searchFocusNode => _headerController.searchFocusNode;
   bool get _searching => _headerController.searching;
+  String get _submittedSearchQuery => _headerController.submittedSearchQuery;
+  String get _draftSearchQuery => _headerController.draftSearchQuery;
   String? get _selectedShortcutId => _headerController.selectedShortcutId;
   QuickSearchKind? get _selectedQuickSearchKind =>
       _headerController.selectedQuickSearchKind;
@@ -2760,8 +2763,15 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     );
   }
 
+  void _submitKeywordSearch() {
+    _headerController.submitSearch(
+      _searchController.text,
+      addHistory: ref.read(searchHistoryProvider.notifier).add,
+    );
+  }
+
   void _startAiSearch() {
-    final query = _searchController.text.trim();
+    final query = _submittedSearchQuery.trim();
     if (query.isEmpty || _aiSearchActive) return;
     unawaited(_startAiSearchWithPreflight(query));
   }
@@ -2787,10 +2797,10 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       _activateAiSearch(query);
       return;
     }
-    if (!mounted || _searchController.text.trim() != query) return;
+    if (!mounted || _submittedSearchQuery.trim() != query) return;
     if (preflight.needsIndexing) {
       final confirmed = await _confirmAiSearchIndexing(preflight);
-      if (!confirmed || !mounted || _searchController.text.trim() != query) {
+      if (!confirmed || !mounted || _submittedSearchQuery.trim() != query) {
         return;
       }
     }
@@ -2854,7 +2864,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   void _activateAiSearch(String query) {
-    if (!mounted || _searchController.text.trim() != query) return;
+    if (!mounted || _submittedSearchQuery.trim() != query) return;
     ref.read(searchHistoryProvider.notifier).add(query);
     _headerController.startAiSearch();
   }
@@ -3485,7 +3495,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         searching: _searching,
         windowsHeaderSearchExpanded: _desktopHeaderSearchExpanded,
         selectedQuickSearchKind: _selectedQuickSearchKind,
-        searchQuery: _searchController.text,
+        searchQuery: _submittedSearchQuery,
         playingMemoUid: _audioPlaybackCoordinator.playingMemoUid,
         audioPlaying: _audioPlaybackCoordinator.audioPlaying,
         audioLoading: _audioPlaybackCoordinator.audioLoading,
@@ -3531,7 +3541,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final userSettings = ref.watch(userGeneralSettingProvider).valueOrNull;
     _inlineComposeDefaultVisibility = _inlineComposeCoordinator
         .normalizeVisibility(userSettings?.memoVisibility ?? 'PRIVATE');
-    final searchQuery = _searchController.text;
+    final draftSearchQuery = _draftSearchQuery;
+    final submittedSearchQuery = _submittedSearchQuery;
     final filterDay = _effectiveDayFilter;
     final shortcutsAsync = ref.watch(shortcutsProvider);
     final shortcuts = shortcutsAsync.valueOrNull ?? const <Shortcut>[];
@@ -3540,7 +3551,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     final screenWidth = mediaQuery.size.width;
 
     final queryState = buildMemosListScreenQueryState(
-      searchQuery: searchQuery,
+      searchQuery: submittedSearchQuery,
+      draftSearchQuery: draftSearchQuery,
       filterDay: filterDay,
       state: widget.state,
       pageSize: _pageSize,
@@ -3698,7 +3710,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         !useQuickSearch &&
         !useAiSearch &&
         widget.state == 'NORMAL' &&
-        searchQuery.trim().isEmpty &&
+        submittedSearchQuery.trim().isEmpty &&
+        draftSearchQuery.trim().isEmpty &&
         (resolvedTag == null || resolvedTag.trim().isEmpty) &&
         filterDay == null &&
         (memosValue == null || memosValue.isEmpty);
@@ -3717,7 +3730,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           ? _headerController.applyHomeSort(memosValue)
           : memosValue;
       final listSignature =
-          '${widget.state}|${resolvedTag ?? ''}|${searchQuery.trim()}|${shortcutFilter.trim()}|'
+          '${widget.state}|${resolvedTag ?? ''}|${submittedSearchQuery.trim()}|${shortcutFilter.trim()}|'
           '${useShortcutFilter ? 1 : 0}|${selectedQuickSearchKind?.name ?? ''}|'
           '${useQuickSearch ? 1 : 0}|${useAiSearch ? 1 : 0}|${queryState.startTimeSec ?? ''}|${queryState.endTimeSecExclusive ?? ''}|'
           '${queryState.enableHomeSort ? _sortOption.name : 'default'}|'
@@ -3883,7 +3896,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       memosLoading: memosLoading,
       memosError: memosError,
       visibleMemos: visibleMemos,
-      searchQuery: searchQuery,
+      searchQuery: submittedSearchQuery,
       resolvedTag: resolvedTag,
       useShortcutFilter: useShortcutFilter,
       useQuickSearch: useQuickSearch,
@@ -4033,10 +4046,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           !viewState.layout.desktopPresentation.usesDesktopHeaderSearch,
       hasAdvancedFilters: _hasAdvancedSearchFilters,
       onOpenAdvancedFilters: () => unawaited(_openAdvancedSearchSheet()),
-      onSubmitted: (value) => _headerController.submitSearch(
-        value,
-        addHistory: ref.read(searchHistoryProvider.notifier).add,
-      ),
+      onSubmitted: (_) => _submitKeywordSearch(),
       hintText: _desktopHeaderSearchExpanded
           ? context.t.strings.legacy.msg_quick_search
           : null,
@@ -4532,6 +4542,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           memosLoading: memosLoading,
           memosError: memosError,
           visibleMemos: visibleMemos,
+          canSubmitSearch: _headerController.canSubmitSearch,
           showBlankSearchWaiting: showBlankSearchWaiting,
           showLoadMoreHint: showLoadMoreHint,
           loadMoreHintDisplayText: loadMoreHintDisplayText,
@@ -4577,6 +4588,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         showBackToTopListenable: _viewportCoordinator.showBackToTopListenable,
         floatingCollapseListenable: _floatingCollapseController,
         onCloseSearch: _closeSearch,
+        onSubmitSearch: _submitKeywordSearch,
         onOpenSearch: _openSearch,
         onToggleDesktopHeaderSearch: _toggleDesktopHeaderSearch,
         onToggleQuickSearchKind: _headerController.toggleQuickSearchKind,
@@ -4619,7 +4631,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
             searching: _searching,
             windowsHeaderSearchExpanded: _desktopHeaderSearchExpanded,
             selectedQuickSearchKind: _selectedQuickSearchKind,
-            searchQuery: _searchController.text,
+            searchQuery: submittedSearchQuery,
             playingMemoUid: _audioPlaybackCoordinator.playingMemoUid,
             audioPlaying: _audioPlaybackCoordinator.audioPlaying,
             audioLoading: _audioPlaybackCoordinator.audioLoading,

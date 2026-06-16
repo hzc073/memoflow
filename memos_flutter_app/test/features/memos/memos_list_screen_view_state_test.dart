@@ -95,6 +95,31 @@ void main() {
     expect(state.baseQuery.pageSize, 40);
   });
 
+  test('pending draft does not replace submitted provider query', () {
+    final state = buildMemosListScreenQueryState(
+      searchQuery: 'alpha',
+      draftSearchQuery: 'alpha beta',
+      filterDay: null,
+      state: 'NORMAL',
+      pageSize: 40,
+      shortcuts: const <Shortcut>[],
+      selectedShortcutId: null,
+      selectedQuickSearchKind: null,
+      resolvedTag: null,
+      advancedFilters: AdvancedSearchFilters.empty,
+      searching: true,
+      showDrawer: true,
+    );
+
+    expect(state.searchQuery, 'alpha');
+    expect(state.draftSearchQuery, 'alpha beta');
+    expect(state.hasPendingSearchDraft, isTrue);
+    expect(state.sourceKind, MemosListMemoSourceKind.remoteSearch);
+    expect(state.baseQuery.searchQuery, 'alpha');
+    expect(state.canOfferAiSearch, isTrue);
+    expect(state.showSearchLanding, isFalse);
+  });
+
   test('AI search source is only used after explicit activation', () {
     final keywordState = buildMemosListScreenQueryState(
       searchQuery: 'alpha',
@@ -226,8 +251,23 @@ void main() {
       searching: true,
       showDrawer: true,
     );
+    final landingWithDraftState = buildMemosListScreenQueryState(
+      searchQuery: '',
+      draftSearchQuery: 'alpha',
+      filterDay: null,
+      state: 'NORMAL',
+      pageSize: 40,
+      shortcuts: const <Shortcut>[],
+      selectedShortcutId: null,
+      selectedQuickSearchKind: null,
+      resolvedTag: null,
+      advancedFilters: AdvancedSearchFilters.empty,
+      searching: true,
+      showDrawer: true,
+    );
 
     expect(landingState.showSearchLanding, isTrue);
+    expect(landingWithDraftState.showSearchLanding, isTrue);
     expect(noLandingState.showSearchLanding, isFalse);
   });
 

@@ -23,6 +23,8 @@ enum MemosListMemoSourceKind {
 class MemosListScreenQueryState {
   const MemosListScreenQueryState({
     required this.searchQuery,
+    required this.draftSearchQuery,
+    required this.hasPendingSearchDraft,
     required this.resolvedTag,
     required this.advancedFilters,
     required this.selectedShortcut,
@@ -45,6 +47,8 @@ class MemosListScreenQueryState {
   });
 
   final String searchQuery;
+  final String draftSearchQuery;
+  final bool hasPendingSearchDraft;
   final String? resolvedTag;
   final AdvancedSearchFilters advancedFilters;
   final Shortcut? selectedShortcut;
@@ -150,6 +154,7 @@ class MemosListScreenViewState {
 
 MemosListScreenQueryState buildMemosListScreenQueryState({
   required String searchQuery,
+  String? draftSearchQuery,
   required DateTime? filterDay,
   required String state,
   required int pageSize,
@@ -170,6 +175,12 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
   final useShortcutFilter = shortcutFilter.trim().isNotEmpty;
   final useQuickSearch = !useShortcutFilter && selectedQuickSearchKind != null;
   final trimmedSearchQuery = MemoSearchMatcher.normalizeQuery(searchQuery);
+  final trimmedDraftSearchQuery = MemoSearchMatcher.normalizeQuery(
+    draftSearchQuery ?? searchQuery,
+  );
+  final hasPendingSearchDraft =
+      trimmedDraftSearchQuery != trimmedSearchQuery &&
+      (trimmedDraftSearchQuery.isNotEmpty || trimmedSearchQuery.isNotEmpty);
   final useAiSearch =
       !useShortcutFilter &&
       !useQuickSearch &&
@@ -254,6 +265,8 @@ MemosListScreenQueryState buildMemosListScreenQueryState({
 
   return MemosListScreenQueryState(
     searchQuery: searchQuery,
+    draftSearchQuery: draftSearchQuery ?? searchQuery,
+    hasPendingSearchDraft: hasPendingSearchDraft,
     resolvedTag: resolvedTag,
     advancedFilters: normalizedFilters,
     selectedShortcut: selectedShortcut,

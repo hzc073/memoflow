@@ -199,6 +199,10 @@ void main() {
 
       expect(find.byType(AnimatedSwitcher), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.text(t.strings.legacy.msg_bridge_action_searching),
+        findsNothing,
+      );
 
       await tester.pumpWidget(
         TranslationProvider(
@@ -218,7 +222,41 @@ void main() {
     },
   );
 
-  testWidgets('blank search waiting hides stale results and status UI', (
+  testWidgets(
+    'initial keyword search shows loading status without stale results',
+    (tester) async {
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MaterialApp(
+            locale: AppLocale.en.flutterLocale,
+            supportedLocales: AppLocaleUtils.supportedLocales,
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            home: _buildBodyScreen(
+              data: _buildBodyData(
+                memosLoading: true,
+                showBlankSearchWaiting: true,
+                visibleMemos: <LocalMemo>[_buildMemo('memo-stale')],
+                query: _buildQueryState(searchQuery: 'needle'),
+              ),
+              animatedItemBuilder: (_, _, _) => const Text('stale memo card'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('stale memo card'), findsNothing);
+      expect(find.byType(SliverAnimatedList), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.text(t.strings.legacy.msg_bridge_action_searching),
+        findsOneWidget,
+      );
+      expect(find.text('No content yet'), findsNothing);
+    },
+  );
+
+  testWidgets('pending draft keeps submitted results unchanged', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -229,10 +267,14 @@ void main() {
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           home: _buildBodyScreen(
             data: _buildBodyData(
-              memosLoading: true,
-              showBlankSearchWaiting: true,
+              searching: true,
+              canSubmitSearch: true,
               visibleMemos: <LocalMemo>[_buildMemo('memo-stale')],
-              query: _buildQueryState(searchQuery: 'needle'),
+              query: _buildQueryState(
+                searchQuery: 'old query',
+                draftSearchQuery: 'new query',
+                hasPendingSearchDraft: true,
+              ),
             ),
             animatedItemBuilder: (_, _, _) => const Text('stale memo card'),
           ),
@@ -241,10 +283,41 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('stale memo card'), findsNothing);
-    expect(find.byType(SliverAnimatedList), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('No content yet'), findsNothing);
+    expect(find.text('stale memo card'), findsOneWidget);
+    expect(find.byType(SliverAnimatedList), findsOneWidget);
+    expect(
+      find.text(t.strings.legacy.msg_search_title_content_tags),
+      findsNothing,
+    );
+  });
+
+  testWidgets('mobile search action submits draft explicitly', (tester) async {
+    var submitCount = 0;
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: _buildBodyScreen(
+            data: _buildBodyData(
+              searching: true,
+              enableSearch: true,
+              canSubmitSearch: true,
+              query: _buildQueryState(),
+            ),
+            onSubmitSearch: () => submitCount++,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.widgetWithText(TextButton, t.strings.legacy.msg_search),
+    );
+    expect(submitCount, 1);
   });
 
   testWidgets('same-query loading can preserve visible search results', (
@@ -988,6 +1061,7 @@ Widget _buildBodyScreen({
   MemosListAnimatedItemBuilder? animatedItemBuilder,
   ValueListenable<bool>? showBackToTopListenable,
   ValueListenable<MemosListFloatingCollapseState>? floatingCollapseListenable,
+  VoidCallback? onSubmitSearch,
   VoidCallback? onStartAiSearch,
   VoidCallback? onStopAiSearch,
   Widget? desktopPreviewPane,
@@ -1034,6 +1108,7 @@ Widget _buildBodyScreen({
     showBackToTopListenable: resolvedShowBackToTopListenable,
     floatingCollapseListenable: resolvedFloatingCollapseListenable,
     onCloseSearch: () {},
+    onSubmitSearch: onSubmitSearch ?? () {},
     onOpenSearch: () {},
     onStartAiSearch: onStartAiSearch ?? () {},
     onStopAiSearch: onStopAiSearch ?? () {},
@@ -1110,6 +1185,8 @@ MemosListScreenBodyData _buildBodyData({
   Object? memosError,
   List<LocalMemo> visibleMemos = const <LocalMemo>[],
   bool searching = false,
+  bool enableSearch = false,
+  bool canSubmitSearch = false,
   bool showBlankSearchWaiting = false,
   MemosListScreenQueryState? query,
   MemosListScreenLayoutState? layout,
@@ -1134,7 +1211,7 @@ MemosListScreenBodyData _buildBodyData({
     ),
     searching: searching,
     showFilterTagChip: false,
-    enableSearch: false,
+    enableSearch: enableSearch,
     enableTitleMenu: false,
     screenshotModeEnabled: false,
     desktopHeaderSearchExpanded: false,
@@ -1145,6 +1222,7 @@ MemosListScreenBodyData _buildBodyData({
     memosLoading: memosLoading,
     memosError: memosError,
     visibleMemos: visibleMemos,
+    canSubmitSearch: canSubmitSearch,
     showBlankSearchWaiting: showBlankSearchWaiting,
     showLoadMoreHint: false,
     loadMoreHintDisplayText: '',
@@ -1235,6 +1313,8 @@ MemosListDesktopPresentation _buildDesktopPresentation({
 
 MemosListScreenQueryState _buildQueryState({
   String searchQuery = '',
+  String? draftSearchQuery,
+  bool hasPendingSearchDraft = false,
   bool useAiSearch = false,
 }) {
   final baseQuery = (
@@ -1258,6 +1338,8 @@ MemosListScreenQueryState _buildQueryState({
   );
   return MemosListScreenQueryState(
     searchQuery: searchQuery,
+    draftSearchQuery: draftSearchQuery ?? searchQuery,
+    hasPendingSearchDraft: hasPendingSearchDraft,
     resolvedTag: null,
     advancedFilters: AdvancedSearchFilters.empty,
     selectedShortcut: null,

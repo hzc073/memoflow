@@ -34,7 +34,7 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    controller.searchController.text = 'what to eat';
+    controller.submitSearch('what to eat', addHistory: (_) {});
     controller.startAiSearch();
 
     expect(controller.aiSearchActive, isTrue);
@@ -48,6 +48,9 @@ void main() {
 
     controller.searchController.text = 'what to cook';
     expect(controller.aiSearchActive, isFalse);
+
+    controller.startAiSearch();
+    expect(controller.aiSearchActive, isTrue);
   });
 
   test('closeDesktopHeaderSearch clears query quick search and filters', () {
@@ -59,12 +62,13 @@ void main() {
       initialDesktopHeaderSearchExpanded: true,
     );
     addTearDown(controller.dispose);
-    controller.searchController.text = 'memo';
+    controller.submitSearch('memo', addHistory: (_) {});
 
     controller.closeDesktopHeaderSearch();
 
     expect(controller.desktopHeaderSearchExpanded, isFalse);
     expect(controller.searchController.text, isEmpty);
+    expect(controller.submittedSearchQuery, isEmpty);
     expect(controller.selectedQuickSearchKind, isNull);
     expect(controller.advancedSearchFilters, AdvancedSearchFilters.empty);
   });
@@ -102,11 +106,66 @@ void main() {
     );
 
     expect(controller.searchController.text, 'alpha beta');
+    expect(controller.submittedSearchQuery, 'alpha beta');
     expect(
       controller.searchController.selection.baseOffset,
       'alpha beta'.length,
     );
     expect(addedQuery, 'alpha beta');
+  });
+
+  test('typing updates draft without changing submitted query', () {
+    final controller = MemosListHeaderController();
+    addTearDown(controller.dispose);
+    final history = <String>[];
+
+    controller.submitSearch('  alpha  ', addHistory: history.add);
+    controller.searchController.text = 'alpha beta';
+
+    expect(controller.draftSearchQuery, 'alpha beta');
+    expect(controller.submittedSearchQuery, 'alpha');
+    expect(controller.hasPendingSearchDraft, isTrue);
+    expect(history, <String>['alpha']);
+  });
+
+  test('clearing draft resets submitted query to unsearched state', () {
+    final controller = MemosListHeaderController();
+    addTearDown(controller.dispose);
+
+    controller.submitSearch('alpha', addHistory: (_) {});
+    controller.startAiSearch();
+    expect(controller.submittedSearchQuery, 'alpha');
+    expect(controller.aiSearchActive, isTrue);
+
+    controller.searchController.clear();
+
+    expect(controller.draftSearchQuery, isEmpty);
+    expect(controller.submittedSearchQuery, isEmpty);
+    expect(controller.aiSearchActive, isFalse);
+    expect(controller.hasPendingSearchDraft, isFalse);
+  });
+
+  test('closeSearch clears draft submitted query modes and filters', () {
+    final controller = MemosListHeaderController(
+      initialAdvancedSearchFilters: const AdvancedSearchFilters(
+        attachmentNameContains: 'voice',
+      ),
+      initialQuickSearchKind: QuickSearchKind.attachments,
+      initialSearching: true,
+    );
+    addTearDown(controller.dispose);
+
+    controller.submitSearch('memo', addHistory: (_) {});
+    controller.startAiSearch();
+
+    controller.closeSearch(clearGlobalFocus: () {});
+
+    expect(controller.searching, isFalse);
+    expect(controller.draftSearchQuery, isEmpty);
+    expect(controller.submittedSearchQuery, isEmpty);
+    expect(controller.selectedQuickSearchKind, isNull);
+    expect(controller.aiSearchActive, isFalse);
+    expect(controller.advancedSearchFilters, AdvancedSearchFilters.empty);
   });
 
   test('applyHomeSort keeps pinned memos first and sorts by option', () {

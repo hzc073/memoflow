@@ -54,12 +54,15 @@ class MemosListHeaderController extends ChangeNotifier {
         AdvancedSearchFilters.empty,
     MemosListSortOption initialSortOption = MemosListSortOption.createDesc,
     bool initialSearching = false,
+    String? initialSubmittedSearchQuery,
     bool initialDesktopHeaderSearchExpanded = false,
   }) : _searchController = searchController ?? TextEditingController(),
        _ownsSearchController = searchController == null,
        _searchFocusNode = searchFocusNode ?? FocusNode(),
        _ownsSearchFocusNode = searchFocusNode == null,
        _searching = initialSearching,
+       _submittedSearchQuery =
+           (initialSubmittedSearchQuery ?? searchController?.text ?? '').trim(),
        _selectedShortcutId = initialShortcutId,
        _selectedQuickSearchKind = initialQuickSearchKind,
        _aiSearchActive = initialAiSearchActive,
@@ -76,6 +79,7 @@ class MemosListHeaderController extends ChangeNotifier {
   final bool _ownsSearchFocusNode;
 
   bool _searching;
+  String _submittedSearchQuery;
   String? _selectedShortcutId;
   QuickSearchKind? _selectedQuickSearchKind;
   bool _aiSearchActive;
@@ -87,6 +91,17 @@ class MemosListHeaderController extends ChangeNotifier {
   TextEditingController get searchController => _searchController;
   FocusNode get searchFocusNode => _searchFocusNode;
   bool get searching => _searching;
+  String get draftSearchQuery => _searchController.text;
+  String get submittedSearchQuery => _submittedSearchQuery;
+  String get normalizedDraftSearchQuery => _searchController.text.trim();
+  String get normalizedSubmittedSearchQuery => _submittedSearchQuery.trim();
+  bool get hasPendingSearchDraft {
+    return normalizedDraftSearchQuery != normalizedSubmittedSearchQuery &&
+        (normalizedDraftSearchQuery.isNotEmpty ||
+            normalizedSubmittedSearchQuery.isNotEmpty);
+  }
+
+  bool get canSubmitSearch => normalizedDraftSearchQuery.isNotEmpty;
   String? get selectedShortcutId => _selectedShortcutId;
   QuickSearchKind? get selectedQuickSearchKind => _selectedQuickSearchKind;
   bool get aiSearchActive => _aiSearchActive;
@@ -190,7 +205,8 @@ class MemosListHeaderController extends ChangeNotifier {
     if (!_desktopHeaderSearchExpanded) return;
     _searchFocusNode.unfocus();
     if (clearQuery) {
-      _searchController.clear();
+      _setDraftSearchText('');
+      _submittedSearchQuery = '';
     }
     _desktopHeaderSearchExpanded = false;
     _selectedQuickSearchKind = null;
@@ -211,9 +227,10 @@ class MemosListHeaderController extends ChangeNotifier {
 
   void closeSearch({required VoidCallback clearGlobalFocus}) {
     _searchFocusNode.unfocus();
-    _searchController.clear();
+    _setDraftSearchText('');
     clearGlobalFocus();
     _searching = false;
+    _submittedSearchQuery = '';
     _desktopHeaderSearchExpanded = false;
     _selectedQuickSearchKind = null;
     _aiSearchActive = false;
@@ -227,7 +244,19 @@ class MemosListHeaderController extends ChangeNotifier {
   }) {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
+    var changed = _setDraftSearchText(trimmed);
+    if (_submittedSearchQuery != trimmed) {
+      _submittedSearchQuery = trimmed;
+      changed = true;
+    }
+    if (_aiSearchActive) {
+      _aiSearchActive = false;
+      changed = true;
+    }
     addHistory(trimmed);
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   void applySearchQuery(
@@ -235,12 +264,7 @@ class MemosListHeaderController extends ChangeNotifier {
     required void Function(String query) addHistory,
   }) {
     final trimmed = query.trim();
-    _aiSearchActive = false;
-    _searchController.text = trimmed;
-    _searchController.selection = TextSelection.fromPosition(
-      TextPosition(offset: _searchController.text.length),
-    );
-    notifyListeners();
+    if (trimmed.isEmpty) return;
     submitSearch(trimmed, addHistory: addHistory);
   }
 
@@ -253,7 +277,7 @@ class MemosListHeaderController extends ChangeNotifier {
   }
 
   void startAiSearch() {
-    final trimmed = _searchController.text.trim();
+    final trimmed = _submittedSearchQuery.trim();
     if (trimmed.isEmpty || _aiSearchActive) return;
     _aiSearchActive = true;
     _selectedQuickSearchKind = null;
@@ -431,10 +455,40 @@ class MemosListHeaderController extends ChangeNotifier {
   }
 
   void _handleSearchTextChanged() {
+    var changed = false;
+    if (normalizedDraftSearchQuery.isEmpty &&
+        _submittedSearchQuery.isNotEmpty) {
+      _submittedSearchQuery = '';
+      changed = true;
+    }
     if (_aiSearchActive) {
       _aiSearchActive = false;
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+      return;
     }
     notifyListeners();
+  }
+
+  bool _setDraftSearchText(String text) {
+    final selection = TextSelection.fromPosition(
+      TextPosition(offset: text.length),
+    );
+    if (_searchController.text == text) {
+      if (_searchController.selection != selection) {
+        _searchController.selection = selection;
+      }
+      return false;
+    }
+    _searchController.removeListener(_handleSearchTextChanged);
+    _searchController.value = TextEditingValue(
+      text: text,
+      selection: selection,
+    );
+    _searchController.addListener(_handleSearchTextChanged);
+    return true;
   }
 
   @override

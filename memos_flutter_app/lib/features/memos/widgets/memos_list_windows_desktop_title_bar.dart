@@ -21,6 +21,8 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
     required this.titleChild,
     required this.searchFieldChild,
     this.sortButton,
+    required this.canSubmitSearch,
+    required this.onSubmitSearch,
     required this.onToggleSearch,
     required this.quickActions,
     required this.onMinimize,
@@ -45,6 +47,8 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
   final Widget titleChild;
   final Widget searchFieldChild;
   final Widget? sortButton;
+  final bool canSubmitSearch;
+  final VoidCallback onSubmitSearch;
   final VoidCallback onToggleSearch;
   final List<HomeQuickActionChipData> quickActions;
   final VoidCallback onMinimize;
@@ -130,15 +134,23 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
               const SizedBox(width: 2),
             ],
             if (enableSearch)
-              IconButton(
-                tooltip: windowsHeaderSearchExpanded
-                    ? cancelTooltip
-                    : searchTooltip,
-                onPressed: onToggleSearch,
-                icon: Icon(
-                  windowsHeaderSearchExpanded ? Icons.close : Icons.search,
+              if (windowsHeaderSearchExpanded) ...[
+                IconButton(
+                  tooltip: searchTooltip,
+                  onPressed: canSubmitSearch ? onSubmitSearch : null,
+                  icon: const Icon(Icons.search),
                 ),
-              ),
+                IconButton(
+                  tooltip: cancelTooltip,
+                  onPressed: onToggleSearch,
+                  icon: const Icon(Icons.close),
+                ),
+              ] else
+                IconButton(
+                  tooltip: searchTooltip,
+                  onPressed: onToggleSearch,
+                  icon: const Icon(Icons.search),
+                ),
           ],
         ),
       ),

@@ -22,27 +22,36 @@ void main() {
     expect(find.byIcon(Icons.search), findsOneWidget);
   });
 
-  testWidgets('shows search field and toggles search callback when expanded', (
-    tester,
-  ) async {
-    var toggleCount = 0;
+  testWidgets(
+    'shows search field with submit and close actions when expanded',
+    (tester) async {
+      var toggleCount = 0;
+      var submitCount = 0;
 
-    await tester.pumpWidget(
-      _buildHarness(
-        child: _buildTitleBar(
-          windowsHeaderSearchExpanded: true,
-          onToggleSearch: () => toggleCount++,
+      await tester.pumpWidget(
+        _buildHarness(
+          child: _buildTitleBar(
+            windowsHeaderSearchExpanded: true,
+            enableHomeSort: false,
+            screenshotModeEnabled: true,
+            onSubmitSearch: () => submitCount++,
+            onToggleSearch: () => toggleCount++,
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(find.byType(MemosListPillRow), findsNothing);
-    expect(find.byKey(const Key('search-field')), findsOneWidget);
-    expect(find.byIcon(Icons.close), findsOneWidget);
+      expect(find.byType(MemosListPillRow), findsNothing);
+      expect(find.byKey(const Key('search-field')), findsOneWidget);
+      expect(find.byIcon(Icons.search), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
-    expect(toggleCount, 1);
-  });
+      await tester.tap(find.byIcon(Icons.search));
+      expect(submitCount, 1);
+
+      await tester.tap(find.byIcon(Icons.close));
+      expect(toggleCount, 1);
+    },
+  );
 
   testWidgets('hides pill actions when no quick actions are configured', (
     tester,
@@ -153,6 +162,8 @@ Widget _buildTitleBar({
   bool desktopWindowMaximized = false,
   String debugApiVersionText = 'API v0.24',
   List<HomeQuickActionChipData>? quickActions,
+  bool canSubmitSearch = true,
+  VoidCallback? onSubmitSearch,
   VoidCallback? onToggleSearch,
   VoidCallback? onMinimize,
   VoidCallback? onToggleMaximize,
@@ -170,6 +181,8 @@ Widget _buildTitleBar({
     titleChild: const Text('MemoFlow'),
     searchFieldChild: const SizedBox(key: Key('search-field')),
     sortButton: const SizedBox(key: Key('sort-button')),
+    canSubmitSearch: canSubmitSearch,
+    onSubmitSearch: onSubmitSearch ?? () {},
     onToggleSearch: onToggleSearch ?? () {},
     quickActions: quickActions ?? _buildQuickActions(),
     onMinimize: onMinimize ?? () {},

@@ -30,6 +30,8 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
     required this.searchFieldChild,
     required this.quickActions,
     required this.onOpenSearch,
+    required this.canSubmitSearch,
+    required this.onSubmitSearch,
     required this.onCloseSearch,
     required this.searchTooltip,
     required this.cancelTooltip,
@@ -48,6 +50,8 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
   final Widget searchFieldChild;
   final List<HomeQuickActionChipData> quickActions;
   final VoidCallback onOpenSearch;
+  final bool canSubmitSearch;
+  final VoidCallback onSubmitSearch;
   final VoidCallback onCloseSearch;
   final String searchTooltip;
   final String cancelTooltip;
@@ -140,13 +144,20 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (searching)
+                          if (searching) ...[
+                            IconButton(
+                              tooltip: searchTooltip,
+                              onPressed: canSubmitSearch
+                                  ? onSubmitSearch
+                                  : null,
+                              icon: const Icon(Icons.search),
+                            ),
                             IconButton(
                               tooltip: cancelTooltip,
                               onPressed: onCloseSearch,
                               icon: const Icon(Icons.close),
-                            )
-                          else ...[
+                            ),
+                          ] else ...[
                             if (enableHomeSort &&
                                 sortButton != null &&
                                 !hideSort)

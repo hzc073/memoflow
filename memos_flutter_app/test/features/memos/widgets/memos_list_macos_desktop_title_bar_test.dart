@@ -52,12 +52,14 @@ void main() {
     tester,
   ) async {
     var closeSearchCount = 0;
+    var submitSearchCount = 0;
 
     await tester.pumpWidget(
       _buildHarness(
         width: 900,
         child: _buildTitleBar(
           searching: true,
+          onSubmitSearch: () => submitSearchCount++,
           onCloseSearch: () => closeSearchCount++,
         ),
       ),
@@ -65,6 +67,10 @@ void main() {
 
     expect(find.byKey(const Key('macos-search-field')), findsOneWidget);
     expect(find.byType(MemosListPillRow), findsNothing);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.search));
+    expect(submitSearchCount, 1);
 
     await tester.tap(find.byIcon(Icons.close));
 
@@ -158,6 +164,8 @@ Widget _buildTitleBar({
   bool showDivider = true,
   List<HomeQuickActionChipData>? quickActions,
   VoidCallback? onOpenSearch,
+  bool canSubmitSearch = true,
+  VoidCallback? onSubmitSearch,
   VoidCallback? onCloseSearch,
   Widget? navigationButton,
 }) {
@@ -173,6 +181,8 @@ Widget _buildTitleBar({
     searchFieldChild: const SizedBox(key: Key('macos-search-field')),
     quickActions: quickActions ?? _buildQuickActions(),
     onOpenSearch: onOpenSearch ?? () {},
+    canSubmitSearch: canSubmitSearch,
+    onSubmitSearch: onSubmitSearch ?? () {},
     onCloseSearch: onCloseSearch ?? () {},
     searchTooltip: 'Search',
     cancelTooltip: 'Cancel',
