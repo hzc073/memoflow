@@ -185,7 +185,7 @@ Splash token outputs are out of date.
 Source of truth: tool/splash_tokens.yaml
 Regenerate outputs from memos_flutter_app:
   dart run tool/sync_splash_tokens.dart
-Then commit the updated generated files before packaging.
+See stale output paths above.
 "@
   }
 
@@ -331,4 +331,3 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Installer output: $setupExePath"
 Write-Host "Bundle output: $bundleOutDir"
 Write-Host "Zip output: $zipPath"
-

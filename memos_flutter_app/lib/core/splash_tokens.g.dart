@@ -10,6 +10,6 @@ class SplashTokens {
   static const String logoAsset = 'assets/splash/splash_logo_native.png';
   static const String iosLogoAsset = 'assets/splash/splash_logo_native.png';
   static const String androidIconDrawable = 'splash_icon_transparent';
-  static const int startupVisibleMinMs = 3000;
+  static const int startupVisibleMinMs = 1500;
   static const int startupFadeDurationMs = 220;
 }

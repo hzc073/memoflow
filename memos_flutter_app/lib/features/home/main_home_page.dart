@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -63,6 +61,7 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
   int? _startupElapsedAtFirstFrameMs;
   String? _lastDestination;
   Widget? _lockedContent;
+  bool? _startupShowSlogan;
 
   @override
   void initState() {
@@ -152,6 +151,15 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
     );
   }
 
+  bool _resolveStartupShowSlogan({AppLanguage? loadedLanguage}) {
+    final language =
+        loadedLanguage ??
+        appLanguageFromLocale(
+          WidgetsBinding.instance.platformDispatcher.locale,
+        );
+    return _startupShowSlogan ??= !prefersEnglishFor(language);
+  }
+
   void _scheduleContentFirstFrameLog() {
     if (_contentFirstFrameLogged) return;
     _contentFirstFrameLogged = true;
@@ -207,8 +215,7 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
         _loggedFirstFrameGate = true;
         StartupTiming.markStep('main_home_gate_placeholder');
       }
-      final locale = ui.PlatformDispatcher.instance.locale;
-      final showStartupSlogan = locale.languageCode != 'en';
+      final showStartupSlogan = _resolveStartupShowSlogan();
       return finalize(StartupScreen(showSlogan: showStartupSlogan));
     }
 
@@ -220,7 +227,9 @@ class _MainHomePageState extends ConsumerState<MainHomePage> {
     final localLibrary = adapter.watchCurrentLocalLibrary(ref);
     final storageError = ref.watch(storageLoadErrorProvider);
     final hasStorageError = storageError != null;
-    final showStartupSlogan = !prefersEnglishFor(prefs.language);
+    final showStartupSlogan = _resolveStartupShowSlogan(
+      loadedLanguage: prefs.language,
+    );
     if (!_startupMinTimerStarted) {
       _startStartupMinTimer(
         elapsedMs: StartupTiming.elapsedMs,

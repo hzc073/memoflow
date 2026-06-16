@@ -2,6 +2,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+class _PngSize {
+  const _PngSize(this.width, this.height);
+
+  final int width;
+  final int height;
+}
+
 bool _isTextConfigurationFile(String path) {
   final fileName = path.split('/').last;
   if (fileName == '.gitignore' || fileName == 'Podfile') return true;
@@ -22,6 +29,91 @@ bool _isTextConfigurationFile(String path) {
   ];
 
   return textExtensions.any(path.endsWith);
+}
+
+Map<String, String> _readSplashTokenValues() {
+  final values = <String, String>{};
+  var inSplash = false;
+  for (final rawLine in File('tool/splash_tokens.yaml').readAsLinesSync()) {
+    final line = rawLine.trimRight();
+    if (line.trim().isEmpty) continue;
+    final trimmed = line.trimLeft();
+    if (trimmed.startsWith('#')) continue;
+    if (trimmed == 'splash:') {
+      inSplash = true;
+      continue;
+    }
+    if (!inSplash || !line.startsWith('  ')) continue;
+
+    final splitIndex = trimmed.indexOf(':');
+    if (splitIndex <= 0) continue;
+    final key = trimmed.substring(0, splitIndex).trim();
+    var value = trimmed.substring(splitIndex + 1).trim();
+    if (value.length >= 2 &&
+        ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'")))) {
+      value = value.substring(1, value.length - 1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+String _iosColorXml(String hexColor) {
+  final hex = hexColor.replaceFirst('#', '').toUpperCase();
+  final alpha = hex.length == 8
+      ? int.parse(hex.substring(0, 2), radix: 16)
+      : 255;
+  final colorStart = hex.length == 8 ? 2 : 0;
+  final red = int.parse(hex.substring(colorStart, colorStart + 2), radix: 16);
+  final green = int.parse(
+    hex.substring(colorStart + 2, colorStart + 4),
+    radix: 16,
+  );
+  final blue = int.parse(
+    hex.substring(colorStart + 4, colorStart + 6),
+    radix: 16,
+  );
+
+  return '<color key="backgroundColor" red="${_iosComponent(red)}" '
+      'green="${_iosComponent(green)}" '
+      'blue="${_iosComponent(blue)}" '
+      'alpha="${_iosComponent(alpha)}" '
+      'colorSpace="custom" customColorSpace="sRGB"/>';
+}
+
+String _iosComponent(int value) {
+  if (value <= 0) return '0';
+  if (value >= 255) return '1';
+  return (value / 255).toStringAsFixed(10);
+}
+
+_PngSize _readPngSize(File file) {
+  final bytes = file.readAsBytesSync();
+  expect(
+    bytes.length,
+    greaterThanOrEqualTo(24),
+    reason: '${file.path} is too small',
+  );
+  expect(
+    bytes.take(8).toList(),
+    equals(const [137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+
+  int readUint32(int offset) {
+    return (bytes[offset] << 24) |
+        (bytes[offset + 1] << 16) |
+        (bytes[offset + 2] << 8) |
+        bytes[offset + 3];
+  }
+
+  return _PngSize(readUint32(16), readUint32(20));
+}
+
+void _copyFileIntoTemp(String sourcePath, String destinationPath) {
+  final destination = File(destinationPath);
+  destination.parent.createSync(recursive: true);
+  File(sourcePath).copySync(destination.path);
 }
 
 void main() {
@@ -149,5 +241,119 @@ void main() {
                   'secrets:\n${violations.join('\n')}',
       );
     },
+  );
+
+  test('iOS native splash surfaces match splash tokens', () {
+    final tokens = _readSplashTokenValues();
+    final expectedBackground = _iosColorXml(tokens['background_color']!);
+    final logoAsset = tokens['ios_logo_asset']!;
+
+    final launchScreen = readFile(
+      'ios/Runner/Base.lproj/LaunchScreen.storyboard',
+    );
+    final mainStoryboard = readFile('ios/Runner/Base.lproj/Main.storyboard');
+    final contentsJson = readFile(
+      'ios/Runner/Assets.xcassets/LaunchImage.imageset/Contents.json',
+    );
+
+    expect(launchScreen, contains('<!-- GENERATED FILE. DO NOT EDIT. -->'));
+    expect(launchScreen, contains(expectedBackground));
+    expect(
+      launchScreen,
+      contains('contentMode="scaleAspectFit" image="LaunchImage"'),
+    );
+    expect(launchScreen, contains('firstAttribute="width" constant="168"'));
+    expect(launchScreen, contains('firstAttribute="height" constant="168"'));
+    expect(launchScreen, isNot(contains('red="1" green="1" blue="1"')));
+
+    expect(mainStoryboard, contains('<!-- GENERATED FILE. DO NOT EDIT. -->'));
+    expect(mainStoryboard, contains('customClass="FlutterViewController"'));
+    expect(mainStoryboard, contains(expectedBackground));
+    expect(mainStoryboard, isNot(contains('white="1"')));
+
+    const launchImageFiles = <String>[
+      'LaunchImage.png',
+      'LaunchImage@2x.png',
+      'LaunchImage@3x.png',
+    ];
+    for (final fileName in launchImageFiles) {
+      expect(contentsJson, contains(fileName));
+    }
+
+    final logoFile = File(logoAsset);
+    final logoBytes = logoFile.readAsBytesSync();
+    final logoSize = _readPngSize(logoFile);
+    for (final fileName in launchImageFiles) {
+      final launchImage = File(
+        'ios/Runner/Assets.xcassets/LaunchImage.imageset/$fileName',
+      );
+      final launchImageSize = _readPngSize(launchImage);
+      expect(launchImageSize.width, greaterThan(1), reason: launchImage.path);
+      expect(launchImageSize.height, greaterThan(1), reason: launchImage.path);
+      expect(launchImageSize.width, logoSize.width, reason: launchImage.path);
+      expect(launchImageSize.height, logoSize.height, reason: launchImage.path);
+      expect(launchImage.readAsBytesSync(), equals(logoBytes));
+    }
+  });
+
+  test(
+    'splash token sync check guards committed and stale outputs',
+    () async {
+      final current = await Process.run('dart', [
+        'run',
+        'tool/sync_splash_tokens.dart',
+        '--check',
+      ]);
+      expect(
+        current.exitCode,
+        0,
+        reason: '${current.stdout}\n${current.stderr}',
+      );
+
+      final packageConfig = File('.dart_tool/package_config.json');
+      expect(packageConfig.existsSync(), isTrue);
+
+      final tempDir = Directory.systemTemp.createTempSync(
+        'memoflow_splash_check_',
+      );
+      try {
+        _copyFileIntoTemp(
+          'tool/sync_splash_tokens.dart',
+          '${tempDir.path}/tool/sync_splash_tokens.dart',
+        );
+        _copyFileIntoTemp(
+          'tool/splash_tokens.yaml',
+          '${tempDir.path}/tool/splash_tokens.yaml',
+        );
+        _copyFileIntoTemp(
+          'assets/splash/splash_logo_native.png',
+          '${tempDir.path}/assets/splash/splash_logo_native.png',
+        );
+
+        final stale = await Process.run('dart', [
+          '--packages=${packageConfig.path}',
+          '${tempDir.path}/tool/sync_splash_tokens.dart',
+          '--check',
+        ]);
+        final output = '${stale.stdout}\n${stale.stderr}';
+        expect(stale.exitCode, 1, reason: output);
+        expect(output, contains('dart run tool/sync_splash_tokens.dart'));
+        expect(output, contains('tool/splash_tokens.yaml'));
+        expect(
+          output,
+          contains('ios/Runner/Base.lproj/LaunchScreen.storyboard'),
+        );
+        expect(output, contains('ios/Runner/Base.lproj/Main.storyboard'));
+        expect(
+          output,
+          contains(
+            'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png',
+          ),
+        );
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
   );
 }

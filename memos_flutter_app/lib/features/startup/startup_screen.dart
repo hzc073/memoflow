@@ -17,10 +17,8 @@ int startupMinimumVisibleMsFor({
   required bool showSlogan,
 }) {
   if (!AppMotion.isEnabled(context)) return 0;
-  if (!showSlogan) return SplashTokens.startupVisibleMinMs;
-  final sloganLength = context.t.strings.legacy.msg_startup_slogan.runes.length;
-  return (sloganLength * startupTypewriterMsPerChar) +
-      startupPostTypewriterHoldMs;
+  if (!showSlogan) return 0;
+  return SplashTokens.startupVisibleMinMs;
 }
 
 class StartupScreen extends StatefulWidget {

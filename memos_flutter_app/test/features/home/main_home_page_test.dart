@@ -15,6 +15,7 @@ import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
 import 'package:memos_flutter_app/features/auth/login_screen.dart';
 import 'package:memos_flutter_app/features/home/main_home_page.dart';
 import 'package:memos_flutter_app/features/onboarding/language_selection_screen.dart';
+import 'package:memos_flutter_app/features/startup/startup_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/state/settings/device_preferences_provider.dart';
 import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
@@ -138,6 +139,47 @@ void main() {
     expect(
       find.byType(LanguageSelectionScreen, skipOffstage: false),
       findsNothing,
+    );
+  });
+
+  testWidgets('english startup does not wait a fixed three seconds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildTestApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+
+    expect(find.byType(LoginScreen, skipOffstage: false), findsOneWidget);
+    expect(find.byType(StartupScreen, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('startup slogan decision stays locked while preferences load', (
+    tester,
+  ) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale(
+      'zh',
+      'CN',
+    );
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+
+    await tester.pumpWidget(buildTestApp());
+    await tester.pump();
+
+    expect(
+      tester.widget<StartupScreen>(find.byType(StartupScreen)).showSlogan,
+      isTrue,
+    );
+
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final startupScreens = tester.widgetList<StartupScreen>(
+      find.byType(StartupScreen),
+    );
+    expect(startupScreens, isNotEmpty);
+    expect(
+      startupScreens.map((screen) => screen.showSlogan),
+      everyElement(isTrue),
     );
   });
 }
