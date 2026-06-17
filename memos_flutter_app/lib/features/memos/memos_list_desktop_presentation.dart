@@ -142,9 +142,7 @@ MemosListDesktopPresentation resolveMemosListDesktopPresentation({
       activation: previewActivation,
       supportsPane: supportsPreviewPane,
     ),
-    searchPresentation: isWindows
-        ? MemosListDesktopSearchPresentation.header
-        : MemosListDesktopSearchPresentation.standard,
+    searchPresentation: MemosListDesktopSearchPresentation.standard,
     composePresentation: isWindows || isMacos
         ? MemosListDesktopComposePresentation.desktopSurface
         : MemosListDesktopComposePresentation.sheet,

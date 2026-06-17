@@ -392,7 +392,7 @@ void main() {
       );
       expect(
         windows.searchPresentation,
-        MemosListDesktopSearchPresentation.header,
+        MemosListDesktopSearchPresentation.standard,
       );
       expect(
         windows.composePresentation,

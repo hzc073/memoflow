@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/app_motion_widgets.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../home/desktop/windows_desktop_command_bar.dart';
 import '../home_quick_actions.dart';
@@ -12,24 +11,19 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
     super.key,
     required this.isDark,
     required this.showPillActions,
-    required this.windowsHeaderSearchExpanded,
     required this.enableHomeSort,
     required this.enableSearch,
     required this.screenshotModeEnabled,
     required this.desktopWindowMaximized,
     required this.debugApiVersionText,
     required this.titleChild,
-    required this.searchFieldChild,
     this.sortButton,
-    required this.canSubmitSearch,
-    required this.onSubmitSearch,
-    required this.onToggleSearch,
+    required this.onOpenSearch,
     required this.quickActions,
     required this.onMinimize,
     required this.onToggleMaximize,
     required this.onClose,
     required this.searchTooltip,
-    required this.cancelTooltip,
     required this.minimizeTooltip,
     required this.maximizeTooltip,
     required this.restoreTooltip,
@@ -38,24 +32,19 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
 
   final bool isDark;
   final bool showPillActions;
-  final bool windowsHeaderSearchExpanded;
   final bool enableHomeSort;
   final bool enableSearch;
   final bool screenshotModeEnabled;
   final bool desktopWindowMaximized;
   final String debugApiVersionText;
   final Widget titleChild;
-  final Widget searchFieldChild;
   final Widget? sortButton;
-  final bool canSubmitSearch;
-  final VoidCallback onSubmitSearch;
-  final VoidCallback onToggleSearch;
+  final VoidCallback onOpenSearch;
   final List<HomeQuickActionChipData> quickActions;
   final VoidCallback onMinimize;
   final VoidCallback onToggleMaximize;
   final VoidCallback onClose;
   final String searchTooltip;
-  final String cancelTooltip;
   final String minimizeTooltip;
   final String maximizeTooltip;
   final String restoreTooltip;
@@ -100,28 +89,9 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
       ),
       center: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: AppSharedAxisSwitcher(
-          duration: const Duration(milliseconds: 260),
-          reverseDuration: const Duration(milliseconds: 200),
-          axis: Axis.horizontal,
-          offset: 0.024,
-          scaleBegin: 0.985,
-          animateSize: true,
-          child: KeyedSubtree(
-            key: ValueKey<String>(
-              windowsHeaderSearchExpanded
-                  ? 'windows-desktop-search'
-                  : (showPillActions && quickActions.isNotEmpty
-                        ? 'windows-desktop-quick-actions'
-                        : 'windows-desktop-center-empty'),
-            ),
-            child: windowsHeaderSearchExpanded
-                ? searchFieldChild
-                : (showPillActions && quickActions.isNotEmpty
-                      ? MemosListPillRow(quickActions: quickActions)
-                      : const SizedBox.shrink()),
-          ),
-        ),
+        child: showPillActions && quickActions.isNotEmpty
+            ? MemosListPillRow(quickActions: quickActions)
+            : const SizedBox.shrink(),
       ),
       trailing: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -129,28 +99,13 @@ class MemosListWindowsDesktopTitleBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (enableHomeSort && sortButton != null) ...[
-              sortButton!,
-              const SizedBox(width: 2),
-            ],
+            if (enableHomeSort && sortButton != null) sortButton!,
             if (enableSearch)
-              if (windowsHeaderSearchExpanded) ...[
-                IconButton(
-                  tooltip: searchTooltip,
-                  onPressed: canSubmitSearch ? onSubmitSearch : null,
-                  icon: const Icon(Icons.search),
-                ),
-                IconButton(
-                  tooltip: cancelTooltip,
-                  onPressed: onToggleSearch,
-                  icon: const Icon(Icons.close),
-                ),
-              ] else
-                IconButton(
-                  tooltip: searchTooltip,
-                  onPressed: onToggleSearch,
-                  icon: const Icon(Icons.search),
-                ),
+              IconButton(
+                tooltip: searchTooltip,
+                onPressed: onOpenSearch,
+                icon: const Icon(Icons.search),
+              ),
           ],
         ),
       ),

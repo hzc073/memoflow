@@ -484,7 +484,6 @@ class MemosListScreenBody extends StatelessWidget {
     required this.onCloseSearch,
     required this.onSubmitSearch,
     required this.onOpenSearch,
-    required this.onToggleDesktopHeaderSearch,
     required this.onToggleQuickSearchKind,
     required this.onStartAiSearch,
     required this.onStopAiSearch,
@@ -535,7 +534,6 @@ class MemosListScreenBody extends StatelessWidget {
   final VoidCallback onCloseSearch;
   final VoidCallback onSubmitSearch;
   final VoidCallback onOpenSearch;
-  final VoidCallback onToggleDesktopHeaderSearch;
   final ValueChanged<QuickSearchKind> onToggleQuickSearchKind;
   final VoidCallback onStartAiSearch;
   final VoidCallback onStopAiSearch;
@@ -563,6 +561,10 @@ class MemosListScreenBody extends StatelessWidget {
         desktopPrimaryContentOverride != null;
     final useExternalDesktopTitleBar =
         useWindowsDesktopHeader || useMacosDesktopTitleBar;
+    final showWindowsContentSearchChrome =
+        useWindowsDesktopHeader && data.searching;
+    final hideInternalAppBarChrome =
+        useExternalDesktopTitleBar && !showWindowsContentSearchChrome;
     final showHeaderPillActionsInScroll =
         data.viewState.layout.showHeaderPillActions &&
         !useMacosDesktopTitleBar &&
@@ -625,17 +627,17 @@ class MemosListScreenBody extends StatelessWidget {
                                 elevation: 0,
                                 scrolledUnderElevation: 0,
                                 surfaceTintColor: Colors.transparent,
-                                toolbarHeight: useExternalDesktopTitleBar
+                                toolbarHeight: hideInternalAppBarChrome
                                     ? 0
                                     : kToolbarHeight,
-                                titleSpacing: useExternalDesktopTitleBar
+                                titleSpacing: hideInternalAppBarChrome
                                     ? 0
                                     : NavigationToolbar.kMiddleSpacing,
                                 automaticallyImplyLeading:
-                                    !useExternalDesktopTitleBar &&
+                                    !hideInternalAppBarChrome &&
                                     !data.searching &&
                                     drawerPanel == null,
-                                leading: useExternalDesktopTitleBar
+                                leading: hideInternalAppBarChrome
                                     ? null
                                     : (data.searching
                                           ? IconButton(
@@ -670,12 +672,12 @@ class MemosListScreenBody extends StatelessWidget {
                                                         .headerBackgroundColor,
                                                   )
                                                 : null)),
-                                title: useExternalDesktopTitleBar
+                                title: hideInternalAppBarChrome
                                     ? null
                                     : (data.searching
                                           ? searchFieldChild
                                           : titleChild),
-                                actions: useExternalDesktopTitleBar
+                                actions: hideInternalAppBarChrome
                                     ? null
                                     : [
                                         if (!data.searching &&
@@ -1126,9 +1128,7 @@ class MemosListScreenBody extends StatelessWidget {
             ? titleChild
             : IgnorePointer(child: titleChild),
         commandBar: macosCommandBar,
-        center: isMacosDesktop || desktopPrimaryContentOverridden
-            ? null
-            : searchFieldChild,
+        center: null,
         trailing: isMacosDesktop
             ? null
             : FittedBox(
@@ -1162,7 +1162,6 @@ class MemosListScreenBody extends StatelessWidget {
                 showPillActions:
                     data.viewState.layout.showHeaderPillActions &&
                     !desktopPrimaryContentOverridden,
-                windowsHeaderSearchExpanded: data.desktopHeaderSearchExpanded,
                 enableHomeSort:
                     data.viewState.query.enableHomeSort &&
                     !desktopPrimaryContentOverridden,
@@ -1174,13 +1173,10 @@ class MemosListScreenBody extends StatelessWidget {
                 titleChild: data.enableTitleMenu
                     ? titleChild
                     : IgnorePointer(child: titleChild),
-                searchFieldChild: desktopPrimaryContentOverridden
-                    ? const SizedBox.shrink()
-                    : searchFieldChild,
-                sortButton: desktopPrimaryContentOverridden ? null : sortButton,
-                canSubmitSearch: data.canSubmitSearch,
-                onSubmitSearch: onSubmitSearch,
-                onToggleSearch: onToggleDesktopHeaderSearch,
+                sortButton: desktopPrimaryContentOverridden
+                    ? null
+                    : sortButton,
+                onOpenSearch: onOpenSearch,
                 quickActions: desktopPrimaryContentOverridden
                     ? const <HomeQuickActionChipData>[]
                     : quickActions,
@@ -1188,7 +1184,6 @@ class MemosListScreenBody extends StatelessWidget {
                 onToggleMaximize: onToggleMaximize,
                 onClose: onClose,
                 searchTooltip: context.t.strings.legacy.msg_search,
-                cancelTooltip: context.t.strings.legacy.msg_cancel_2,
                 minimizeTooltip: context.t.strings.legacy.msg_minimize,
                 maximizeTooltip: context.t.strings.legacy.msg_maximize,
                 restoreTooltip: context.t.strings.legacy.msg_restore_window,

@@ -323,6 +323,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   void debugStartAiSearch() => _startAiSearch();
 
   @visibleForTesting
+  void debugSubmitKeywordSearch() => _submitKeywordSearch();
+
+  @visibleForTesting
+  Future<void> debugOpenDesktopComposeSurface() =>
+      _showDesktopComposeSurface(context);
+
+  @visibleForTesting
   DateTime? get debugEffectiveDayFilter => _effectiveDayFilter;
 
   @visibleForTesting
@@ -747,14 +754,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     _openDesktopPreview(memo);
   }
 
-  void _openDesktopPreviewPane() {
-    final paneState = ref.read(desktopHomePaneStateProvider);
-    ref
-        .read(desktopHomePaneStateProvider.notifier)
-        .openPreviewPane(selectedMemoUid: paneState.selectedMemoUid);
-    _setDesktopPreviewPaneVisiblePreference(true);
-  }
-
   void _closeDesktopPreview({bool persistHidden = true}) {
     final paneState = ref.read(desktopHomePaneStateProvider);
     if (!paneState.hasSelection &&
@@ -1003,17 +1002,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       return;
     }
     ref.read(desktopHomePaneStateProvider.notifier).clear();
-  }
-
-  void _toggleDesktopSecondaryPane() {
-    final layoutSpec = _resolveCurrentDesktopLayout();
-    if (!layoutSpec.supportsSecondaryPane) return;
-    final paneState = ref.read(desktopHomePaneStateProvider);
-    if (paneState.previewVisible) {
-      _closeDesktopPreview();
-      return;
-    }
-    _openDesktopPreviewPane();
   }
 
   Future<void> _copyMemoContent(LocalMemo memo) async {
@@ -2734,27 +2722,9 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     });
   }
 
-  void _openDesktopHeaderSearch() {
-    if (!_resolveCurrentMemosListDesktopPresentation()
-            .usesDesktopHeaderSearch ||
-        !widget.enableSearch) {
-      return;
-    }
-    _markSceneGuideSeen(SceneMicroGuideId.memoListSearchAndShortcuts);
-    _headerController.openDesktopHeaderSearch();
-  }
-
   void _closeDesktopHeaderSearch({bool clearQuery = true}) {
     if (!_desktopHeaderSearchExpanded) return;
     _headerController.closeDesktopHeaderSearch(clearQuery: clearQuery);
-  }
-
-  void _toggleDesktopHeaderSearch() {
-    if (_desktopHeaderSearchExpanded) {
-      _closeDesktopHeaderSearch();
-      return;
-    }
-    _openDesktopHeaderSearch();
   }
 
   void _closeSearch() {
@@ -4464,32 +4434,13 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
     };
     final desktopTrailingActions = <Widget>[
       if (!desktopUtilityActive && sortButton != null) sortButton,
-      if (!desktopUtilityActive && supportsDesktopSecondaryPane)
+      if (!desktopUtilityActive && widget.enableSearch)
         IconButton(
-          key: const ValueKey<String>('desktop-preview-pane-toggle'),
-          tooltip: context.t.strings.legacy.msg_preview,
-          onPressed: _toggleDesktopSecondaryPane,
-          icon: Icon(
-            desktopSecondaryPaneVisible
-                ? Icons.visibility
-                : Icons.visibility_outlined,
-          ),
+          key: const ValueKey<String>('desktop-search-action'),
+          tooltip: context.t.strings.legacy.msg_search,
+          onPressed: _openSearch,
+          icon: const Icon(Icons.search),
         ),
-      IconButton(
-        tooltip: context.t.strings.legacy.msg_create_memo,
-        onPressed: _routeDelegate.openNoteInput,
-        icon: const Icon(Icons.add_rounded),
-      ),
-      IconButton(
-        tooltip: context.t.strings.legacy.msg_notifications,
-        onPressed: _routeDelegate.openNotifications,
-        icon: const Icon(Icons.notifications_none_rounded),
-      ),
-      IconButton(
-        tooltip: context.t.strings.legacy.msg_settings,
-        onPressed: () => unawaited(_routeDelegate.openSettings()),
-        icon: const Icon(Icons.settings_outlined),
-      ),
     ];
 
     final shouldInterceptPop =
@@ -4590,7 +4541,6 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
         onCloseSearch: _closeSearch,
         onSubmitSearch: _submitKeywordSearch,
         onOpenSearch: _openSearch,
-        onToggleDesktopHeaderSearch: _toggleDesktopHeaderSearch,
         onToggleQuickSearchKind: _headerController.toggleQuickSearchKind,
         onStartAiSearch: _startAiSearch,
         onStopAiSearch: _stopAiSearch,

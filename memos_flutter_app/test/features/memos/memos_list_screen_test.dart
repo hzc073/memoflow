@@ -63,6 +63,7 @@ import 'package:memos_flutter_app/features/memos/memo_editor_screen.dart';
 import 'package:memos_flutter_app/features/memos/widgets/floating_collapse_button.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_memo_card.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_search_widgets.dart';
 import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
 import 'package:memos_flutter_app/features/stats/stats_screen.dart';
 import 'package:memos_flutter_app/features/voice/voice_record_screen.dart';
@@ -560,15 +561,13 @@ void main() {
     expect(previewSession.data?.memo.uid, 'memo-2');
     expect(previewText('Second desktop preview memo'), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('desktop-preview-pane-toggle')),
+    final closeButton = tester.widget<IconButton>(
+      find.byKey(const ValueKey<String>('desktop-memo-preview-close')),
     );
+    expect(closeButton.onPressed, isNotNull);
+    closeButton.onPressed!();
     await _pumpScreenFrames(tester);
 
-    expect(
-      find.byKey(const ValueKey<String>('desktop-memo-preview-pane')),
-      findsOneWidget,
-    );
     expect(
       container.read(desktopHomePaneStateProvider).previewVisible,
       isFalse,
@@ -628,9 +627,11 @@ void main() {
 
     expect(previewText(), findsOneWidget);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('desktop-preview-pane-toggle')),
+    final closeButton = tester.widget<IconButton>(
+      find.byKey(const ValueKey<String>('desktop-memo-preview-close')),
     );
+    expect(closeButton.onPressed, isNotNull);
+    closeButton.onPressed!();
     await _pumpScreenFrames(tester);
 
     await tester.tap(find.byType(MemoListCard).first);
@@ -1117,15 +1118,13 @@ void main() {
           screenSize: const Size(1600, 1800),
           showDrawer: true,
           enableCompose: true,
+          initialDesktopCreateEditor: true,
         ),
       );
       await _pumpScreenFrames(tester);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(MemosListScreen)),
       );
-
-      await tester.tap(find.byTooltip('Create memo').first);
-      await _pumpScreenFrames(tester);
 
       final editorFieldFinder = find
           .descendant(
@@ -1194,7 +1193,8 @@ void main() {
     await tester.enterText(inlineEditorFinder, 'Inline draft survives modal');
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Create memo').first);
+    final screenState = _screenState(tester);
+    await screenState.debugOpenDesktopComposeSurface();
     await _pumpScreenFrames(tester);
     expect(find.byType(MemoEditorScreen), findsOneWidget);
     final container = ProviderScope.containerOf(
@@ -2913,51 +2913,194 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets(
-    'windows expanded layout can open preview pane from command bar',
-    (tester) async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1280, 1800);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('windows command bar keeps sort and search before controls', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final memosController = StreamController<List<LocalMemo>>.broadcast();
-      addTearDown(memosController.close);
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
 
-      await tester.pumpWidget(
-        _buildHarness(
-          memosStream: memosController.stream,
-          screenSize: const Size(1280, 1800),
-          showDrawer: true,
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'Command bar search memo'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    expect(commandBar, findsOneWidget);
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.sort),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byKey(const ValueKey<String>('desktop-search-action')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byKey(
+          const ValueKey<String>('desktop-preview-pane-toggle'),
         ),
-      );
-      memosController.add(<LocalMemo>[
-        _buildMemo(uid: 'memo-1', content: 'Expanded preview memo'),
-      ]);
-      await _pumpScreenFrames(tester);
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.add_rounded)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.notifications_none_rounded),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.settings_outlined),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.minimize_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.crop_square_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+      findsOneWidget,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('desktop-preview-pane-toggle')),
-      );
-      await _pumpScreenFrames(tester);
+  testWidgets('windows search action opens content search below command bar', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      expect(
-        find.byKey(const ValueKey<String>('desktop-memo-preview-empty-pane')),
-        findsOneWidget,
-      );
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
 
-      await tester.tap(find.byType(MemoListCard).first);
-      await tester.pump(const Duration(milliseconds: 420));
-      await _pumpScreenFrames(tester);
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'Content search memo'),
+    ]);
+    await _pumpScreenFrames(tester);
 
-      expect(
-        find.byKey(const ValueKey<String>('desktop-memo-preview-pane')),
-        findsOneWidget,
-      );
-      debugDefaultTargetPlatformOverride = null;
-    },
-  );
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    expect(commandBar, findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('search')), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('desktop-search-action')),
+    );
+    await _pumpScreenFrames(tester);
+
+    expect(find.byKey(const ValueKey<String>('search')), findsOneWidget);
+    expect(find.byType(MemosListSearchLanding), findsOneWidget);
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byKey(const ValueKey<String>('search')),
+      ),
+      findsNothing,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('windows desktop search shortcut opens content search', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'Shortcut search memo'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    expect(commandBar, findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('search')), findsNothing);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await _pumpScreenFrames(tester);
+
+    expect(find.byKey(const ValueKey<String>('search')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byKey(const ValueKey<String>('search')),
+      ),
+      findsNothing,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets('windows home compose mode still allows opening preview pane', (
     tester,
@@ -3684,6 +3827,7 @@ void main() {
     final screenState = _screenState(tester);
     (screenState.debugSearchController as TextEditingController).text =
         'what to eat';
+    screenState.debugSubmitKeywordSearch();
     screenState.debugStartAiSearch();
     await _pumpScreenFrames(tester);
 
@@ -3715,6 +3859,7 @@ void main() {
     final screenState = _screenState(tester);
     (screenState.debugSearchController as TextEditingController).text =
         'what to eat';
+    screenState.debugSubmitKeywordSearch();
     screenState.debugStartAiSearch();
     await tester.pump();
     await tester.pump();
@@ -3752,6 +3897,7 @@ void main() {
     final screenState = _screenState(tester);
     (screenState.debugSearchController as TextEditingController).text =
         'what to eat';
+    screenState.debugSubmitKeywordSearch();
     screenState.debugStartAiSearch();
     await tester.pump();
     await tester.pump();
@@ -3788,6 +3934,7 @@ void main() {
     final screenState = _screenState(tester);
     (screenState.debugSearchController as TextEditingController).text =
         'what to eat';
+    screenState.debugSubmitKeywordSearch();
     screenState.debugStartAiSearch();
     await _pumpScreenFrames(tester);
 
@@ -3827,6 +3974,7 @@ Widget _buildHarness({
   required Stream<List<LocalMemo>> memosStream,
   Size screenSize = const Size(1280, 1800),
   bool enableCompose = false,
+  bool enableSearch = false,
   bool enableDesktopResizableHomeInlineCompose = false,
   _TestDevicePreferencesRepository? devicePreferencesRepository,
   bool showDrawer = false,
@@ -3917,7 +4065,7 @@ Widget _buildHarness({
             enableCompose: enableCompose,
             enableDesktopResizableHomeInlineCompose:
                 enableDesktopResizableHomeInlineCompose,
-            enableSearch: false,
+            enableSearch: enableSearch,
             enableTitleMenu: false,
             showPillActions: false,
             presentation: presentation,

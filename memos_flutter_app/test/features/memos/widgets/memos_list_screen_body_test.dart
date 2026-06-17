@@ -755,6 +755,122 @@ void main() {
     );
   });
 
+  testWidgets('windows content search renders below desktop command bar', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1000);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: TargetPlatform.windows),
+          home: _buildBodyScreen(
+            data: _buildBodyData(
+              searching: true,
+              enableSearch: true,
+              layout: _buildLayout(
+                useDesktopSidePane: true,
+                useWindowsDesktopHeader: true,
+              ),
+            ),
+            searchFieldChild: const KeyedSubtree(
+              key: ValueKey<String>('content-search-field'),
+              child: Text('Content search field'),
+            ),
+            desktopDrawerPanelBuilder: (_, _) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    expect(commandBar, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('content-search-field')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byKey(const ValueKey<String>('content-search-field')),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('windows desktop titlebar keeps sort and search actions', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1000);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: TargetPlatform.windows),
+          home: _buildBodyScreen(
+            data: _buildBodyData(
+              enableSearch: true,
+              query: _buildQueryState(enableHomeSort: true),
+              layout: _buildLayout(useWindowsDesktopHeader: true),
+            ),
+            sortButton: const Icon(Icons.sort),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    expect(commandBar, findsOneWidget);
+    expect(
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.sort)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.search)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.add_rounded)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.notifications_none_rounded),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: commandBar,
+        matching: find.byIcon(Icons.settings_outlined),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('keyword empty state offers explicit AI search CTA', (
     tester,
   ) async {
@@ -1064,6 +1180,9 @@ Widget _buildBodyScreen({
   VoidCallback? onSubmitSearch,
   VoidCallback? onStartAiSearch,
   VoidCallback? onStopAiSearch,
+  Widget? searchFieldChild,
+  Widget? sortButton,
+  Widget? searchLandingChild,
   Widget? desktopPreviewPane,
   Widget? desktopPrimaryContentOverride,
   DesktopDrawerPanelBuilder? desktopDrawerPanelBuilder,
@@ -1085,15 +1204,15 @@ Widget _buildBodyScreen({
     data: resolvedData,
     drawerPanel: drawerPanel,
     titleChild: const Text('Title'),
-    searchFieldChild: const SizedBox.shrink(),
-    sortButton: null,
+    searchFieldChild: searchFieldChild ?? const SizedBox.shrink(),
+    sortButton: sortButton,
     resolvedTagChip: null,
     advancedFilterSliver: null,
     inlineComposeChild: null,
     inlineComposePadding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
     expandDesktopBodyWidth: false,
     tagFilterBarChild: null,
-    searchLandingChild: null,
+    searchLandingChild: searchLandingChild,
     bootstrapOverlayChild: null,
     desktopPrimaryContentOverride: desktopPrimaryContentOverride,
     desktopPreviewPane: desktopPreviewPane,
@@ -1112,7 +1231,6 @@ Widget _buildBodyScreen({
     onOpenSearch: () {},
     onStartAiSearch: onStartAiSearch ?? () {},
     onStopAiSearch: onStopAiSearch ?? () {},
-    onToggleDesktopHeaderSearch: () {},
     onToggleQuickSearchKind: (_) {},
     onDismissGuide: () {},
     onViewportLayoutChanged: () {},
@@ -1300,9 +1418,7 @@ MemosListDesktopPresentation _buildDesktopPresentation({
             supportsPane: true,
           )
         : const MemosListDesktopPreviewPanePolicy.unsupported(),
-    searchPresentation: useWindowsDesktopHeader
-        ? MemosListDesktopSearchPresentation.header
-        : MemosListDesktopSearchPresentation.standard,
+    searchPresentation: MemosListDesktopSearchPresentation.standard,
     composePresentation: useWindowsDesktopHeader
         ? MemosListDesktopComposePresentation.desktopSurface
         : MemosListDesktopComposePresentation.sheet,
@@ -1316,6 +1432,7 @@ MemosListScreenQueryState _buildQueryState({
   String? draftSearchQuery,
   bool hasPendingSearchDraft = false,
   bool useAiSearch = false,
+  bool enableHomeSort = false,
 }) {
   final baseQuery = (
     searchQuery: searchQuery,
@@ -1362,7 +1479,7 @@ MemosListScreenQueryState _buildQueryState({
         : MemosListMemoSourceKind.stream,
     queryKey: 'test-${useAiSearch ? 'ai' : 'keyword'}-$searchQuery',
     showSearchLanding: false,
-    enableHomeSort: false,
+    enableHomeSort: enableHomeSort,
   );
 }
 

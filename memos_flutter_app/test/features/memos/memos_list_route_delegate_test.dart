@@ -487,9 +487,7 @@ MemosListDesktopPresentation _desktopPresentation({
       activation: MemosListDesktopPreviewPaneActivation.automatic,
       supportsPane: true,
     ),
-    searchPresentation: platform == TargetPlatform.windows
-        ? MemosListDesktopSearchPresentation.header
-        : MemosListDesktopSearchPresentation.standard,
+    searchPresentation: MemosListDesktopSearchPresentation.standard,
     composePresentation: composePresentation,
     inlineComposeCapability: const MemosListInlineComposeCapability(
       supported: true,

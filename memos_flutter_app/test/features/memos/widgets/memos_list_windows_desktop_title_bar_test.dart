@@ -19,39 +19,39 @@ void main() {
     expect(find.byType(WindowsDesktopCommandBar), findsOneWidget);
     expect(find.byType(MemosListPillRow), findsOneWidget);
     expect(find.byKey(const Key('search-field')), findsNothing);
+    expect(find.byIcon(Icons.sort), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
   });
 
-  testWidgets(
-    'shows search field with submit and close actions when expanded',
-    (tester) async {
-      var toggleCount = 0;
-      var submitCount = 0;
+  testWidgets('search button opens content search without titlebar field', (
+    tester,
+  ) async {
+    var openSearchCount = 0;
 
-      await tester.pumpWidget(
-        _buildHarness(
-          child: _buildTitleBar(
-            windowsHeaderSearchExpanded: true,
-            enableHomeSort: false,
-            screenshotModeEnabled: true,
-            onSubmitSearch: () => submitCount++,
-            onToggleSearch: () => toggleCount++,
-          ),
-        ),
-      );
+    await tester.pumpWidget(
+      _buildHarness(
+        child: _buildTitleBar(onOpenSearch: () => openSearchCount++),
+      ),
+    );
 
-      expect(find.byType(MemosListPillRow), findsNothing);
-      expect(find.byKey(const Key('search-field')), findsOneWidget);
-      expect(find.byIcon(Icons.search), findsOneWidget);
-      expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.byType(MemosListPillRow), findsOneWidget);
+    expect(find.byKey(const Key('search-field')), findsNothing);
+    expect(find.byIcon(Icons.sort), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.search));
-      expect(submitCount, 1);
+    await tester.tap(find.byIcon(Icons.search));
+    expect(openSearchCount, 1);
+  });
 
-      await tester.tap(find.byIcon(Icons.close));
-      expect(toggleCount, 1);
-    },
-  );
+  testWidgets('can hide sort while keeping search available', (tester) async {
+    await tester.pumpWidget(
+      _buildHarness(child: _buildTitleBar(enableHomeSort: false)),
+    );
+
+    expect(find.byIcon(Icons.sort), findsNothing);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+  });
 
   testWidgets('hides pill actions when no quick actions are configured', (
     tester,
@@ -62,22 +62,6 @@ void main() {
 
     expect(find.byType(MemosListPillRow), findsNothing);
     expect(find.byKey(const Key('search-field')), findsNothing);
-  });
-
-  testWidgets('shows sort button only when home sort is enabled', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _buildHarness(child: _buildTitleBar(enableHomeSort: true)),
-    );
-
-    expect(find.byKey(const Key('sort-button')), findsOneWidget);
-
-    await tester.pumpWidget(
-      _buildHarness(child: _buildTitleBar(enableHomeSort: false)),
-    );
-
-    expect(find.byKey(const Key('sort-button')), findsNothing);
   });
 
   testWidgets(
@@ -155,16 +139,13 @@ Widget _buildHarness({required Widget child}) {
 
 Widget _buildTitleBar({
   bool showPillActions = true,
-  bool windowsHeaderSearchExpanded = false,
   bool enableHomeSort = true,
   bool enableSearch = true,
   bool screenshotModeEnabled = false,
   bool desktopWindowMaximized = false,
   String debugApiVersionText = 'API v0.24',
   List<HomeQuickActionChipData>? quickActions,
-  bool canSubmitSearch = true,
-  VoidCallback? onSubmitSearch,
-  VoidCallback? onToggleSearch,
+  VoidCallback? onOpenSearch,
   VoidCallback? onMinimize,
   VoidCallback? onToggleMaximize,
   VoidCallback? onClose,
@@ -172,24 +153,19 @@ Widget _buildTitleBar({
   return MemosListWindowsDesktopTitleBar(
     isDark: false,
     showPillActions: showPillActions,
-    windowsHeaderSearchExpanded: windowsHeaderSearchExpanded,
     enableHomeSort: enableHomeSort,
     enableSearch: enableSearch,
     screenshotModeEnabled: screenshotModeEnabled,
     desktopWindowMaximized: desktopWindowMaximized,
     debugApiVersionText: debugApiVersionText,
     titleChild: const Text('MemoFlow'),
-    searchFieldChild: const SizedBox(key: Key('search-field')),
-    sortButton: const SizedBox(key: Key('sort-button')),
-    canSubmitSearch: canSubmitSearch,
-    onSubmitSearch: onSubmitSearch ?? () {},
-    onToggleSearch: onToggleSearch ?? () {},
+    sortButton: const Icon(Icons.sort),
+    onOpenSearch: onOpenSearch ?? () {},
     quickActions: quickActions ?? _buildQuickActions(),
     onMinimize: onMinimize ?? () {},
     onToggleMaximize: onToggleMaximize ?? () {},
     onClose: onClose ?? () {},
     searchTooltip: 'Search',
-    cancelTooltip: 'Cancel',
     minimizeTooltip: 'Minimize',
     maximizeTooltip: 'Maximize',
     restoreTooltip: 'Restore',
