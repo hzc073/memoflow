@@ -48,34 +48,28 @@ void main() {
     expect(searchTapCount, 1);
   });
 
-  testWidgets('searching state moves the search field into the titlebar', (
-    tester,
-  ) async {
-    var closeSearchCount = 0;
-    var submitSearchCount = 0;
+  testWidgets(
+    'keeps sort and search actions instead of titlebar search field',
+    (tester) async {
+      var searchTapCount = 0;
 
-    await tester.pumpWidget(
-      _buildHarness(
-        width: 900,
-        child: _buildTitleBar(
-          searching: true,
-          onSubmitSearch: () => submitSearchCount++,
-          onCloseSearch: () => closeSearchCount++,
+      await tester.pumpWidget(
+        _buildHarness(
+          width: 900,
+          child: _buildTitleBar(onOpenSearch: () => searchTapCount++),
         ),
-      ),
-    );
+      );
 
-    expect(find.byKey(const Key('macos-search-field')), findsOneWidget);
-    expect(find.byType(MemosListPillRow), findsNothing);
-    expect(find.byIcon(Icons.search), findsOneWidget);
+      expect(find.byKey(const Key('macos-search-field')), findsNothing);
+      expect(find.byType(MemosListPillRow), findsOneWidget);
+      expect(find.byIcon(Icons.sort), findsOneWidget);
+      expect(find.byIcon(Icons.search), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.search));
-    expect(submitSearchCount, 1);
-
-    await tester.tap(find.byIcon(Icons.close));
-
-    expect(closeSearchCount, 1);
-  });
+      await tester.tap(find.byIcon(Icons.search));
+      expect(searchTapCount, 1);
+    },
+  );
 
   testWidgets('compact widths prioritize pill actions over title text', (
     tester,
@@ -160,32 +154,22 @@ Widget _buildHarness({required double width, required Widget child}) {
 }
 
 Widget _buildTitleBar({
-  bool searching = false,
   bool showDivider = true,
   List<HomeQuickActionChipData>? quickActions,
   VoidCallback? onOpenSearch,
-  bool canSubmitSearch = true,
-  VoidCallback? onSubmitSearch,
-  VoidCallback? onCloseSearch,
   Widget? navigationButton,
 }) {
   return MemosListMacosDesktopTitleBar(
     isDark: false,
-    searching: searching,
     showPillActions: true,
     enableHomeSort: true,
     enableSearch: true,
     showLeadingTitle: true,
     showDivider: showDivider,
     titleChild: const Text('MemoFlow'),
-    searchFieldChild: const SizedBox(key: Key('macos-search-field')),
     quickActions: quickActions ?? _buildQuickActions(),
     onOpenSearch: onOpenSearch ?? () {},
-    canSubmitSearch: canSubmitSearch,
-    onSubmitSearch: onSubmitSearch ?? () {},
-    onCloseSearch: onCloseSearch ?? () {},
     searchTooltip: 'Search',
-    cancelTooltip: 'Cancel',
     navigationButton: navigationButton,
     sortButton: const Icon(Icons.sort),
   );

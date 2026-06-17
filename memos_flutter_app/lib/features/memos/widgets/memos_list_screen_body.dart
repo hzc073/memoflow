@@ -561,10 +561,10 @@ class MemosListScreenBody extends StatelessWidget {
         desktopPrimaryContentOverride != null;
     final useExternalDesktopTitleBar =
         useWindowsDesktopHeader || useMacosDesktopTitleBar;
-    final showWindowsContentSearchChrome =
-        useWindowsDesktopHeader && data.searching;
+    final showDesktopContentSearchChrome =
+        useExternalDesktopTitleBar && data.searching;
     final hideInternalAppBarChrome =
-        useExternalDesktopTitleBar && !showWindowsContentSearchChrome;
+        useExternalDesktopTitleBar && !showDesktopContentSearchChrome;
     final showHeaderPillActionsInScroll =
         data.viewState.layout.showHeaderPillActions &&
         !useMacosDesktopTitleBar &&
@@ -1084,7 +1084,6 @@ class MemosListScreenBody extends StatelessWidget {
       final macosCommandBar = isMacosDesktop
           ? MemosListMacosDesktopTitleBar(
               isDark: isDark,
-              searching: data.searching,
               showPillActions:
                   data.viewState.layout.showHeaderPillActions &&
                   !desktopPrimaryContentOverridden,
@@ -1106,19 +1105,12 @@ class MemosListScreenBody extends StatelessWidget {
               titleChild: data.enableTitleMenu
                   ? titleChild
                   : IgnorePointer(child: titleChild),
-              searchFieldChild: desktopPrimaryContentOverridden
-                  ? const SizedBox.shrink()
-                  : searchFieldChild,
               sortButton: desktopPrimaryContentOverridden ? null : sortButton,
               quickActions: desktopPrimaryContentOverridden
                   ? const <HomeQuickActionChipData>[]
                   : quickActions,
               onOpenSearch: onOpenSearch,
-              canSubmitSearch: data.canSubmitSearch,
-              onSubmitSearch: onSubmitSearch,
-              onCloseSearch: onCloseSearch,
               searchTooltip: context.t.strings.legacy.msg_search,
-              cancelTooltip: context.t.strings.legacy.msg_cancel_2,
             )
           : null;
       return DesktopShellHost(
@@ -1173,9 +1165,7 @@ class MemosListScreenBody extends StatelessWidget {
                 titleChild: data.enableTitleMenu
                     ? titleChild
                     : IgnorePointer(child: titleChild),
-                sortButton: desktopPrimaryContentOverridden
-                    ? null
-                    : sortButton,
+                sortButton: desktopPrimaryContentOverridden ? null : sortButton,
                 onOpenSearch: onOpenSearch,
                 quickActions: desktopPrimaryContentOverridden
                     ? const <HomeQuickActionChipData>[]
@@ -1197,7 +1187,6 @@ class MemosListScreenBody extends StatelessWidget {
             children: [
               MemosListMacosDesktopTitleBar(
                 isDark: isDark,
-                searching: data.searching,
                 showPillActions:
                     data.viewState.layout.showHeaderPillActions &&
                     !desktopPrimaryContentOverridden,
@@ -1219,9 +1208,6 @@ class MemosListScreenBody extends StatelessWidget {
                 titleChild: data.enableTitleMenu
                     ? titleChild
                     : IgnorePointer(child: titleChild),
-                searchFieldChild: desktopPrimaryContentOverridden
-                    ? const SizedBox.shrink()
-                    : searchFieldChild,
                 navigationButton:
                     drawerPanel != null &&
                         !data.viewState.layout.useDesktopSidePane &&
@@ -1240,11 +1226,7 @@ class MemosListScreenBody extends StatelessWidget {
                     ? const <HomeQuickActionChipData>[]
                     : quickActions,
                 onOpenSearch: onOpenSearch,
-                canSubmitSearch: data.canSubmitSearch,
-                onSubmitSearch: onSubmitSearch,
-                onCloseSearch: onCloseSearch,
                 searchTooltip: context.t.strings.legacy.msg_search,
-                cancelTooltip: context.t.strings.legacy.msg_cancel_2,
               ),
               Expanded(child: bodyContent),
             ],

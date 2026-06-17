@@ -809,6 +809,58 @@ void main() {
     );
   });
 
+  testWidgets('macOS content search renders below desktop titlebar', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1000);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: MaterialApp(
+          locale: AppLocale.en.flutterLocale,
+          supportedLocales: AppLocaleUtils.supportedLocales,
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: ThemeData(platform: TargetPlatform.macOS),
+          home: _buildBodyScreen(
+            data: _buildBodyData(
+              searching: true,
+              enableSearch: true,
+              layout: _buildLayout(
+                useDesktopSidePane: true,
+                useMacosDesktopTitleBar: true,
+              ),
+            ),
+            searchFieldChild: const KeyedSubtree(
+              key: ValueKey<String>('content-search-field'),
+              child: Text('Content search field'),
+            ),
+            desktopDrawerPanelBuilder: (_, _) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final titlebar = find.byKey(kMemosListMacosTitleBarKey);
+    expect(titlebar, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('content-search-field')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: titlebar,
+        matching: find.byKey(const ValueKey<String>('content-search-field')),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('windows desktop titlebar keeps sort and search actions', (
     tester,
   ) async {

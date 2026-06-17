@@ -62,6 +62,7 @@ import 'package:memos_flutter_app/features/memos/memo_detail_screen.dart';
 import 'package:memos_flutter_app/features/memos/memo_editor_screen.dart';
 import 'package:memos_flutter_app/features/memos/widgets/floating_collapse_button.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_floating_actions.dart';
+import 'package:memos_flutter_app/features/memos/widgets/memos_list_macos_desktop_title_bar.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_memo_card.dart';
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_search_widgets.dart';
 import 'package:memos_flutter_app/features/share/share_inline_image_content.dart';
@@ -2943,10 +2944,7 @@ void main() {
     );
     expect(commandBar, findsOneWidget);
     expect(
-      find.descendant(
-        of: commandBar,
-        matching: find.byIcon(Icons.sort),
-      ),
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.sort)),
       findsOneWidget,
     );
     expect(
@@ -3007,6 +3005,151 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('windows command bar sort menu reorders home memos', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    final memos = <LocalMemo>[
+      _buildMemo(
+        uid: 'created-newest',
+        content: 'Created newest',
+        createTime: DateTime(2025, 1, 3),
+        updateTime: DateTime(2025, 1, 2),
+      ),
+      _buildMemo(
+        uid: 'created-middle',
+        content: 'Created middle',
+        createTime: DateTime(2025, 1, 2),
+        updateTime: DateTime(2025, 1, 3),
+      ),
+      _buildMemo(
+        uid: 'created-oldest',
+        content: 'Created oldest',
+        createTime: DateTime(2025, 1, 1),
+        updateTime: DateTime(2025, 1, 1),
+      ),
+    ];
+    memosController.add(memos);
+    await _pumpScreenFrames(tester);
+
+    List<String> visibleMemoUids() => tester
+        .widgetList<MemoListCard>(find.byType(MemoListCard))
+        .map((card) => card.memo.uid)
+        .toList(growable: false);
+
+    expect(visibleMemoUids(), <String>[
+      'created-newest',
+      'created-middle',
+      'created-oldest',
+    ]);
+
+    final commandBar = find.byKey(
+      const ValueKey<String>('windows-desktop-command-bar'),
+    );
+    await tester.tap(
+      find.descendant(of: commandBar, matching: find.byIcon(Icons.sort)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(t.strings.legacy.msg_updated_time_2));
+    await tester.pump();
+    memosController.add(memos);
+    await _pumpScreenFrames(tester);
+
+    expect(visibleMemoUids(), <String>[
+      'created-oldest',
+      'created-newest',
+      'created-middle',
+    ]);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('macOS titlebar sort menu reorders home memos', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    final memos = <LocalMemo>[
+      _buildMemo(
+        uid: 'created-newest',
+        content: 'Created newest',
+        createTime: DateTime(2025, 1, 3),
+        updateTime: DateTime(2025, 1, 2),
+      ),
+      _buildMemo(
+        uid: 'created-middle',
+        content: 'Created middle',
+        createTime: DateTime(2025, 1, 2),
+        updateTime: DateTime(2025, 1, 3),
+      ),
+      _buildMemo(
+        uid: 'created-oldest',
+        content: 'Created oldest',
+        createTime: DateTime(2025, 1, 1),
+        updateTime: DateTime(2025, 1, 1),
+      ),
+    ];
+    memosController.add(memos);
+    await _pumpScreenFrames(tester);
+
+    List<String> visibleMemoUids() => tester
+        .widgetList<MemoListCard>(find.byType(MemoListCard))
+        .map((card) => card.memo.uid)
+        .toList(growable: false);
+
+    expect(visibleMemoUids(), <String>[
+      'created-newest',
+      'created-middle',
+      'created-oldest',
+    ]);
+
+    final titlebar = find.byKey(kMemosListMacosTitleBarKey);
+    expect(titlebar, findsOneWidget);
+    await tester.tap(
+      find.descendant(of: titlebar, matching: find.byIcon(Icons.sort)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(t.strings.legacy.msg_updated_time_2));
+    await tester.pump();
+    memosController.add(memos);
+    await _pumpScreenFrames(tester);
+
+    expect(visibleMemoUids(), <String>[
+      'created-oldest',
+      'created-newest',
+      'created-middle',
+    ]);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('windows search action opens content search below command bar', (
     tester,
   ) async {
@@ -3048,6 +3191,52 @@ void main() {
     expect(
       find.descendant(
         of: commandBar,
+        matching: find.byKey(const ValueKey<String>('search')),
+      ),
+      findsNothing,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('macOS search action opens content search below titlebar', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 1800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final memosController = StreamController<List<LocalMemo>>.broadcast();
+    addTearDown(memosController.close);
+
+    await tester.pumpWidget(
+      _buildHarness(
+        memosStream: memosController.stream,
+        screenSize: const Size(1280, 1800),
+        showDrawer: true,
+        enableSearch: true,
+      ),
+    );
+    memosController.add(<LocalMemo>[
+      _buildMemo(uid: 'memo-1', content: 'macOS content search memo'),
+    ]);
+    await _pumpScreenFrames(tester);
+
+    final titlebar = find.byKey(kMemosListMacosTitleBarKey);
+    expect(titlebar, findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('search')), findsNothing);
+
+    await tester.tap(
+      find.descendant(of: titlebar, matching: find.byIcon(Icons.search)),
+    );
+    await _pumpScreenFrames(tester);
+
+    expect(find.byKey(const ValueKey<String>('search')), findsOneWidget);
+    expect(find.byType(MemosListSearchLanding), findsOneWidget);
+    expect(
+      find.descendant(
+        of: titlebar,
         matching: find.byKey(const ValueKey<String>('search')),
       ),
       findsNothing,
@@ -4083,7 +4272,12 @@ Widget _buildHarness({
   );
 }
 
-LocalMemo _buildMemo({required String uid, required String content}) {
+LocalMemo _buildMemo({
+  required String uid,
+  required String content,
+  DateTime? createTime,
+  DateTime? updateTime,
+}) {
   final now = DateTime(2025, 1, 2, 3, 4, 5);
   return LocalMemo(
     uid: uid,
@@ -4092,8 +4286,8 @@ LocalMemo _buildMemo({required String uid, required String content}) {
     visibility: 'PRIVATE',
     pinned: false,
     state: 'NORMAL',
-    createTime: now,
-    updateTime: now,
+    createTime: createTime ?? now,
+    updateTime: updateTime ?? now,
     tags: const <String>[],
     attachments: const <Attachment>[],
     relationCount: 0,

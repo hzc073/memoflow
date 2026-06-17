@@ -20,41 +20,29 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
   const MemosListMacosDesktopTitleBar({
     super.key,
     required this.isDark,
-    required this.searching,
     required this.showPillActions,
     required this.enableHomeSort,
     required this.enableSearch,
     required this.showLeadingTitle,
     required this.showDivider,
     required this.titleChild,
-    required this.searchFieldChild,
     required this.quickActions,
     required this.onOpenSearch,
-    required this.canSubmitSearch,
-    required this.onSubmitSearch,
-    required this.onCloseSearch,
     required this.searchTooltip,
-    required this.cancelTooltip,
     this.navigationButton,
     this.sortButton,
   });
 
   final bool isDark;
-  final bool searching;
   final bool showPillActions;
   final bool enableHomeSort;
   final bool enableSearch;
   final bool showLeadingTitle;
   final bool showDivider;
   final Widget titleChild;
-  final Widget searchFieldChild;
   final List<HomeQuickActionChipData> quickActions;
   final VoidCallback onOpenSearch;
-  final bool canSubmitSearch;
-  final VoidCallback onSubmitSearch;
-  final VoidCallback onCloseSearch;
   final String searchTooltip;
-  final String cancelTooltip;
   final Widget? navigationButton;
   final Widget? sortButton;
 
@@ -101,74 +89,48 @@ class MemosListMacosDesktopTitleBar extends StatelessWidget {
                         navigationButton!,
                         const SizedBox(width: 4),
                       ],
-                      if (searching)
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 7),
-                            child: searchFieldChild,
-                          ),
-                        )
-                      else ...[
-                        if (!compact && showLeadingTitle) ...[
-                          Flexible(
-                            flex: 2,
-                            child: DefaultTextStyle.merge(
-                              style: TextStyle(
-                                color: textColor,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              child: titleChild,
+                      if (!compact && showLeadingTitle) ...[
+                        Flexible(
+                          flex: 2,
+                          child: DefaultTextStyle.merge(
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          flex: 5,
-                          child: Align(
-                            alignment: Alignment.center,
-                            child: showPillActions && quickActions.isNotEmpty
-                                ? ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                      maxWidth: 560,
-                                    ),
-                                    child: MemosListPillRow(
-                                      quickActions: quickActions,
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
+                            child: titleChild,
                           ),
                         ),
+                        const SizedBox(width: 12),
                       ],
+                      Expanded(
+                        flex: 5,
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: showPillActions && quickActions.isNotEmpty
+                              ? ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 560,
+                                  ),
+                                  child: MemosListPillRow(
+                                    quickActions: quickActions,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (searching) ...[
+                          if (enableHomeSort && sortButton != null && !hideSort)
+                            sortButton!,
+                          if (enableSearch)
                             IconButton(
                               tooltip: searchTooltip,
-                              onPressed: canSubmitSearch
-                                  ? onSubmitSearch
-                                  : null,
+                              onPressed: onOpenSearch,
                               icon: const Icon(Icons.search),
                             ),
-                            IconButton(
-                              tooltip: cancelTooltip,
-                              onPressed: onCloseSearch,
-                              icon: const Icon(Icons.close),
-                            ),
-                          ] else ...[
-                            if (enableHomeSort &&
-                                sortButton != null &&
-                                !hideSort)
-                              sortButton!,
-                            if (enableSearch)
-                              IconButton(
-                                tooltip: searchTooltip,
-                                onPressed: onOpenSearch,
-                                icon: const Icon(Icons.search),
-                              ),
-                          ],
                         ],
                       ),
                     ],
