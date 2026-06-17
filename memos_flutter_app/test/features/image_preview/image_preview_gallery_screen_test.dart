@@ -171,6 +171,48 @@ void main() {
     expect(find.byIcon(Icons.download_rounded), findsNothing);
   });
 
+  testWidgets('desktop immersive gallery omits AppBar back chrome', (
+    tester,
+  ) async {
+    var closed = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        ImagePreviewGalleryScreen(
+          request: const ImagePreviewOpenRequest(
+            items: <ImagePreviewItem>[
+              ImagePreviewItem(
+                id: 'first',
+                title: 'First',
+                mimeType: 'image/png',
+              ),
+            ],
+            initialIndex: 0,
+          ),
+          isDesktopOverride: true,
+          immersiveDesktopChrome: true,
+          showViewerCloseButton: true,
+          onClose: () async {
+            closed = true;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsNothing);
+    expect(find.text('1/1'), findsOneWidget);
+    expect(
+      find.byKey(const Key('desktop_media_preview_close_button')),
+      findsOneWidget,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(closed, isTrue);
+  });
+
   testWidgets('gallery screen shows replace affordance when callback exists', (
     tester,
   ) async {

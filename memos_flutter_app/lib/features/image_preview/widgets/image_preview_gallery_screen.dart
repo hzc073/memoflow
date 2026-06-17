@@ -14,6 +14,9 @@ class ImagePreviewGalleryScreen extends StatelessWidget {
     this.editImageOverride,
     this.editActionOverride,
     this.confirmReplaceOverride,
+    this.immersiveDesktopChrome = false,
+    this.showViewerCloseButton = false,
+    this.onClose,
   });
 
   final ImagePreviewOpenRequest request;
@@ -22,6 +25,9 @@ class ImagePreviewGalleryScreen extends StatelessWidget {
   final Future<Uint8List?> Function(Uint8List imageBytes)? editImageOverride;
   final Future<ImagePreviewGalleryEditAction?> Function()? editActionOverride;
   final Future<bool> Function()? confirmReplaceOverride;
+  final bool immersiveDesktopChrome;
+  final bool showViewerCloseButton;
+  final Future<void> Function()? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +38,9 @@ class ImagePreviewGalleryScreen extends StatelessWidget {
       editImageOverride: editImageOverride,
       editActionOverride: editActionOverride,
       confirmReplaceOverride: confirmReplaceOverride,
+      immersiveDesktopChrome: immersiveDesktopChrome,
+      showViewerCloseButton: showViewerCloseButton,
+      onClose: onClose,
     );
   }
 }

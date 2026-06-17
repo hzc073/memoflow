@@ -162,12 +162,15 @@ void main() {
     );
   });
 
-  test('attachment gallery direct render stays disabled for regular images', () {
-    expect(
-      shouldUseDirectAttachmentGalleryRender((width: 720, height: 1600)),
-      isFalse,
-    );
-  });
+  test(
+    'attachment gallery direct render stays disabled for regular images',
+    () {
+      expect(
+        shouldUseDirectAttachmentGalleryRender((width: 720, height: 1600)),
+        isFalse,
+      );
+    },
+  );
 
   test('gallery display size parser swaps axes for rotated jpeg', () {
     final image = img.Image(width: 2, height: 4);
@@ -203,30 +206,75 @@ void main() {
     expect(find.byType(ImagePreviewGalleryBody), findsOneWidget);
   });
 
-  testWidgets('mixed gallery constrains portrait image box by contained aspect', (
-    tester,
-  ) async {
-    final repository = SceneMicroGuideRepository(_MemorySecureStorage());
-    await tester.pumpWidget(
-      _buildTestApp(
-        AttachmentGalleryScreen(
-          images: const [
-            AttachmentImageSource(
-              id: 'portrait',
-              title: 'Portrait',
-              mimeType: 'image/png',
-              width: 720,
-              height: 1600,
-            ),
-          ],
-          items: const [
-            AttachmentGalleryItem.image(
+  testWidgets(
+    'mixed gallery constrains portrait image box by contained aspect',
+    (tester) async {
+      final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+      await tester.pumpWidget(
+        _buildTestApp(
+          AttachmentGalleryScreen(
+            images: const [
               AttachmentImageSource(
                 id: 'portrait',
                 title: 'Portrait',
                 mimeType: 'image/png',
                 width: 720,
                 height: 1600,
+              ),
+            ],
+            items: const [
+              AttachmentGalleryItem.image(
+                AttachmentImageSource(
+                  id: 'portrait',
+                  title: 'Portrait',
+                  mimeType: 'image/png',
+                  width: 720,
+                  height: 1600,
+                ),
+              ),
+              AttachmentGalleryItem.video(
+                MemoVideoEntry(
+                  id: 'video',
+                  title: 'Video',
+                  mimeType: 'video/mp4',
+                  size: 1,
+                ),
+              ),
+            ],
+            initialIndex: 0,
+            isDesktopOverride: false,
+          ),
+          repository: repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ImagePreviewGalleryBody), findsNothing);
+      expect(find.byType(PageView), findsOneWidget);
+
+      final size = tester.getSize(
+        find.byKey(const Key('attachment_gallery_display_box_portrait')),
+      );
+      expect(size.width, closeTo(244.8, 0.2));
+      expect(size.height, closeTo(544.0, 0.2));
+    },
+  );
+
+  testWidgets('desktop mixed gallery omits AppBar back chrome', (tester) async {
+    var closed = false;
+    final repository = SceneMicroGuideRepository(_MemorySecureStorage());
+    await tester.pumpWidget(
+      _buildTestApp(
+        AttachmentGalleryScreen(
+          images: const [],
+          items: const [
+            AttachmentGalleryItem.image(
+              AttachmentImageSource(
+                id: 'image',
+                title: 'Image',
+                mimeType: 'image/png',
+                width: 10,
+                height: 10,
               ),
             ),
             AttachmentGalleryItem.video(
@@ -235,25 +283,35 @@ void main() {
                 title: 'Video',
                 mimeType: 'video/mp4',
                 size: 1,
+                videoUrl: 'https://example.test/video.mp4',
               ),
             ),
           ],
           initialIndex: 0,
-          isDesktopOverride: false,
+          isDesktopOverride: true,
+          immersiveDesktopChrome: true,
+          showViewerCloseButton: true,
+          onClose: () async {
+            closed = true;
+          },
         ),
         repository: repository,
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(ImagePreviewGalleryBody), findsNothing);
-    expect(find.byType(PageView), findsOneWidget);
-
-    final size = tester.getSize(
-      find.byKey(const Key('attachment_gallery_display_box_portrait')),
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsNothing);
+    expect(find.text('1/2'), findsOneWidget);
+    expect(
+      find.byKey(const Key('desktop_media_preview_close_button')),
+      findsOneWidget,
     );
-    expect(size.width, closeTo(244.8, 0.2));
-    expect(size.height, closeTo(544.0, 0.2));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(closed, isTrue);
   });
 
   testWidgets('desktop gallery supports keyboard and click navigation', (

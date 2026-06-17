@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -24,7 +25,7 @@ import '../home/app_drawer_destination_builder.dart';
 import '../home/desktop/desktop_destination_shell.dart';
 import '../home/app_drawer_menu_button.dart';
 import '../home/home_navigation_host.dart';
-import '../memos/attachment_video_screen.dart';
+import '../media_preview/media_preview_launcher.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../memos/memo_video_grid.dart';
@@ -305,21 +306,7 @@ class _ResourcesScreenState extends ConsumerState<ResourcesScreen> {
         _showUnsupportedPreview(context);
         return;
       }
-      Navigator.of(context).push(
-        buildPlatformPageRoute<void>(
-          context: context,
-          settings: const RouteSettings(name: 'resources/video-preview'),
-          builder: (_) => AttachmentVideoScreen(
-            title: entry.title,
-            localFile: entry.localFile,
-            videoUrl: entry.videoUrl,
-            thumbnailUrl: entry.thumbnailUrl,
-            headers: entry.headers,
-            cacheId: entry.id,
-            cacheSize: entry.size,
-          ),
-        ),
-      );
+      unawaited(MediaPreviewLauncher.openVideo(context, entry));
       return;
     }
 

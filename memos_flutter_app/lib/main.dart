@@ -28,6 +28,8 @@ import 'core/startup_timing.dart';
 import 'data/logs/log_manager.dart';
 import 'core/desktop_quick_input_channel.dart';
 import 'features/desktop/quick_input/desktop_quick_input_window.dart';
+import 'features/media_preview/desktop_media_preview_request.dart';
+import 'features/media_preview/desktop_media_preview_window_app.dart';
 import 'features/share/desktop_share_task_window_app.dart';
 import 'features/share/share_task_window_codec.dart';
 import 'features/settings/desktop_settings_window_app.dart';
@@ -215,6 +217,29 @@ void main(List<String> args) {
                   : DesktopShareTaskWindowApp(
                       windowId: windowId,
                       launchPayload: launchPayload,
+                    ),
+            ),
+          );
+          _schedulePostFirstFrameInit();
+          return;
+        }
+        if (type == desktopWindowTypeMediaPreview) {
+          _initializeDesktopDatabaseFactory();
+          StartupTiming.markRunApp(target: 'desktop_media_preview');
+          final request = DesktopMediaPreviewRequest.fromLaunchArgs(launchArgs);
+          runApp(
+            ProviderScope(
+              overrides: [
+                desktopRuntimeRoleProvider.overrideWith(
+                  (ref) => DesktopRuntimeRole.desktopMediaPreview,
+                ),
+                desktopWindowIdProvider.overrideWith((ref) => windowId),
+              ],
+              child: request == null
+                  ? const SizedBox.shrink()
+                  : DesktopMediaPreviewWindowApp(
+                      windowId: windowId,
+                      request: request,
                     ),
             ),
           );

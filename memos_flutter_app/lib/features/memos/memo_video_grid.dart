@@ -10,7 +10,7 @@ import '../../core/url.dart';
 import '../../core/video_thumbnail_cache.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/attachment.dart';
-import 'attachment_video_screen.dart';
+import '../media_preview/media_preview_launcher.dart';
 
 class MemoVideoEntry {
   const MemoVideoEntry({
@@ -575,19 +575,7 @@ class MemoVideoGrid extends StatelessWidget {
     final visible = videos.take(visibleCount).toList(growable: false);
 
     void openVideo(MemoVideoEntry entry) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AttachmentVideoScreen(
-            title: entry.title,
-            localFile: entry.localFile,
-            videoUrl: entry.videoUrl,
-            thumbnailUrl: entry.thumbnailUrl,
-            headers: entry.headers,
-            cacheId: entry.id,
-            cacheSize: entry.size,
-          ),
-        ),
-      );
+      unawaited(MediaPreviewLauncher.openVideo(context, entry));
     }
 
     Widget buildTile(MemoVideoEntry entry, int index) {

@@ -25,7 +25,6 @@ import '../../data/models/memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../data/models/memo_template_settings.dart';
 import '../../data/models/user_setting.dart';
-import '../../platform/platform_route.dart';
 import '../../platform/platform_target.dart';
 import '../../platform/widgets/platform_action_sheet.dart';
 import '../../platform/widgets/platform_controls.dart';
@@ -50,6 +49,7 @@ import '../image_preview/image_preview_item.dart';
 import '../image_preview/image_preview_launcher.dart';
 import '../image_preview/image_preview_open_request.dart';
 import '../image_preview/widgets/image_preview_tile.dart';
+import '../media_preview/media_preview_launcher.dart';
 import '../share/share_clip_models.dart';
 import '../share/share_deferred_inline_image_coordinator.dart';
 import '../share/share_deferred_video_coordinator.dart';
@@ -61,7 +61,6 @@ import '../share/share_video_download_service.dart';
 import '../share/share_video_limit_messages.dart';
 import '../settings/location_settings_navigation.dart';
 import 'attachment_gallery_screen.dart';
-import 'attachment_video_screen.dart';
 import 'compose_input_hint.dart';
 import 'compose_toolbar_shared.dart';
 import 'draft_box_screen.dart';
@@ -794,17 +793,16 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   }
 
   Future<void> _openDeferredVideoPreview(ShareDeferredVideoTask task) async {
-    await Navigator.of(context).push(
-      buildPlatformPageRoute<void>(
-        context: context,
-        builder: (_) => AttachmentVideoScreen(
-          title: task.title,
-          videoUrl: task.request.candidate.url,
-          thumbnailUrl: task.thumbnailUrl,
-          headers: task.headers,
-          cacheId: task.id,
-          cacheSize: task.remoteSize ?? 0,
-        ),
+    await MediaPreviewLauncher.openVideo(
+      context,
+      MemoVideoEntry(
+        id: task.id,
+        title: task.title,
+        mimeType: 'video/*',
+        size: task.remoteSize ?? 0,
+        videoUrl: task.request.candidate.url,
+        thumbnailUrl: task.thumbnailUrl,
+        headers: task.headers,
       ),
     );
   }
@@ -2246,15 +2244,14 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   Future<void> _openPendingVideoPreview(_PendingAttachment attachment) async {
     final file = _resolvePendingAttachmentFile(attachment);
     if (file == null) return;
-    await Navigator.of(context).push(
-      buildPlatformPageRoute<void>(
-        context: context,
-        builder: (_) => AttachmentVideoScreen(
-          title: attachment.filename,
-          localFile: file,
-          cacheId: attachment.uid,
-          cacheSize: attachment.size,
-        ),
+    await MediaPreviewLauncher.openVideo(
+      context,
+      MemoVideoEntry(
+        id: attachment.uid,
+        title: attachment.filename,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        localFile: file,
       ),
     );
   }

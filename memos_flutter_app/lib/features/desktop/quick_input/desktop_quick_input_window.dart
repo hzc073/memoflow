@@ -39,6 +39,7 @@ import '../../memos/attachment_gallery_screen.dart';
 import '../../memos/compose_toolbar_shared.dart';
 import '../../memos/link_memo_sheet.dart';
 import '../../location_picker/show_location_picker.dart';
+import '../../media_preview/media_preview_launcher.dart';
 import '../../memos/memo_video_grid.dart';
 import '../../memos/windows_camera_capture_screen.dart';
 import '../../settings/location_settings_navigation.dart';
@@ -1341,15 +1342,12 @@ class _DesktopQuickInputWindowScreenState
     );
     if (index < 0) return;
     final sources = items.map((item) => item.source).toList(growable: false);
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AttachmentGalleryScreen(
-          images: sources,
-          initialIndex: index,
-          onReplace: _replacePendingAttachment,
-          enableDownload: true,
-        ),
-      ),
+    await MediaPreviewLauncher.openAttachmentGallery(
+      context,
+      images: sources,
+      initialIndex: index,
+      onReplace: _replacePendingAttachment,
+      enableDownload: true,
     );
   }
 

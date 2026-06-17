@@ -6,8 +6,8 @@ import '../../core/image_thumbnail_cache.dart';
 import '../image_preview/image_preview_launcher.dart';
 import '../image_preview/image_preview_open_request.dart';
 import '../image_preview/widgets/image_preview_tile.dart';
+import '../media_preview/media_preview_launcher.dart';
 import 'attachment_gallery_screen.dart';
-import 'attachment_video_screen.dart';
 import 'memo_image_grid.dart';
 import 'memo_video_grid.dart';
 
@@ -133,15 +133,14 @@ class MemoMediaGrid extends StatelessWidget {
     void openMixedGallery(int mediaIndex) {
       if (!enablePreviewOnTap) return;
       if (galleryItems.isEmpty) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AttachmentGalleryScreen(
-            images: const [],
-            items: galleryItems,
-            initialIndex: mediaIndex,
-            onReplace: onReplace,
-            enableDownload: enableDownload,
-          ),
+      unawaited(
+        MediaPreviewLauncher.openAttachmentGallery(
+          context,
+          images: const [],
+          items: galleryItems,
+          initialIndex: mediaIndex,
+          onReplace: onReplace,
+          enableDownload: enableDownload,
         ),
       );
     }
@@ -181,19 +180,7 @@ class MemoMediaGrid extends StatelessWidget {
 
     void openVideo(MemoVideoEntry entry) {
       if (!enablePreviewOnTap) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AttachmentVideoScreen(
-            title: entry.title,
-            localFile: entry.localFile,
-            videoUrl: entry.videoUrl,
-            thumbnailUrl: entry.thumbnailUrl,
-            headers: entry.headers,
-            cacheId: entry.id,
-            cacheSize: entry.size,
-          ),
-        ),
-      );
+      unawaited(MediaPreviewLauncher.openVideo(context, entry));
     }
 
     Widget buildImageTile(

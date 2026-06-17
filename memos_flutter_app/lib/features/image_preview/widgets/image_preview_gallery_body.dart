@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/desktop/desktop_titlebar_navigation_policy.dart';
+import '../../../core/desktop/window_chrome_safe_area.dart';
 import '../../../core/image_error_logger.dart';
 import '../../../core/image_formats.dart';
 import '../../../core/scene_micro_guide_widgets.dart';
@@ -44,6 +45,9 @@ class ImagePreviewGalleryBody extends ConsumerStatefulWidget {
     this.editImageOverride,
     this.editActionOverride,
     this.confirmReplaceOverride,
+    this.immersiveDesktopChrome = false,
+    this.showViewerCloseButton = false,
+    this.onClose,
   });
 
   final ImagePreviewOpenRequest request;
@@ -52,6 +56,9 @@ class ImagePreviewGalleryBody extends ConsumerStatefulWidget {
   final Future<Uint8List?> Function(Uint8List imageBytes)? editImageOverride;
   final Future<ImagePreviewGalleryEditAction?> Function()? editActionOverride;
   final Future<bool> Function()? confirmReplaceOverride;
+  final bool immersiveDesktopChrome;
+  final bool showViewerCloseButton;
+  final Future<void> Function()? onClose;
 
   @override
   ConsumerState<ImagePreviewGalleryBody> createState() =>
@@ -85,6 +92,9 @@ class ImagePreviewGalleryBodyState
       !_isDesktopGallery &&
       _currentImage != null &&
       _isPendingPreviewItem(_currentImage!);
+
+  bool get _usesImmersiveDesktopChrome =>
+      _isDesktopGallery && widget.immersiveDesktopChrome;
 
   bool get _hasPreviousPage => _index > 0;
   bool get _hasNextPage => _index < widget.request.items.length - 1;
@@ -167,6 +177,11 @@ class ImagePreviewGalleryBodyState
   }
 
   void _closeGallery() {
+    final close = widget.onClose;
+    if (close != null) {
+      unawaited(close());
+      return;
+    }
     final navigator = Navigator.of(context);
     if (!navigator.canPop()) {
       return;
@@ -1450,6 +1465,62 @@ class ImagePreviewGalleryBodyState
     );
   }
 
+  Widget _buildViewerCloseButton(BuildContext context) {
+    return Positioned(
+      left: 16,
+      bottom: MediaQuery.paddingOf(context).bottom + 16,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: const CircleBorder(),
+        child: InkWell(
+          key: const Key('desktop_media_preview_close_button'),
+          customBorder: const CircleBorder(),
+          onTap: _closeGallery,
+          child: const SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Icon(Icons.close_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImmersivePageLabel(BuildContext context) {
+    return Positioned(
+      top: 12,
+      left: 16,
+      right: 16,
+      child: DesktopWindowChromeSafeArea(
+        contentExtendsIntoTitleBar: true,
+        includeTop: true,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.48),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                '${_index + 1}/${widget.request.items.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDefaultActionDock({
     required bool canEdit,
     required bool canDownload,
@@ -1470,6 +1541,7 @@ class ImagePreviewGalleryBodyState
     required bool showControlsGuide,
     required String controlsGuideMessage,
     required bool usePendingPreviewChrome,
+    required bool useImmersiveDesktopChrome,
   }) {
     final hasFloatingActions = canEdit || canDownload;
     final guideBottom =
@@ -1496,6 +1568,9 @@ class ImagePreviewGalleryBodyState
           else
             _buildDefaultActionDock(canEdit: canEdit, canDownload: canDownload),
         if (usePendingPreviewChrome) _buildPendingPreviewCloseButton(context),
+        if (useImmersiveDesktopChrome) _buildImmersivePageLabel(context),
+        if (useImmersiveDesktopChrome && widget.showViewerCloseButton)
+          _buildViewerCloseButton(context),
         if (showControlsGuide)
           Positioned(
             left: 16,
@@ -1537,26 +1612,43 @@ class ImagePreviewGalleryBodyState
               .legacy
               .msg_scene_micro_guide_gallery_controls_mobile;
     final usePendingPreviewChrome = _isPendingPreviewContext;
+    final useImmersiveDesktopChrome = _usesImmersiveDesktopChrome;
     final scaffold = widget.request.items.isEmpty
-        ? Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              automaticallyImplyLeading:
-                  resolveDesktopRouteAutomaticallyImplyLeading(
-                    context: context,
-                    automaticallyImplyLeading: true,
+        ? useImmersiveDesktopChrome
+              ? Scaffold(
+                  backgroundColor: Colors.black,
+                  body: Stack(
+                    children: [
+                      Center(
+                        child: Text(
+                          context.t.strings.legacy.msg_no_image_available,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                      if (widget.showViewerCloseButton)
+                        _buildViewerCloseButton(context),
+                    ],
                   ),
-            ),
-            body: Center(
-              child: Text(
-                context.t.strings.legacy.msg_no_image_available,
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ),
-          )
+                )
+              : Scaffold(
+                  backgroundColor: Colors.black,
+                  appBar: AppBar(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    automaticallyImplyLeading:
+                        resolveDesktopRouteAutomaticallyImplyLeading(
+                          context: context,
+                          automaticallyImplyLeading: true,
+                        ),
+                  ),
+                  body: Center(
+                    child: Text(
+                      context.t.strings.legacy.msg_no_image_available,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                )
         : usePendingPreviewChrome
         ? Scaffold(
             backgroundColor: Colors.black,
@@ -1570,9 +1662,22 @@ class ImagePreviewGalleryBodyState
                     showControlsGuide: showControlsGuide,
                     controlsGuideMessage: controlsGuideMessage,
                     usePendingPreviewChrome: true,
+                    useImmersiveDesktopChrome: false,
                   ),
                 ),
               ],
+            ),
+          )
+        : useImmersiveDesktopChrome
+        ? Scaffold(
+            backgroundColor: Colors.black,
+            body: _buildGalleryViewport(
+              canEdit: canEdit,
+              canDownload: canDownload,
+              showControlsGuide: showControlsGuide,
+              controlsGuideMessage: controlsGuideMessage,
+              usePendingPreviewChrome: false,
+              useImmersiveDesktopChrome: true,
             ),
           )
         : Scaffold(
@@ -1597,6 +1702,7 @@ class ImagePreviewGalleryBodyState
               showControlsGuide: showControlsGuide,
               controlsGuideMessage: controlsGuideMessage,
               usePendingPreviewChrome: false,
+              useImmersiveDesktopChrome: false,
             ),
           );
 

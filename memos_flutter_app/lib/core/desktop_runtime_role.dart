@@ -5,6 +5,7 @@ enum DesktopRuntimeRole {
   desktopQuickInput,
   desktopSettings,
   desktopShareTask,
+  desktopMediaPreview,
 }
 
 extension DesktopRuntimeRoleX on DesktopRuntimeRole {
@@ -13,6 +14,7 @@ extension DesktopRuntimeRoleX on DesktopRuntimeRole {
     DesktopRuntimeRole.desktopQuickInput => 'desktop_quick_input',
     DesktopRuntimeRole.desktopSettings => 'desktop_settings',
     DesktopRuntimeRole.desktopShareTask => 'desktop_share_task',
+    DesktopRuntimeRole.desktopMediaPreview => 'desktop_media_preview',
   };
 }
 

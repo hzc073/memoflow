@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
 import '../../i18n/strings.g.dart';
-import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_page.dart';
-import '../memos/attachment_video_screen.dart';
+import '../media_preview/media_preview_launcher.dart';
 import '../memos/memo_markdown.dart';
+import '../memos/memo_video_grid.dart';
 import 'share_capture_engine.dart';
 import 'share_capture_inappwebview_engine.dart';
 import 'share_clip_controller.dart';
@@ -239,17 +239,16 @@ class _ShareClipScreenState extends State<ShareClipScreen> {
   ) async {
     final probe = await _probeCandidate(result, candidate);
     if (!mounted) return;
-    await Navigator.of(context).push(
-      buildPlatformPageRoute<void>(
-        context: context,
-        builder: (_) => AttachmentVideoScreen(
-          title: candidate.title ?? _resolveTitle(result),
-          videoUrl: candidate.url,
-          thumbnailUrl: candidate.thumbnailUrl ?? result.leadImageUrl,
-          headers: probe.headers,
-          cacheId: candidate.id,
-          cacheSize: probe.contentLength ?? 0,
-        ),
+    await MediaPreviewLauncher.openVideo(
+      context,
+      MemoVideoEntry(
+        id: candidate.id,
+        title: candidate.title ?? _resolveTitle(result),
+        mimeType: 'video/*',
+        size: probe.contentLength ?? 0,
+        videoUrl: candidate.url,
+        thumbnailUrl: candidate.thumbnailUrl ?? result.leadImageUrl,
+        headers: probe.headers,
       ),
     );
   }

@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/desktop/desktop_titlebar_navigation_policy.dart';
+import '../../core/desktop/window_chrome_safe_area.dart';
 import '../../core/image_formats.dart';
 import '../../core/image_error_logger.dart';
 import '../../core/scene_micro_guide_widgets.dart';
@@ -385,7 +386,10 @@ class AttachmentGalleryScreen extends ConsumerStatefulWidget {
     this.onReplace,
     this.enableDownload = true,
     this.albumName = 'MemoFlow',
-    @visibleForTesting this.isDesktopOverride,
+    this.isDesktopOverride,
+    this.immersiveDesktopChrome,
+    this.showViewerCloseButton = false,
+    this.onClose,
   });
 
   final List<AttachmentImageSource> images;
@@ -395,6 +399,9 @@ class AttachmentGalleryScreen extends ConsumerStatefulWidget {
   final bool enableDownload;
   final String albumName;
   final bool? isDesktopOverride;
+  final bool? immersiveDesktopChrome;
+  final bool showViewerCloseButton;
+  final Future<void> Function()? onClose;
 
   @override
   ConsumerState<AttachmentGalleryScreen> createState() =>
@@ -423,6 +430,9 @@ class _AttachmentGalleryScreenState
   bool get _isDesktopGallery =>
       widget.isDesktopOverride ??
       (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+  bool get _usesImmersiveDesktopChrome =>
+      _isDesktopGallery && (widget.immersiveDesktopChrome ?? true);
 
   bool get _hasPreviousPage => _index > 0;
   bool get _hasNextPage => _index < _items.length - 1;
@@ -496,6 +506,11 @@ class _AttachmentGalleryScreenState
   }
 
   void _closeGallery() {
+    final close = widget.onClose;
+    if (close != null) {
+      unawaited(close());
+      return;
+    }
     final navigator = Navigator.of(context);
     if (!navigator.canPop()) return;
     navigator.maybePop();
@@ -1147,6 +1162,9 @@ class _AttachmentGalleryScreenState
           headers: entry.headers,
           cacheId: entry.id,
           cacheSize: entry.size,
+          immersiveDesktopChrome: _usesImmersiveDesktopChrome,
+          showViewerCloseButton: widget.showViewerCloseButton,
+          onClose: widget.onClose,
         ),
       ),
     );
@@ -1587,6 +1605,62 @@ class _AttachmentGalleryScreenState
     );
   }
 
+  Widget _buildViewerCloseButton(BuildContext context) {
+    return Positioned(
+      left: 16,
+      bottom: MediaQuery.paddingOf(context).bottom + 16,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: const CircleBorder(),
+        child: InkWell(
+          key: const Key('desktop_media_preview_close_button'),
+          customBorder: const CircleBorder(),
+          onTap: _closeGallery,
+          child: const SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Icon(Icons.close_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImmersivePageLabel(BuildContext context) {
+    return Positioned(
+      top: 12,
+      left: 16,
+      right: 16,
+      child: DesktopWindowChromeSafeArea(
+        contentExtendsIntoTitleBar: true,
+        includeTop: true,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.48),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                '${_index + 1}/${_items.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageOnlyItems = _items
@@ -1619,6 +1693,9 @@ class _AttachmentGalleryScreenState
           albumName: widget.albumName,
         ),
         isDesktopOverride: widget.isDesktopOverride,
+        immersiveDesktopChrome: _usesImmersiveDesktopChrome,
+        showViewerCloseButton: widget.showViewerCloseButton,
+        onClose: widget.onClose,
       );
     }
 
@@ -1641,26 +1718,110 @@ class _AttachmentGalleryScreenState
               .strings
               .legacy
               .msg_scene_micro_guide_gallery_controls_mobile;
-    final scaffold = _items.isEmpty
-        ? Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              automaticallyImplyLeading:
-                  resolveDesktopRouteAutomaticallyImplyLeading(
-                    context: context,
-                    automaticallyImplyLeading: true,
+    final useImmersiveDesktopChrome = _usesImmersiveDesktopChrome;
+    final galleryBody = Stack(
+      children: [
+        PageView.builder(
+          controller: _controller,
+          physics: _isDesktopGallery || _isCurrentImageZoomed
+              ? const NeverScrollableScrollPhysics()
+              : null,
+          itemCount: _items.length,
+          onPageChanged: (value) => setState(() => _index = value),
+          itemBuilder: (context, index) {
+            final item = _items[index];
+            if (item.isVideo) {
+              return _buildVideoPage(item.video!);
+            }
+            return _buildImagePage(item.image!, pageIndex: index);
+          },
+        ),
+        Positioned(
+          right: 16,
+          bottom: MediaQuery.paddingOf(context).bottom + 16,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canEdit)
+                _actionButton(
+                  onTap: _editCurrent,
+                  child: const Icon(
+                    Icons.edit_rounded,
+                    color: Colors.white,
+                    size: 22,
                   ),
-            ),
-            body: Center(
-              child: Text(
-                context.t.strings.legacy.msg_no_image_available,
-                style: const TextStyle(color: Colors.white70),
+                ),
+              if (canEdit && canDownload) const SizedBox(width: 12),
+              if (canDownload)
+                _actionButton(
+                  onTap: _downloadCurrent,
+                  child: const Icon(
+                    Icons.download_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (useImmersiveDesktopChrome) _buildImmersivePageLabel(context),
+        if (useImmersiveDesktopChrome && widget.showViewerCloseButton)
+          _buildViewerCloseButton(context),
+        if (showControlsGuide)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.paddingOf(context).bottom + 18,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: SceneMicroGuideOverlayPill(
+                message: controlsGuideMessage,
+                onDismiss: () => _markSceneGuideSeen(
+                  SceneMicroGuideId.attachmentGalleryControls,
+                ),
               ),
             ),
-          )
+          ),
+      ],
+    );
+    final scaffold = _items.isEmpty
+        ? useImmersiveDesktopChrome
+              ? Scaffold(
+                  backgroundColor: Colors.black,
+                  body: Stack(
+                    children: [
+                      Center(
+                        child: Text(
+                          context.t.strings.legacy.msg_no_image_available,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                      if (widget.showViewerCloseButton)
+                        _buildViewerCloseButton(context),
+                    ],
+                  ),
+                )
+              : Scaffold(
+                  backgroundColor: Colors.black,
+                  appBar: AppBar(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    automaticallyImplyLeading:
+                        resolveDesktopRouteAutomaticallyImplyLeading(
+                          context: context,
+                          automaticallyImplyLeading: true,
+                        ),
+                  ),
+                  body: Center(
+                    child: Text(
+                      context.t.strings.legacy.msg_no_image_available,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                )
+        : useImmersiveDesktopChrome
+        ? Scaffold(backgroundColor: Colors.black, body: galleryBody)
         : Scaffold(
             backgroundColor: Colors.black,
             appBar: AppBar(
@@ -1677,68 +1838,7 @@ class _AttachmentGalleryScreenState
                 style: const TextStyle(color: Colors.white),
               ),
             ),
-            body: Stack(
-              children: [
-                PageView.builder(
-                  controller: _controller,
-                  physics: _isDesktopGallery || _isCurrentImageZoomed
-                      ? const NeverScrollableScrollPhysics()
-                      : null,
-                  itemCount: _items.length,
-                  onPageChanged: (value) => setState(() => _index = value),
-                  itemBuilder: (context, index) {
-                    final item = _items[index];
-                    if (item.isVideo) {
-                      return _buildVideoPage(item.video!);
-                    }
-                    return _buildImagePage(item.image!, pageIndex: index);
-                  },
-                ),
-                Positioned(
-                  right: 16,
-                  bottom: MediaQuery.paddingOf(context).bottom + 16,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (canEdit)
-                        _actionButton(
-                          onTap: _editCurrent,
-                          child: const Icon(
-                            Icons.edit_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      if (canEdit && canDownload) const SizedBox(width: 12),
-                      if (canDownload)
-                        _actionButton(
-                          onTap: _downloadCurrent,
-                          child: const Icon(
-                            Icons.download_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (showControlsGuide)
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: MediaQuery.paddingOf(context).bottom + 18,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: SceneMicroGuideOverlayPill(
-                        message: controlsGuideMessage,
-                        onDismiss: () => _markSceneGuideSeen(
-                          SceneMicroGuideId.attachmentGalleryControls,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            body: galleryBody,
           );
 
     return Focus(

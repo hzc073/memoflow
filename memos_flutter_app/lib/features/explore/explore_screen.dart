@@ -35,6 +35,9 @@ import '../home/app_drawer_destination_builder.dart';
 import '../home/desktop/desktop_destination_shell.dart';
 import '../home/home_navigation_host.dart';
 import '../home/app_drawer_menu_button.dart';
+import '../image_preview/image_preview_item.dart';
+import '../image_preview/image_preview_launcher.dart';
+import '../image_preview/image_preview_open_request.dart';
 import '../memos/memo_detail_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_media_grid.dart';
@@ -2408,20 +2411,23 @@ class _ExploreMemoCardState extends State<_ExploreMemoCard> {
   }
 
   void _openImagePreview(String url) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        child: InteractiveViewer(
-          child: CachedNetworkImage(
-            imageUrl: url,
-            httpHeaders: widget.authHeader == null
-                ? null
-                : {'Authorization': widget.authHeader!},
-            placeholder: (context, _) =>
-                const Center(child: CircularProgressIndicator()),
-            errorWidget: (context, url, error) =>
-                const Icon(Icons.broken_image),
-          ),
+    unawaited(
+      ImagePreviewLauncher.open(
+        context,
+        ImagePreviewOpenRequest(
+          items: <ImagePreviewItem>[
+            ImagePreviewItem(
+              id: url,
+              title: 'Image',
+              mimeType: 'image/*',
+              fullUrl: url,
+              headers: widget.authHeader == null
+                  ? null
+                  : <String, String>{'Authorization': widget.authHeader!},
+            ),
+          ],
+          initialIndex: 0,
+          enableDownload: true,
         ),
       ),
     );

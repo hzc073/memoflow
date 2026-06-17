@@ -16,8 +16,8 @@ import '../../data/models/attachment.dart';
 import '../../data/models/collection_reader.dart';
 import '../../i18n/strings.g.dart';
 import '../../state/system/session_provider.dart';
+import '../media_preview/media_preview_launcher.dart';
 import '../memos/attachment_gallery_screen.dart';
-import '../memos/attachment_video_screen.dart';
 import '../memos/memo_image_grid.dart';
 import '../memos/memo_video_grid.dart';
 import 'collection_reader_animation_delegate.dart';
@@ -1353,35 +1353,20 @@ class _ReaderMediaCard extends ConsumerWidget {
         if (entry == null) {
           return;
         }
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => AttachmentVideoScreen(
-              title: entry.title,
-              localFile: entry.localFile,
-              videoUrl: entry.videoUrl,
-              thumbnailUrl: entry.thumbnailUrl,
-              headers: entry.headers,
-              cacheId: entry.id,
-              cacheSize: entry.size,
-            ),
-          ),
-        );
+        await MediaPreviewLauncher.openVideo(context, entry);
         return;
       }
       final image = imageEntry;
       if (image == null) {
         return;
       }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AttachmentGalleryScreen(
-            images: const [],
-            items: <AttachmentGalleryItem>[
-              AttachmentGalleryItem.image(image.toGallerySource()),
-            ],
-            initialIndex: 0,
-          ),
-        ),
+      await MediaPreviewLauncher.openAttachmentGallery(
+        context,
+        images: const [],
+        items: <AttachmentGalleryItem>[
+          AttachmentGalleryItem.image(image.toGallerySource()),
+        ],
+        initialIndex: 0,
       );
     }
 
