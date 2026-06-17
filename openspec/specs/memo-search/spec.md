@@ -443,3 +443,235 @@ The system SHALL choose remote `ListMemos.order_by` fields according to the acti
 - **WHEN** 同一 query 触发刷新或分页加载
 - **THEN** 主页 MAY 保留当前 query 的已有结果
 - **AND** 任何加载反馈 MUST NOT 混入其他 query 或默认全量 memo
+
+### Requirement: Desktop search opens in the memo content area
+
+Windows 和 macOS 桌面首页 SHALL 将搜索作为内容区搜索页面呈现，而不是顶部命令栏或原生标题栏内联展开搜索框。点击桌面顶部搜索按钮或触发等价桌面搜索快捷键时，系统 MUST 进入主笔记列表搜索状态，并在笔记内容区域显示搜索输入、快捷搜索、最近搜索、推荐标签和搜索结果状态。
+
+#### Scenario: Search button opens content search
+- **GIVEN** 用户正在 Windows 或 macOS 桌面首页查看笔记列表
+- **WHEN** 用户点击右上角搜索按钮
+- **THEN** 系统 MUST 在笔记内容区域显示搜索输入框
+- **AND** 顶部命令栏或原生标题栏 MUST NOT 展开或显示搜索输入框
+
+#### Scenario: Desktop search shortcut opens content search
+- **GIVEN** 用户正在 Windows 或 macOS 桌面首页查看笔记列表
+- **WHEN** 用户触发桌面搜索快捷键
+- **THEN** 系统 MUST 进入与点击右上角搜索按钮相同的内容区搜索状态
+
+#### Scenario: Search landing keeps existing affordances
+- **GIVEN** Windows 或 macOS 桌面首页已进入搜索状态
+- **AND** 当前 `submitted query` 为空
+- **WHEN** 搜索页渲染
+- **THEN** 系统 SHALL 显示快捷搜索入口
+- **AND** 系统 SHALL 显示最近搜索和推荐标签
+
+### Requirement: Desktop top chrome keeps sort and search as app actions
+
+Windows 和 macOS 桌面首页顶部 app action 区 SHALL 保留排序和搜索按钮作为 app-level actions，并继续保留各平台系统窗口控制区域。预览、添加笔记、通知和设置入口 MUST NOT 出现在该动作区。
+
+#### Scenario: Sort and search appear before window controls
+- **GIVEN** 用户正在 Windows 或 macOS 桌面首页查看笔记列表
+- **WHEN** 顶部命令栏渲染
+- **THEN** 右上角 app-level action MUST include a sort button
+- **AND** 右上角 app-level action MUST include a search button
+- **AND** 右上角 app-level action MUST NOT include preview, add memo, notifications, or settings buttons
+- **AND** 系统窗口最小化、最大化/还原和关闭按钮 SHALL remain available
+
+#### Scenario: Sort menu reorders home memos
+- **GIVEN** 用户正在 Windows 或 macOS 桌面首页查看笔记列表
+- **WHEN** 用户通过右上角排序按钮选择排序方式
+- **THEN** 系统 MUST update the home sort option
+- **AND** 笔记列表 MUST reorder according to the selected sort option
+
+### Requirement: Desktop search preserves explicit submit semantics
+
+Windows 和 macOS 桌面内容区搜索 MUST preserve existing `draft query` / `submitted query` semantics. Editing the search field MUST NOT trigger keyword search until the user explicitly submits the draft query.
+
+#### Scenario: Typing in desktop content search does not query
+- **GIVEN** Windows 或 macOS 桌面首页已进入内容区搜索状态
+- **WHEN** 用户在搜索框输入文本但尚未提交
+- **THEN** 系统 MUST only update `draft query`
+- **AND** 系统 MUST NOT start a new keyword search provider query
+
+#### Scenario: Submitting in desktop content search queries
+- **GIVEN** Windows 或 macOS 桌面首页已进入内容区搜索状态
+- **AND** 搜索框中的 `draft query` trimmed 后非空
+- **WHEN** 用户点击搜索 action 或按 Search/Enter
+- **THEN** 系统 MUST update `submitted query`
+- **AND** 系统 MUST execute keyword search using `submitted query`
+
+### Requirement: Main memo keyword search requires explicit submit
+主笔记列表的关键词搜索 SHALL 区分用户正在编辑的 `draft query` 和实际用于查询的 `submitted query`。用户编辑 `draft query` MUST NOT 自动启动新的关键词搜索、远端搜索请求或本地 memo provider 查询；只有显式提交后，`submitted query` 才能更新并驱动搜索结果。
+
+#### Scenario: Typing does not start keyword search
+- **GIVEN** 用户已经打开主笔记列表搜索框
+- **WHEN** 用户在搜索框中输入或删除字符但没有提交搜索
+- **THEN** 系统 MUST 只更新 `draft query`
+- **AND** 系统 MUST NOT 因该输入变化启动新的主笔记关键词搜索 provider 查询
+
+#### Scenario: Search button submits draft query
+- **GIVEN** 搜索框中的 `draft query` 去除首尾空白后非空
+- **WHEN** 用户点击搜索栏右侧 `搜索` action
+- **THEN** 系统 MUST 将 trimmed `draft query` 设为 `submitted query`
+- **AND** 系统 MUST 使用该 `submitted query` 启动主笔记关键词搜索
+- **AND** 系统 MUST 将该 `submitted query` 作为搜索历史记录候选
+
+#### Scenario: Keyboard search submits draft query
+- **GIVEN** 搜索框中的 `draft query` 去除首尾空白后非空
+- **WHEN** 用户通过键盘 Search/Enter 提交搜索框
+- **THEN** 系统 MUST 执行与点击 `搜索` action 相同的提交行为
+
+#### Scenario: Empty draft cannot start search
+- **GIVEN** 搜索框中的 `draft query` 去除首尾空白后为空
+- **WHEN** 用户点击 `搜索` action 或通过键盘提交
+- **THEN** 系统 MUST NOT 启动关键词搜索
+- **AND** 系统 SHOULD 保持搜索 landing 或待输入状态
+
+#### Scenario: Clearing draft resets submitted search
+- **GIVEN** 当前存在非空 `submitted query`
+- **WHEN** 用户清空搜索框内容，使 trimmed `draft query` 变为空
+- **THEN** 系统 MUST 清空 `submitted query`
+- **AND** 系统 MUST return to the unsearched search state
+- **AND** 系统 MUST NOT keep showing the previous keyword search result page
+
+### Requirement: Submitted query is the visible search source of truth
+主笔记列表 SHALL 使用 `submitted query` 作为 provider 查询、结果列表 key、搜索结果高亮和 AI 搜索入口的关键词来源。`draft query` 仅用于输入框显示和搜索 action enablement，不得改变内容区页面或被用作已执行搜索结果的语义来源。
+
+#### Scenario: Draft edits keep current content unchanged
+- **GIVEN** 当前 `submitted query` 是 `alpha`
+- **AND** 搜索框 `draft query` 被用户编辑为 `beta` 但尚未提交
+- **WHEN** 页面展示内容区
+- **THEN** 系统 MUST keep the current content state unchanged
+- **AND** 系统 MUST continue using `alpha` for provider query, result list key, highlight, and AI search source
+- **AND** 系统 MUST NOT show a new draft-only search/pending page because of the draft edit
+
+#### Scenario: Empty submitted query landing remains while typing
+- **GIVEN** 用户已打开搜索模式
+- **AND** 当前 `submitted query` 为空
+- **WHEN** 用户在搜索框输入非空 `draft query` 但尚未提交
+- **THEN** 系统 MUST keep showing the existing search landing or equivalent current content state
+- **AND** 系统 MUST NOT start keyword search until explicit submit
+
+#### Scenario: Highlight uses submitted query
+- **GIVEN** 当前可见搜索结果来自 `submitted query` `alpha`
+- **AND** 搜索框 `draft query` 是未提交的 `beta`
+- **WHEN** memo card 渲染搜索高亮
+- **THEN** 系统 MUST 使用 `alpha` 作为高亮查询
+- **AND** 系统 MUST NOT 使用未提交的 `beta` 高亮现有结果
+
+#### Scenario: History and suggested tags submit explicitly
+- **WHEN** 用户选择搜索历史记录或推荐标签搜索建议
+- **THEN** 系统 MUST 同时更新 `draft query` 和 `submitted query`
+- **AND** 系统 MUST 使用该值启动关键词搜索
+
+### Requirement: Search UI exposes submit and loading states
+主笔记列表搜索 UI SHALL 提供明确的提交 action 和搜索中页面状态。移动端搜索模式下，右侧 primary action MUST 是 `搜索` 而不是 `取消`；关闭搜索 MUST 由左侧返回/关闭入口或平台等价关闭入口负责。
+
+#### Scenario: Mobile search action is submit
+- **GIVEN** 主笔记列表处于移动端搜索模式
+- **WHEN** 搜索栏显示右侧 primary action
+- **THEN** 该 action MUST 表示 `搜索`
+- **AND** 点击该 action MUST 提交当前 `draft query`
+- **AND** 该 action MUST NOT 关闭搜索模式
+
+#### Scenario: Search can still be closed
+- **GIVEN** 主笔记列表处于搜索模式
+- **WHEN** 用户点击左侧返回/关闭入口或平台等价关闭入口
+- **THEN** 系统 MUST 退出搜索模式
+- **AND** 系统 MUST 清理 draft/submitted keyword search state、quick search state、AI search state 和 advanced search state according to existing close-search semantics
+
+#### Scenario: Initial submitted search shows loading page
+- **GIVEN** 用户提交了非空 `submitted query`
+- **AND** 当前 submitted query 尚无可展示结果
+- **WHEN** 关键词搜索 provider 仍在加载
+- **THEN** 系统 MUST 显示明确的搜索中页面状态
+- **AND** 系统 MUST NOT 显示空白页面作为唯一反馈
+
+#### Scenario: Same-query refresh may preserve visible results
+- **GIVEN** 当前页面已经展示某个 `submitted query` 的结果
+- **WHEN** 同一 `submitted query` 因本地数据库变化或同步刷新而重新加载
+- **THEN** 系统 MAY 保留现有结果
+- **AND** 系统 MUST 提供轻量加载反馈 if refresh is user-visible
+
+### Requirement: Search optimization preserves canonical literal substring semantics
+The system MUST preserve the canonical memo keyword search contract while optimizing latency. Candidate lookup strategies MAY change, but visible results MUST continue to be based on the normalized literal substring semantics provided by `MemoSearchMatcher` and the canonical document semantics provided by `MemoSearchDocumentBuilder`.
+
+#### Scenario: Short CJK queries remain supported
+- **WHEN** a memo canonical search document contains a 1-character or 2-character CJK literal substring used as the query
+- **THEN** the memo MUST remain eligible to appear in keyword search results when all active filters match
+
+#### Scenario: Searchable metadata remains covered
+- **WHEN** the query appears in supported searchable metadata such as tags, clip-card source name, clip-card author name, source URL, URL host, or host without `www.`
+- **THEN** the memo MUST remain eligible to appear in keyword search results even if the memo body does not contain the query
+
+#### Scenario: Literal special characters remain literal
+- **WHEN** the query contains characters that have special meaning in `SQL LIKE`, `SQLite FTS`, server filter syntax, or regular expressions
+- **THEN** the system MUST treat those characters as literal search text and MUST NOT execute them as operators or wildcards
+
+### Requirement: Dirty search index maintenance runs outside unbounded query work
+The system MUST prevent large `memo_search_dirty` backlogs from creating unbounded synchronous work during user keyword search. Query-time dirty handling MAY exist as a bounded correctness fallback, but primary dirty-index maintenance SHOULD run through write, sync, self-repair, idle maintenance, startup maintenance, or another explicit maintenance seam.
+
+#### Scenario: Dirty backlog exceeds query fallback budget
+- **GIVEN** `memo_search_dirty` contains more entries than the query-time fallback budget
+- **WHEN** the user runs a non-empty keyword search
+- **THEN** the search path MUST avoid unbounded scanning or rebuilding of the entire dirty backlog before returning the first result set
+
+#### Scenario: Dirty matching memo remains discoverable
+- **GIVEN** a memo is marked dirty because its canonical search document changed
+- **AND** the dirty backlog has not been fully drained
+- **WHEN** the user searches for a literal substring contained in that memo's fresh canonical search document
+- **THEN** the memo MUST remain discoverable through bounded fallback, refreshed index data, exact verification, or an explicit freshness state when all active filters match
+
+#### Scenario: Background maintenance preserves visible semantics
+- **WHEN** dirty entries are drained outside the user query path
+- **THEN** subsequent keyword searches MUST return the same visible results as the canonical literal substring contract would return before and after the maintenance work
+
+#### Scenario: Maintenance is batched
+- **WHEN** dirty-index maintenance runs outside the query path
+- **THEN** it SHOULD process work in bounded batches
+- **AND** it SHOULD avoid long write locks that block normal memo reads or writes
+
+### Requirement: Search filters move toward SQLite-owned candidate reduction
+The system SHALL support safe keyword-search filters in data-layer candidate lookup before constructing broad `LocalMemo` lists for Dart filtering. Equivalent SQLite constraints SHOULD be preferred when available. Dart filtering MAY remain for filters that cannot be expressed safely or equivalently in SQLite.
+
+#### Scenario: Stable filters reduce candidates before Dart filtering
+- **WHEN** state, tag, date range, location presence, attachment presence, or relation presence filters are active and can be safely expressed in SQLite
+- **THEN** the data-layer search path SHOULD apply those constraints before returning candidates to Dart filtering
+
+#### Scenario: Location text filter is pushed down only when equivalent
+- **WHEN** a location placeholder substring filter is active
+- **THEN** the filter SHOULD be pushed down only if SQLite normalization and matching semantics remain equivalent to the existing Dart filter
+
+#### Scenario: Dart-only filters remain verified
+- **WHEN** attachment type, attachment name, shortcut predicate, or another filter cannot yet be expressed equivalently in SQLite
+- **THEN** the system MAY keep that filter in Dart
+- **AND** visible results MUST remain equivalent to the canonical filter semantics
+
+### Requirement: Joplin is a reference for strategy, not a wholesale engine replacement
+The system MUST treat Joplin-style search as a reference for background indexing and SQL query construction, not as a direct replacement for MemoFlow's keyword search semantics.
+
+#### Scenario: FTS replacement remains out of scope
+- **WHEN** this change is implemented
+- **THEN** it MUST NOT replace the primary keyword search path with pure `SQLite FTS`, `SQLite FTS5 trigram`, or Joplin-style nonlatin fallback behavior
+
+#### Scenario: Future engine migration requires a separate design
+- **WHEN** a future search-engine migration changes the primary keyword search index
+- **THEN** it MUST include benchmark coverage for memo count, searchable bytes, dirty backlog size, CJK short queries, English queries, tag search, URL host search, advanced filters, and remote-backed search
+- **AND** it MUST specify how 1-character and 2-character CJK substring queries remain supported
+
+### Requirement: Search optimization preserves modular boundaries
+The system MUST implement future keyword search maintenance and SQL pushdown improvements without worsening known architecture hotspots during `evolve_modularity`.
+
+#### Scenario: Search persistence remains data-layer owned
+- **WHEN** search index tables, dirty backlog handling, or SQL candidate lookup are added or changed
+- **THEN** `data/db` search persistence code MUST NOT import `features/`, `state/`, or `application/`
+
+#### Scenario: State layer translates filters without owning DB maintenance
+- **WHEN** `AdvancedSearchFilters` are mapped into database query constraints
+- **THEN** `state/memos` MAY perform the translation
+- **AND** `data/db` MUST consume stable data-layer parameters rather than importing state-layer filter types
+
+#### Scenario: State layer does not depend on feature widgets
+- **WHEN** search providers or coordinators are changed
+- **THEN** they MUST NOT introduce new `state -> features` imports
