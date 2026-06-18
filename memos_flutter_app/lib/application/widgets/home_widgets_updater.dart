@@ -12,6 +12,7 @@ import '../../data/db/app_database.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/device_preferences.dart';
 import '../../data/models/resolved_app_settings.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../../state/memos/app_bootstrap_adapter_provider.dart';
 import '../../state/system/session_provider.dart';
 import 'home_widget_service.dart';
@@ -43,8 +44,14 @@ class HomeWidgetsUpdater {
   String? _appliedQuickInputSignature;
   String? _appliedCalendarSignature;
 
-  bool get _supportsWidgets =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  bool get _supportsWidgets {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform == TargetPlatform.android) return true;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return false;
+    return resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.homeWidgets,
+    ).canRun;
+  }
 
   void bindDatabaseChanges(WidgetRef ref) {
     if (!_supportsWidgets || !_isMounted()) return;

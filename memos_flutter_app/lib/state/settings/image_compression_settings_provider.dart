@@ -7,6 +7,7 @@ import '../../application/sync/sync_request.dart';
 import '../../core/app_channel.dart';
 import '../../data/models/image_compression_settings.dart';
 import '../../data/repositories/image_compression_settings_repository.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../sync/sync_coordinator_provider.dart';
 import '../system/session_provider.dart';
 
@@ -36,20 +37,36 @@ enum ImageOriginalSelectionMode { hidden, inlinePerAsset, globalBeforePick }
 
 class ImageCompressionUiPolicy {
   const ImageCompressionUiPolicy({
+    this.available = true,
     required this.enabled,
     required this.useSystemPhotoPicker,
     required this.originalSelectionMode,
+    required this.supportedOutputFormats,
   });
 
+  final bool available;
   final bool enabled;
   final bool useSystemPhotoPicker;
   final ImageOriginalSelectionMode originalSelectionMode;
+  final List<ImageCompressionOutputFormat> supportedOutputFormats;
 
   bool get showOriginalToggle =>
       originalSelectionMode == ImageOriginalSelectionMode.inlinePerAsset;
 
   bool get shouldPromptOriginalBeforePick =>
       originalSelectionMode == ImageOriginalSelectionMode.globalBeforePick;
+
+  bool supportsOutputFormat(ImageCompressionOutputFormat format) {
+    return supportedOutputFormats.contains(format);
+  }
+
+  ImageCompressionOutputFormat effectiveOutputFormat(
+    ImageCompressionOutputFormat format,
+  ) {
+    return supportsOutputFormat(format)
+        ? format
+        : ImageCompressionOutputFormat.sameAsInput;
+  }
 }
 
 final imageCompressionUiPolicyProvider = Provider<ImageCompressionUiPolicy>((
@@ -58,9 +75,16 @@ final imageCompressionUiPolicyProvider = Provider<ImageCompressionUiPolicy>((
   final settings = ref.watch(imageCompressionSettingsProvider);
   final isAndroidPlatform =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  final isIosMobilePlatform =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  final readiness = resolveIosMobileFeatureReadiness(
+    featureId: IosMobileFeatureId.imageCompression,
+  );
   return resolveImageCompressionUiPolicy(
     settings: settings,
+    featureAvailable: readiness.canRun,
     isAndroidPlatform: isAndroidPlatform,
+    isIosMobilePlatform: isIosMobilePlatform,
     isPlayChannel: isPlayAppChannel,
   );
 });
@@ -68,21 +92,41 @@ final imageCompressionUiPolicyProvider = Provider<ImageCompressionUiPolicy>((
 @visibleForTesting
 ImageCompressionUiPolicy resolveImageCompressionUiPolicy({
   required ImageCompressionSettings settings,
+  bool featureAvailable = true,
   required bool isAndroidPlatform,
+  required bool isIosMobilePlatform,
   required bool isPlayChannel,
 }) {
   final useSystemPhotoPicker = isAndroidPlatform && isPlayChannel;
   final originalSelectionMode =
-      !settings.enabled || !isAndroidPlatform
+      !featureAvailable || !settings.enabled || !isAndroidPlatform
       ? ImageOriginalSelectionMode.hidden
       : useSystemPhotoPicker
       ? ImageOriginalSelectionMode.globalBeforePick
       : ImageOriginalSelectionMode.inlinePerAsset;
   return ImageCompressionUiPolicy(
-    enabled: settings.enabled,
+    available: featureAvailable,
+    enabled: featureAvailable && settings.enabled,
     useSystemPhotoPicker: useSystemPhotoPicker,
     originalSelectionMode: originalSelectionMode,
+    supportedOutputFormats: resolveImageCompressionSupportedOutputFormats(
+      isIosMobilePlatform: isIosMobilePlatform,
+    ),
   );
+}
+
+@visibleForTesting
+List<ImageCompressionOutputFormat>
+resolveImageCompressionSupportedOutputFormats({
+  required bool isIosMobilePlatform,
+}) {
+  if (!isIosMobilePlatform) return ImageCompressionOutputFormat.values;
+  return const <ImageCompressionOutputFormat>[
+    ImageCompressionOutputFormat.sameAsInput,
+    ImageCompressionOutputFormat.jpeg,
+    ImageCompressionOutputFormat.png,
+    ImageCompressionOutputFormat.tiff,
+  ];
 }
 
 class ImageCompressionSettingsController

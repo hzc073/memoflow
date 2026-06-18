@@ -129,6 +129,11 @@ void main() {
     expect(source, contains('_componentsStatusTooltip('));
     expect(source, contains('SettingsFeatureModule('));
     expect(source, contains('SettingsFeatureStatus'));
+    expect(source, contains('IosMobileFeatureId.memoReminders'));
+    expect(source, contains('IosMobileFeatureId.thirdPartyShareIntake'));
+    expect(source, contains('IosMobileFeatureId.imageCompression'));
+    expect(source, contains('IosMobileFeatureId.locationPicker'));
+    expect(source, contains('readiness.canRun'));
     expect(source, contains('_configuredStatus('));
     expect(settingsUiSource, contains('enum SettingsFeatureStatus'));
     expect(settingsUiSource, contains('_SettingsFeatureStatusIndicator'));

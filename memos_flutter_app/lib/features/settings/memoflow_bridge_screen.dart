@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,12 +16,31 @@ import '../../data/models/memoflow_bridge_settings.dart';
 import '../../i18n/strings.g.dart';
 import '../../platform/widgets/platform_page.dart';
 import '../../platform/widgets/platform_primary_action.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/memoflow_bridge_settings_provider.dart';
 import 'settings_ui.dart';
 
-bool supportsMemoFlowQrScannerOnCurrentPlatform() {
-  return Platform.isAndroid;
+bool supportsMemoFlowQrScannerOnCurrentPlatform({
+  TargetPlatform? platform,
+  bool isWeb = kIsWeb,
+  IosMobileFeatureReadinessInputs? readinessInputs,
+}) {
+  if (isWeb) return false;
+  final resolved = platform ?? defaultTargetPlatform;
+  final platformHasScanner =
+      resolved == TargetPlatform.android || resolved == TargetPlatform.iOS;
+  if (!platformHasScanner) return false;
+  if (resolved != TargetPlatform.iOS) return true;
+  return resolveIosMobileFeatureReadiness(
+    featureId: IosMobileFeatureId.qrScanner,
+    inputs:
+        readinessInputs ??
+        IosMobileFeatureReadinessInputs.forPlatform(
+          platform: resolved,
+          isWeb: isWeb,
+        ),
+  ).canRun;
 }
 
 void showMemoFlowQrUnsupportedNotice(BuildContext context) {
@@ -120,6 +140,13 @@ Future<String> _resolveMemoFlowDeviceName() async {
       final brand = info.brand.trim();
       final model = info.model.trim();
       final next = [brand, model].where((it) => it.isNotEmpty).join(' ');
+      if (next.isNotEmpty) return next;
+    }
+    if (Platform.isIOS) {
+      final info = await plugin.iosInfo;
+      final name = info.name.trim();
+      final model = info.utsname.machine.trim();
+      final next = [name, model].where((it) => it.isNotEmpty).join(' ');
       if (next.isNotEmpty) return next;
     }
   } catch (_) {}

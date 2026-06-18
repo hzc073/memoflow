@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 import '../../core/debug_ephemeral_storage.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import 'share_video_download_service.dart';
 
 @immutable
@@ -204,7 +205,7 @@ class ShareVideoCompressionService {
   }
 
   static bool _defaultIsCompressionSupported() =>
-      !kIsWeb && Platform.isAndroid;
+      isShareVideoCompressionSupportedOnPlatform();
 
   static Future<Directory> _defaultResolveDirectory() async {
     final root = await resolveAppSupportDirectory();
@@ -241,4 +242,23 @@ class ShareVideoCompressionService {
   }
 }
 
-
+@visibleForTesting
+bool isShareVideoCompressionSupportedOnPlatform({
+  TargetPlatform? platform,
+  bool isWeb = kIsWeb,
+  IosMobileFeatureReadinessInputs? readinessInputs,
+}) {
+  if (isWeb) return false;
+  final resolved = platform ?? defaultTargetPlatform;
+  if (resolved == TargetPlatform.android) return true;
+  if (resolved != TargetPlatform.iOS) return false;
+  return resolveIosMobileFeatureReadiness(
+    featureId: IosMobileFeatureId.thirdPartyShareVideoCompression,
+    inputs:
+        readinessInputs ??
+        IosMobileFeatureReadinessInputs.forPlatform(
+          platform: resolved,
+          isWeb: isWeb,
+        ),
+  ).canRun;
+}

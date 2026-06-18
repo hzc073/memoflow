@@ -192,6 +192,78 @@ void main() {
     expect(appDelegate.contains('private_hooks'), isFalse);
   });
 
+  test('iOS mobile public feature targets are wired', () {
+    expect(File('ios/Runner/MemoFlowNativeBridge.swift').existsSync(), isTrue);
+    expect(File('ios/Runner/Runner.entitlements').existsSync(), isTrue);
+    expect(
+      File(
+        'ios/MemoFlowWidgetExtension/MemoFlowWidgetExtension.swift',
+      ).existsSync(),
+      isTrue,
+    );
+    expect(
+      File('ios/MemoFlowShareExtension/ShareViewController.swift').existsSync(),
+      isTrue,
+    );
+
+    final infoPlist = readFile('ios/Runner/Info.plist');
+    final project = readFile('ios/Runner.xcodeproj/project.pbxproj');
+    final runnerEntitlements = readFile('ios/Runner/Runner.entitlements');
+    final widgetEntitlements = readFile(
+      'ios/MemoFlowWidgetExtension/MemoFlowWidgetExtension.entitlements',
+    );
+    final shareEntitlements = readFile(
+      'ios/MemoFlowShareExtension/MemoFlowShareExtension.entitlements',
+    );
+    final bridge = readFile('ios/Runner/MemoFlowNativeBridge.swift');
+    final widget = readFile(
+      'ios/MemoFlowWidgetExtension/MemoFlowWidgetExtension.swift',
+    );
+    final share = readFile(
+      'ios/MemoFlowShareExtension/ShareViewController.swift',
+    );
+    final shareInfo = readFile('ios/MemoFlowShareExtension/Info.plist');
+
+    expect(infoPlist, contains('<string>memoflow</string>'));
+    expect(project, contains('MemoFlowWidgetExtension'));
+    expect(project, contains('MemoFlowShareExtension'));
+    expect(project, contains('Embed App Extensions'));
+    expect(
+      project,
+      contains('PRODUCT_BUNDLE_IDENTIFIER = com.memoflow.hzc073.widget;'),
+    );
+    expect(
+      project,
+      contains('PRODUCT_BUNDLE_IDENTIFIER = com.memoflow.hzc073.share;'),
+    );
+    expect(
+      project,
+      contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
+    );
+    expect(project, contains('WidgetKit.framework'));
+    expect(project, contains('UniformTypeIdentifiers.framework'));
+
+    for (final entitlements in <String>[
+      runnerEntitlements,
+      widgetEntitlements,
+      shareEntitlements,
+    ]) {
+      expect(entitlements, contains('group.com.memoflow.hzc073'));
+    }
+
+    expect(bridge, contains('memoflow/widgets'));
+    expect(bridge, contains('memoflow/share'));
+    expect(bridge, contains('WidgetCenter.shared.reloadTimelines'));
+    expect(bridge, contains('memoflow.pendingSharePayload'));
+    expect(widget, contains('WidgetBundle'));
+    expect(widget, contains('MemoFlowDailyReviewWidget'));
+    expect(widget, contains('MemoFlowQuickInputWidget'));
+    expect(widget, contains('MemoFlowCalendarWidget'));
+    expect(share, contains('ShareIntake'));
+    expect(share, contains('extensionContext?.open'));
+    expect(shareInfo, contains('com.apple.share-services'));
+  });
+
   test(
     'iOS public shell contains no commercial runtime or release secrets',
     () {

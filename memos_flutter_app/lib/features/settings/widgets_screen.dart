@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../application/widgets/home_widget_service.dart';
+import '../../core/app_localization.dart';
 import '../../core/top_toast.dart';
 import '../../i18n/strings.g.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import 'settings_ui.dart';
 
 class WidgetsScreen extends StatelessWidget {
@@ -74,6 +76,20 @@ class WidgetsScreen extends StatelessWidget {
     BuildContext context,
     HomeWidgetType type,
   ) async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final readiness = resolveIosMobileFeatureReadiness(
+        featureId: IosMobileFeatureId.homeWidgets,
+      );
+      showTopToast(
+        context,
+        readiness.manualFallbackDescription ??
+            context.tr(
+              zh: '请从 iOS 主屏幕的小组件列表添加 MemoFlow。',
+              en: 'Add MemoFlow from the iOS widget gallery on the Home Screen.',
+            ),
+      );
+      return;
+    }
     if (defaultTargetPlatform != TargetPlatform.android) {
       showTopToast(
         context,

@@ -18,6 +18,7 @@ import '../../state/settings/device_preferences_provider.dart';
 import '../../state/system/reminder_scheduler.dart';
 import '../../state/settings/reminder_settings_provider.dart';
 import '../../state/webdav/webdav_settings_provider.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../reminders/reminder_settings_screen.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_dialog.dart';
@@ -45,6 +46,18 @@ class ComponentsSettingsScreen extends ConsumerWidget {
     final locationSettings = ref.watch(locationSettingsProvider);
     final templateSettings = ref.watch(memoTemplateSettingsProvider);
     final webDavSettings = ref.watch(webDavSettingsProvider);
+    final reminderReadiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.memoReminders,
+    );
+    final thirdPartyShareReadiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.thirdPartyShareIntake,
+    );
+    final imageCompressionReadiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.imageCompression,
+    );
+    final locationReadiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.locationPicker,
+    );
 
     return SettingsPage(
       showBackButton: showBackButton,
@@ -59,10 +72,17 @@ class ComponentsSettingsScreen extends ConsumerWidget {
       children: [
         SettingsFeatureModule(
           title: context.t.strings.legacy.msg_memo_reminders_2,
-          tooltip: context.t.strings.legacy.msg_enable_reminders_memos,
-          status: _enabledStatus(reminderSettings.enabled),
-          value: reminderSettings.enabled,
+          tooltip: _readinessTooltip(
+            readiness: reminderReadiness,
+            fallback: context.t.strings.legacy.msg_enable_reminders_memos,
+          ),
+          status: _readinessStatus(
+            readiness: reminderReadiness,
+            enabled: reminderSettings.enabled,
+          ),
+          value: reminderReadiness.canRun && reminderSettings.enabled,
           onChanged: (v) async {
+            if (!reminderReadiness.canRun) return;
             if (v) {
               final granted = await _requestReminderPermissions(context);
               if (!granted) return;
@@ -79,14 +99,22 @@ class ComponentsSettingsScreen extends ConsumerWidget {
         ),
         SettingsFeatureModule(
           title: context.t.strings.legacy.msg_third_party_share,
-          tooltip: context
-              .t
-              .strings
-              .legacy
-              .msg_allow_sharing_links_images_other_apps,
-          status: _enabledStatus(prefs.thirdPartyShareEnabled),
-          value: prefs.thirdPartyShareEnabled,
+          tooltip: _readinessTooltip(
+            readiness: thirdPartyShareReadiness,
+            fallback: context
+                .t
+                .strings
+                .legacy
+                .msg_allow_sharing_links_images_other_apps,
+          ),
+          status: _readinessStatus(
+            readiness: thirdPartyShareReadiness,
+            enabled: prefs.thirdPartyShareEnabled,
+          ),
+          value:
+              thirdPartyShareReadiness.canRun && prefs.thirdPartyShareEnabled,
           onChanged: (nextValue) async {
+            if (!thirdPartyShareReadiness.canRun) return;
             if (!nextValue) {
               ref
                   .read(devicePreferencesProvider.notifier)
@@ -120,11 +148,21 @@ class ComponentsSettingsScreen extends ConsumerWidget {
         ),
         SettingsFeatureModule(
           title: context.t.strings.legacy.msg_image_compression,
-          tooltip: context.t.strings.legacy.msg_image_compression_desc,
-          status: _enabledStatus(imageCompressionSettings.enabled),
-          value: imageCompressionSettings.enabled,
-          onChanged: (v) =>
-              ref.read(imageCompressionSettingsProvider.notifier).setEnabled(v),
+          tooltip: _readinessTooltip(
+            readiness: imageCompressionReadiness,
+            fallback: context.t.strings.legacy.msg_image_compression_desc,
+          ),
+          status: _readinessStatus(
+            readiness: imageCompressionReadiness,
+            enabled: imageCompressionSettings.enabled,
+          ),
+          value:
+              imageCompressionReadiness.canRun &&
+              imageCompressionSettings.enabled,
+          onChanged: (v) {
+            if (!imageCompressionReadiness.canRun) return;
+            ref.read(imageCompressionSettingsProvider.notifier).setEnabled(v);
+          },
           onOpen: () => Navigator.of(context).push(
             buildPlatformPageRoute<void>(
               context: context,
@@ -138,18 +176,25 @@ class ComponentsSettingsScreen extends ConsumerWidget {
             english: 'Location permission',
             chinese: '\u4f4d\u7f6e\u6743\u9650',
           ),
-          tooltip: context
-              .t
-              .strings
-              .legacy
-              .msg_attach_location_info_memos_show_subtle,
-          status: _configuredStatus(
-            enabled: locationSettings.enabled,
-            configured: _locationConfigured(locationSettings),
+          tooltip: _readinessTooltip(
+            readiness: locationReadiness,
+            fallback: context
+                .t
+                .strings
+                .legacy
+                .msg_attach_location_info_memos_show_subtle,
           ),
-          value: locationSettings.enabled,
-          onChanged: (v) =>
-              ref.read(locationSettingsProvider.notifier).setEnabled(v),
+          status: locationReadiness.canRun
+              ? _configuredStatus(
+                  enabled: locationSettings.enabled,
+                  configured: _locationConfigured(locationSettings),
+                )
+              : SettingsFeatureStatus.permissionMissing,
+          value: locationReadiness.canRun && locationSettings.enabled,
+          onChanged: (v) {
+            if (!locationReadiness.canRun) return;
+            ref.read(locationSettingsProvider.notifier).setEnabled(v);
+          },
           onOpen: () => Navigator.of(context).push(
             buildPlatformPageRoute<void>(
               context: context,
@@ -228,6 +273,24 @@ SettingsFeatureStatus _enabledStatus(bool enabled) {
       : SettingsFeatureStatus.disabledConfigured;
 }
 
+SettingsFeatureStatus _readinessStatus({
+  required PlatformFeatureReadiness readiness,
+  required bool enabled,
+}) {
+  if (!readiness.canRun) return SettingsFeatureStatus.permissionMissing;
+  return _enabledStatus(enabled);
+}
+
+String _readinessTooltip({
+  required PlatformFeatureReadiness readiness,
+  required String fallback,
+}) {
+  if (readiness.canRun) return fallback;
+  return readiness.manualFallbackDescription ??
+      readiness.nativeRequirement ??
+      fallback;
+}
+
 SettingsFeatureStatus _configuredStatus({
   required bool enabled,
   required bool configured,
@@ -276,6 +339,19 @@ bool _useChineseComponentCopy(BuildContext context) {
 }
 
 Future<bool> _requestReminderPermissions(BuildContext context) async {
+  if (Platform.isIOS) {
+    final status = await Permission.notification.request();
+    final granted = status.isGranted;
+    if (!context.mounted) return granted;
+    if (!granted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.t.strings.legacy.msg_permissions_denied),
+        ),
+      );
+    }
+    return granted;
+  }
   if (!Platform.isAndroid) return true;
 
   final confirmed = await showSettingsConfirmationDialog(

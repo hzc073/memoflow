@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/application/sync/migration/memoflow_migration_models.dart';
 import 'package:memos_flutter_app/application/sync/migration/memoflow_migration_protocol.dart';
+import 'package:memos_flutter_app/features/settings/memoflow_bridge_screen.dart';
 import 'package:memos_flutter_app/features/settings/quick_qr_action.dart';
+import 'package:memos_flutter_app/platform_capabilities/ios_mobile_feature_readiness.dart';
 
 void main() {
   test('classifyQuickQrPayload recognizes MemoFlow migration QR first', () {
@@ -38,4 +41,45 @@ void main() {
   test('classifyQuickQrPayload rejects unsupported QR data', () {
     expect(classifyQuickQrPayload('hello world'), isNull);
   });
+
+  test('scanner support includes iOS mobile and Android', () {
+    expect(
+      supportsMemoFlowQrScannerOnCurrentPlatform(
+        platform: TargetPlatform.iOS,
+        isWeb: false,
+      ),
+      isTrue,
+    );
+    expect(
+      supportsMemoFlowQrScannerOnCurrentPlatform(
+        platform: TargetPlatform.android,
+        isWeb: false,
+      ),
+      isTrue,
+    );
+    expect(
+      supportsMemoFlowQrScannerOnCurrentPlatform(
+        platform: TargetPlatform.windows,
+        isWeb: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'scanner support follows iOS readiness when native scanner is unavailable',
+    () {
+      expect(
+        supportsMemoFlowQrScannerOnCurrentPlatform(
+          platform: TargetPlatform.iOS,
+          isWeb: false,
+          readinessInputs: const IosMobileFeatureReadinessInputs(
+            isIosMobile: true,
+            scannerAvailable: false,
+          ),
+        ),
+        isFalse,
+      );
+    },
+  );
 }
