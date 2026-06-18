@@ -123,6 +123,41 @@ settings:
     launchAction: 실행 작업
     quickInputKeyboard: 빠른 입력을 위한 자동 열기 키보드
     confirmExitOnBack: 종료 시 확인
+    tagRecognition:
+      title: 태그 인식 규칙
+      strict: MemoFlow 엄격
+      strictDescription: 첫 줄 또는 마지막 줄의 태그 영역에 있는 태그만 보이는 태그가 됩니다.
+      compatible: Memos 호환
+      compatibleDescription: Markdown 본문 안의 inline #태그를 Memos 동작에 가깝게 인식합니다.
+      custom: 사용자 지정
+      customDescription: 지원되는 인식 옵션을 조합해 규칙을 만듭니다.
+      helpTitle: 태그 인식 규칙
+      helpMessage: 'MemoFlow 엄격은 현재 규칙을 유지합니다. 시작 또는 끝 태그 영역의 #생활은 태그가 되지만, 본문 안의 오늘 #생활은 태그가 되지 않습니다. Memos 호환은 오늘 #생활 같은 본문 태그를 인식합니다. 사용자 지정에서는 지원되는 규칙을 조합할 수 있습니다.'
+      customTitle: 사용자 지정 태그 인식
+      customIntro: '이 옵션은 어떤 #태그가 태그 목록, 렌더링, 자동 완성, 검색, 로컬 복구에 나타나는지 결정합니다. 규칙을 바꾼 뒤 기존 노트를 즉시 새 규칙으로 업데이트하려면 태그 데이터를 다시 빌드해야 합니다.'
+      strictFirstLine: 상단 태그만 인식
+      strictFirstLineTip: "노트 첫 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n#업무\n오늘 프로젝트를 정리했습니다\n\n태그를 노트 맨 위에 두는 사용자에게 적합합니다."
+      strictLastLine: 하단 태그만 인식
+      strictLastLineTip: "노트 마지막 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#업무\n\n태그를 노트 끝에 따로 두는 사용자에게 적합합니다."
+      strictAnyLine: 각 줄 시작 태그 인식
+      strictAnyLineTip: "어느 줄이든 줄 시작 부분에 있는 태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#할일 내일 계속 수정\n저녁에 다시 검토\n\n태그로 문단이나 작업을 표시하는 사용자에게 적합합니다."
+      inlineBodyTags: 본문 속 태그 인식
+      inlineBodyTagsTip: "문장 중간에 나타나는 #태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다 #업무\n\n코드, 링크, 이미지, URL 안의 #내용은 태그로 처리되지 않습니다."
+      numericOnlyTags: 숫자 태그 인식
+      numericOnlyTagsTip: "숫자만으로 된 태그를 허용합니다.\n\n예시:\n#123\n\n번호, 날짜, 순번을 태그로 쓰는 사용자에게 적합합니다. 이슈 번호나 카운터가 태그가 되지 않게 하려면 끌 수 있습니다."
+      hierarchicalTags: 계층 태그 인식
+      hierarchicalTagsTip: "/ 를 사용해 계층 태그를 만들 수 있습니다.\n\n예시:\n#업무/프로젝트\n\n상위/하위 분류로 태그를 정리하는 사용자에게 적합합니다. 끄면 단일 단계 태그만 인식합니다."
+      emojiAndSymbolTags: 이모지와 기호 태그 인식
+      emojiAndSymbolTagsTip: "태그에 이모지나 기호를 포함할 수 있습니다.\n\n예시:\n#기분🚀\n\n이모지로 상태나 분위기를 구분하는 사용자에게 적합합니다. 끄면 태그가 일반 문자와 숫자에 가까워집니다."
+      mergeRemoteTags: 서버 태그 병합
+      mergeRemoteTagsTip: "현재 로컬 규칙이 본문에서 인식하지 못했더라도 Memos 서버가 반환한 태그를 포함합니다.\n\nMemoFlow의 태그 결과를 Memos 서버와 최대한 맞추고 싶은 사용자에게 적합합니다. 로컬 인식 규칙만 보이는 기준으로 삼고 싶다면 끌 수 있습니다."
+      recomputeTitle: 태그 데이터를 다시 빌드할까요?
+      recomputeMessage: 새 태그 인식 규칙이 저장되었습니다. 기존 메모가 즉시 새 규칙을 따르도록 로컬 메모 태그 매핑, 검색 인덱스, 통계 캐시를 다시 빌드할까요?
+      recomputeNow: 지금 다시 빌드
+      recomputeSkip: 나중에
+      recomputeInProgress: 태그 데이터를 다시 빌드하는 중...
+      recomputeSuccess: 태그 데이터를 다시 빌드했습니다
+      recomputeFailed: "태그 데이터 다시 빌드 실패: $error"
     editorToolbar:
       title: 편집기 도구 모음 사용자 정의
       description: 도구를 길게 눌러 순서를 바꾸거나 도구 상자와 도구 모음 사이에서 도구를 이동하세요.

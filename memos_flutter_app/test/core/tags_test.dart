@@ -163,4 +163,93 @@ Captured body
   test('extractTags ignores indented code block tag lines', () {
     expect(extractTags('    #hidden-code-tag'), isEmpty);
   });
+
+  test('memosCompatible extracts inline Markdown text tags', () {
+    final tags = extractTags(
+      'Today #life.\n'
+      '- Item #todo\n'
+      '> Quote #quote\n'
+      'Issue #123 #\u6D4B\u8BD5 #test\u{1F680} #work/\u9879\u76EE',
+      policy: TagRecognitionPolicy.memosCompatible,
+    );
+
+    expect(
+      tags,
+      unorderedEquals(const <String>[
+        '123',
+        'life',
+        'quote',
+        'test\u{1F680}',
+        'todo',
+        'work/\u9879\u76EE',
+        '\u6D4B\u8BD5',
+      ]),
+    );
+  });
+
+  test('custom policy follows enabled token options', () {
+    final policy = TagRecognitionPolicy.custom(
+      const TagRecognitionCustomOptions(
+        inlineBodyTags: true,
+        numericOnlyTags: false,
+        hierarchicalTags: false,
+        emojiAndSymbolTags: false,
+      ),
+    );
+
+    final tags = extractTags(
+      '#top #work/project #mood\u{1F680}\n\n'
+      'Today #life Issue #123 #plain',
+      policy: policy,
+    );
+
+    expect(tags, unorderedEquals(const <String>['life', 'plain', 'top']));
+  });
+
+  test('deriveVisibleMemoTags applies remote tag handling from policy', () {
+    expect(
+      deriveVisibleMemoTags(
+        content: 'Today #life',
+        remoteTags: const <String>['remote'],
+        policy: TagRecognitionPolicy.memoflowStrict,
+      ),
+      isEmpty,
+    );
+    expect(
+      deriveVisibleMemoTags(
+        content: 'Today #life',
+        remoteTags: const <String>['remote'],
+        policy: TagRecognitionPolicy.memosCompatible,
+      ),
+      unorderedEquals(const <String>['life', 'remote']),
+    );
+    expect(
+      deriveVisibleMemoTags(
+        content: 'Today #life #123',
+        remoteTags: const <String>['remote', '456'],
+        policy: TagRecognitionPolicy.custom(
+          const TagRecognitionCustomOptions(
+            inlineBodyTags: true,
+            numericOnlyTags: false,
+            remoteTagHandling: RemoteTagHandling.mergeRemote,
+          ),
+        ),
+      ),
+      unorderedEquals(const <String>['life', 'remote']),
+    );
+  });
+
+  test('protected Markdown contexts stay ignored under compatible policy', () {
+    final tags = extractTags(
+      'Use `#inlineCode`\n'
+      '```dart\n#block\n```\n'
+      '[#linkText](https://example.com/#fragment)\n'
+      '![#image](https://example.com/image#asset)\n'
+      'https://example.com/page#fragment\n'
+      'Outside #real',
+      policy: TagRecognitionPolicy.memosCompatible,
+    );
+
+    expect(tags, const <String>['real']);
+  });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/core/theme_colors.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/device_preferences.dart';
@@ -198,6 +199,64 @@ void main() {
           'showEngagementInAllMemoDetails': true,
         }).showMemoEngagement,
         isFalse,
+      );
+    });
+
+    test(
+      'tag recognition policy defaults to strict for new and legacy json',
+      () {
+        expect(
+          WorkspacePreferences.defaults.tagRecognitionPolicy,
+          TagRecognitionPolicy.memoflowStrict,
+        );
+        expect(
+          WorkspacePreferences.fromJson(const {}).tagRecognitionPolicy,
+          TagRecognitionPolicy.memoflowStrict,
+        );
+        expect(
+          WorkspacePreferences.fromJson(const {
+            'tagRecognitionPolicy': 'unknown-policy',
+          }).tagRecognitionPolicy,
+          TagRecognitionPolicy.memoflowStrict,
+        );
+        expect(
+          WorkspacePreferences.fromJson(const {
+            'tagRecognitionPolicy': {'kind': 'unknown-policy'},
+          }).tagRecognitionPolicy,
+          TagRecognitionPolicy.memoflowStrict,
+        );
+      },
+    );
+
+    test('tag recognition policy round trips presets and custom options', () {
+      final compatible = WorkspacePreferences.defaults.copyWith(
+        tagRecognitionPolicy: TagRecognitionPolicy.memosCompatible,
+      );
+      expect(
+        WorkspacePreferences.fromJson(compatible.toJson()).tagRecognitionPolicy,
+        TagRecognitionPolicy.memosCompatible,
+      );
+
+      final customPolicy = TagRecognitionPolicy.custom(
+        const TagRecognitionCustomOptions(
+          strictFirstLine: false,
+          strictLastLine: true,
+          strictAnyLine: true,
+          inlineBodyTags: true,
+          numericOnlyTags: false,
+          hierarchicalTags: false,
+          emojiAndSymbolTags: false,
+          remoteTagHandling: RemoteTagHandling.mergeRemote,
+        ),
+      );
+      final custom = WorkspacePreferences.defaults.copyWith(
+        tagRecognitionPolicy: customPolicy,
+      );
+
+      expect(WorkspacePreferences.fromJson(custom.toJson()), custom);
+      expect(
+        WorkspacePreferences.fromJson(custom.toJson()).tagRecognitionPolicy,
+        customPolicy,
       );
     });
   });

@@ -122,6 +122,27 @@ void main() {
   });
 
   testWidgets(
+    'waits for workspace key before reading compose draft repository',
+    (tester) async {
+      final memosController = StreamController<List<LocalMemo>>.broadcast();
+      addTearDown(memosController.close);
+
+      await tester.pumpWidget(
+        _buildHarness(
+          memosStream: memosController.stream,
+          initialSessionState: const AsyncValue.data(
+            AppSessionState(accounts: [], currentKey: null),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(MemosListScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'screen stays stable across memo stream append, mutate, and rebuild updates',
     (tester) async {
       final memosController = StreamController<List<LocalMemo>>.broadcast();
@@ -4177,6 +4198,9 @@ Widget _buildHarness({
   DesktopHomeUtilityView initialDesktopUtilityView =
       DesktopHomeUtilityView.none,
   DateTime? initialDesktopHomeDayFilter,
+  AsyncValue<AppSessionState> initialSessionState = const AsyncValue.data(
+    AppSessionState(accounts: [], currentKey: 'test-account'),
+  ),
   List<Override> overrides = const <Override>[],
 }) {
   final resolvedDevicePreferencesRepository =
@@ -4187,7 +4211,9 @@ Widget _buildHarness({
   return ProviderScope(
     overrides: [
       secureStorageProvider.overrideWithValue(_MemorySecureStorage()),
-      appSessionProvider.overrideWith((ref) => _TestSessionController()),
+      appSessionProvider.overrideWith(
+        (ref) => _TestSessionController(initialSessionState),
+      ),
       appPreferencesProvider.overrideWith(
         (ref) => _TestAppPreferencesController(ref),
       ),
@@ -4568,12 +4594,7 @@ class _TestEmbeddedNavigationHost implements HomeEmbeddedNavigationHost {
 }
 
 class _TestSessionController extends AppSessionController {
-  _TestSessionController()
-    : super(
-        const AsyncValue.data(
-          AppSessionState(accounts: [], currentKey: 'test-account'),
-        ),
-      );
+  _TestSessionController(super.initialState);
 
   @override
   Future<void> addAccountWithPat({

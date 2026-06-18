@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../../core/tags.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/collection_reader.dart';
 import '../../data/models/collection_readable_item.dart';
@@ -49,6 +50,8 @@ class CollectionReaderPageEngine {
     required CollectionReaderPreferences preferences,
     String collectionTitle = '',
     Set<int>? retainMemoIndexes,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
   }) {
     final chapters = <ReaderChapterLayout>[];
     final pages = <ReaderResolvedPage>[];
@@ -74,6 +77,7 @@ class CollectionReaderPageEngine {
         viewportSize: viewportSize,
         preferences: preferences,
         collectionTitle: collectionTitle,
+        tagRecognitionPolicy: tagRecognitionPolicy,
         cacheResult: shouldCache,
       );
       chapters.add(chapter);
@@ -98,6 +102,8 @@ class CollectionReaderPageEngine {
     required CollectionReaderPreferences preferences,
     String collectionTitle = '',
     Set<int>? retainMemoIndexes,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
   }) {
     final chapters = <ReaderChapterPageMetrics>[];
     final retainedMemoUids = <String>{};
@@ -122,6 +128,7 @@ class CollectionReaderPageEngine {
         viewportSize: viewportSize,
         preferences: preferences,
         collectionTitle: collectionTitle,
+        tagRecognitionPolicy: tagRecognitionPolicy,
         cacheResult: shouldCache,
       );
       chapters.add(
@@ -151,6 +158,8 @@ class CollectionReaderPageEngine {
     required Size viewportSize,
     required CollectionReaderPreferences preferences,
     String collectionTitle = '',
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
   }) {
     return _layoutChapter(
       memo: _asReadableItem(memo),
@@ -158,6 +167,7 @@ class CollectionReaderPageEngine {
       viewportSize: viewportSize,
       preferences: preferences,
       collectionTitle: collectionTitle,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       cacheResult: true,
     );
   }
@@ -168,6 +178,7 @@ class CollectionReaderPageEngine {
     required Size viewportSize,
     required CollectionReaderPreferences preferences,
     required String collectionTitle,
+    required TagRecognitionPolicy tagRecognitionPolicy,
     required bool cacheResult,
   }) {
     final cacheKey = _buildCacheKey(
@@ -175,6 +186,7 @@ class CollectionReaderPageEngine {
       viewportSize: viewportSize,
       preferences: preferences,
       collectionTitle: collectionTitle,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     final cached = _chapterCache[cacheKey];
     if (cached != null) {
@@ -184,6 +196,7 @@ class CollectionReaderPageEngine {
       memo,
       memoIndex,
       collectionTitle: collectionTitle,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     final pages = _paginateDocument(
       document: document,
@@ -302,6 +315,8 @@ class CollectionReaderPageEngine {
     CollectionReadableItem memo,
     int memoIndex, {
     required String collectionTitle,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
   }) {
     final blocks = <ReaderBlock>[];
     blocks.add(
@@ -323,7 +338,10 @@ class CollectionReaderPageEngine {
         ),
       );
     }
-    final parsedContent = parseCollectionReaderContent(memo.content);
+    final parsedContent = parseCollectionReaderContent(
+      memo.content,
+      tagRecognitionPolicy: tagRecognitionPolicy,
+    );
     final contentText = parsedContent.text;
     final imageAttachments = memo.attachments
         .where((item) => item.isImage)
@@ -932,6 +950,7 @@ class CollectionReaderPageEngine {
     required Size viewportSize,
     required CollectionReaderPreferences preferences,
     required String collectionTitle,
+    required TagRecognitionPolicy tagRecognitionPolicy,
   }) {
     final padding = preferences.pagePadding;
     return [
@@ -979,6 +998,7 @@ class CollectionReaderPageEngine {
       preferences.showHeaderLine,
       preferences.showFooterLine,
       collectionTitle.trim(),
+      tagRecognitionPolicy.cacheToken,
     ].join('|');
   }
 
@@ -1008,6 +1028,7 @@ class CollectionReaderPageEngine {
     required Size viewportSize,
     required CollectionReaderPreferences preferences,
     required String collectionTitle,
+    required TagRecognitionPolicy tagRecognitionPolicy,
     required bool cacheResult,
   }) {
     final cacheKey = _buildCacheKey(
@@ -1015,6 +1036,7 @@ class CollectionReaderPageEngine {
       viewportSize: viewportSize,
       preferences: preferences,
       collectionTitle: collectionTitle,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     final cachedCount = _chapterPageCountCache[cacheKey];
     if (cachedCount != null) {
@@ -1026,6 +1048,7 @@ class CollectionReaderPageEngine {
       viewportSize: viewportSize,
       preferences: preferences,
       collectionTitle: collectionTitle,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       cacheResult: cacheResult,
     );
     return layout.pages.length;

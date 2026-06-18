@@ -8,6 +8,7 @@ import 'package:memos_flutter_app/application/sync/sync_types.dart';
 import 'package:memos_flutter_app/application/sync/webdav_backup_service.dart';
 import 'package:memos_flutter_app/application/sync/webdav_sync_service.dart';
 import 'package:memos_flutter_app/core/storage_read.dart';
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/home_navigation_preferences.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
@@ -147,6 +148,33 @@ void main() {
       isFalse,
     );
     expect(repository.stored.showDrawerDraftBox, isFalse);
+  });
+
+  test('setTagRecognitionPolicy persists workspace policy', () async {
+    final repository = _TestWorkspacePreferencesRepository();
+    final container = _buildContainer(repository: repository, hasAccount: true);
+    addTearDown(container.dispose);
+
+    final notifier = container.read(
+      currentWorkspacePreferencesProvider.notifier,
+    );
+    await notifier.reloadFromStorage();
+
+    final policy = TagRecognitionPolicy.custom(
+      const TagRecognitionCustomOptions(
+        inlineBodyTags: true,
+        numericOnlyTags: false,
+        remoteTagHandling: RemoteTagHandling.mergeRemote,
+      ),
+    );
+    notifier.setTagRecognitionPolicy(policy);
+    await notifier.waitForPendingWrites();
+
+    expect(
+      container.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
+      policy,
+    );
+    expect(repository.stored.tagRecognitionPolicy, policy);
   });
 }
 

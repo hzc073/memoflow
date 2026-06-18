@@ -33,6 +33,8 @@ class SwashbucklerDiaryImportController {
     required AppLanguage language,
     Account? account,
     String? importScopeKey,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     required String filePath,
     required ImportProgressCallback onProgress,
     required ImportCancelCheck isCancelled,
@@ -42,6 +44,7 @@ class SwashbucklerDiaryImportController {
       language: language,
       account: account,
       importScopeKey: importScopeKey,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     return engine.importFile(
       filePath: filePath,
@@ -59,12 +62,14 @@ class _SwashbucklerDiaryImportEngine {
     required this.language,
     this.account,
     this.importScopeKey,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
   });
 
   final SwashbucklerDiaryImportDatabase db;
   final Account? account;
   final String? importScopeKey;
   final AppLanguage language;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final QueuedAttachmentStager _queuedAttachmentStager =
       QueuedAttachmentStager();
   late final FlomoImportMutationService _mutationService =
@@ -487,9 +492,12 @@ class _SwashbucklerDiaryImportEngine {
     );
 
     final tags = <String>{
-      ..._readTagNames(map),
-      ...extractTags(sanitizedBody),
-      ...extractTags(content),
+      ...deriveVisibleMemoTags(
+        content: sanitizedBody,
+        remoteTags: _readTagNames(map),
+        policy: tagRecognitionPolicy,
+      ),
+      ...extractTags(content, policy: tagRecognitionPolicy),
     }.toList(growable: false)..sort();
 
     final resourceUris = _orderedResourceUris(
@@ -521,8 +529,7 @@ class _SwashbucklerDiaryImportEngine {
     final frontMatter = _parseMarkdownFrontMatter(raw);
     final markdownBody = frontMatter?.body ?? raw;
     final content = _sanitizeDiaryContent(markdownBody).trim();
-    final tags = <String>{...extractTags(content)}.toList(growable: false)
-      ..sort();
+    final tags = extractTags(content, policy: tagRecognitionPolicy);
     final resourceUris = _orderedResourceUris(
       content: markdownBody,
       declaredUris: const [],

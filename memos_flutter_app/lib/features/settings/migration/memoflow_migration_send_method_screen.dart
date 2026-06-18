@@ -57,6 +57,7 @@ class _MemoFlowMigrationSendMethodScreenState
     );
     final tr = context.t.strings.legacy;
     final packageResult = state.packageResult;
+    final supportsQrScanner = supportsMemoFlowQrScannerOnCurrentPlatform();
 
     return SettingsPage(
       title: Text(tr.msg_memoflow_migration_send_method),
@@ -89,29 +90,31 @@ class _MemoFlowMigrationSendMethodScreenState
             ],
           ),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SettingsAction(
-              onPressed: () async {
-                final raw = await Navigator.of(context).push<String>(
-                  buildPlatformPageRoute<String>(
-                    context: context,
-                    builder: (_) => MemoFlowPairQrScanScreen(
-                      titleText: tr.msg_memoflow_migration_scan_title,
-                      hintText: tr.msg_memoflow_migration_scan_hint,
+          if (supportsQrScanner) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SettingsAction(
+                onPressed: () async {
+                  final raw = await Navigator.of(context).push<String>(
+                    buildPlatformPageRoute<String>(
+                      context: context,
+                      builder: (_) => MemoFlowPairQrScanScreen(
+                        titleText: tr.msg_memoflow_migration_scan_title,
+                        hintText: tr.msg_memoflow_migration_scan_hint,
+                      ),
                     ),
-                  ),
-                );
-                if (raw != null && context.mounted) {
-                  await controller.connectFromQrPayload(raw);
-                }
-              },
-              icon: const Icon(Icons.qr_code_scanner),
-              variant: PlatformPrimaryActionVariant.outlined,
-              label: Text(tr.msg_memoflow_migration_scan_receiver),
+                  );
+                  if (raw != null && context.mounted) {
+                    await controller.connectFromQrPayload(raw);
+                  }
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                variant: PlatformPrimaryActionVariant.outlined,
+                label: Text(tr.msg_memoflow_migration_scan_receiver),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
+          ],
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SettingsAction(

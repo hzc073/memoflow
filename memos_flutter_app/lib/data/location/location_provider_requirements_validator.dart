@@ -59,7 +59,7 @@ class LocationProviderRequirementsValidator {
 
     final isSupportedPlatform =
         _isSupportedPlatform?.call() ??
-        (Platform.isAndroid || Platform.isWindows);
+        (Platform.isAndroid || Platform.isIOS || Platform.isWindows);
     if (!isSupportedPlatform) {
       return const LocationProviderRequirementsResult(
         isReady: false,

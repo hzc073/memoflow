@@ -98,11 +98,15 @@ final class AiSemanticMemoSearchService {
     required AiAnalysisRepository repository,
     AiTaskRuntime? runtime,
     AiSettings Function()? readCurrentSettings,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
     AiSemanticEmbeddingResolver? resolveEmbeddingProfile,
     AiSemanticTextEmbedder? embedText,
   }) : _repository = repository,
        _runtime = runtime,
        _readCurrentSettings = readCurrentSettings,
+       _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy),
        _resolveEmbeddingProfileOverride = resolveEmbeddingProfile,
        _embedTextOverride = embedText;
 
@@ -114,6 +118,7 @@ final class AiSemanticMemoSearchService {
   final AiAnalysisRepository _repository;
   final AiTaskRuntime? _runtime;
   final AiSettings Function()? _readCurrentSettings;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
   final AiSemanticEmbeddingResolver? _resolveEmbeddingProfileOverride;
   final AiSemanticTextEmbedder? _embedTextOverride;
 
@@ -551,17 +556,11 @@ final class AiSemanticMemoSearchService {
     }
     final normalizedTag = normalizeTagPath(tag ?? '');
     if (normalizedTag.isNotEmpty) {
-      final tags = <String>{};
-      for (final item in memo.tags) {
-        final normalized = normalizeTagPath(item);
-        if (normalized.isNotEmpty) tags.add(normalized);
-      }
-      if (!tags.contains(normalizedTag)) {
-        for (final item in extractTags(memo.content)) {
-          final normalized = normalizeTagPath(item);
-          if (normalized.isNotEmpty) tags.add(normalized);
-        }
-      }
+      final tags = deriveVisibleMemoTags(
+        content: memo.content,
+        remoteTags: memo.tags,
+        policy: _currentTagRecognitionPolicy(),
+      ).toSet();
       if (!tags.contains(normalizedTag)) return false;
     }
     final displaySec =

@@ -9,12 +9,14 @@ import '../../../core/url.dart';
 import '../../../data/models/app_preferences.dart';
 import '../../../data/models/local_memo.dart';
 import '../../../features/share/share_inline_image_content.dart';
+import '../../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../../../state/memos/memo_clip_card_providers.dart';
 import '../../../state/memos/memos_list_providers.dart';
 import '../../../state/memos/memos_providers.dart';
 import '../../../state/settings/location_settings_provider.dart';
 import '../../../state/settings/reminder_settings_provider.dart';
 import '../../../state/settings/resolved_preferences_provider.dart';
+import '../../../state/settings/workspace_preferences_provider.dart';
 import '../../../state/system/logging_provider.dart';
 import '../../../state/system/reminder_providers.dart';
 import '../../../state/system/reminder_utils.dart';
@@ -151,6 +153,11 @@ class MemosListMemoCardContainer extends ConsumerWidget {
         (settings) => settings.effectiveShowMemoEngagement,
       ),
     );
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.tagRecognitionPolicy,
+      ),
+    );
     final baseUrl = account?.baseUrl;
     final sessionController = ref.read(appSessionProvider.notifier);
     final serverVersion = account == null
@@ -262,6 +269,9 @@ class MemosListMemoCardContainer extends ConsumerWidget {
         windowsHeaderSearchExpanded ||
         trimmedSearchQuery.isNotEmpty ||
         selectedQuickSearchKind != null;
+    final includeReminderAction = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.memoReminders,
+    ).canRun;
 
     return MemoListCard(
       key: memoCardKey,
@@ -297,6 +307,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
             ),
       useExpandedArticleBody: clipCard != null || hasMarkdownInlineImages,
       expandedInlineImageSyntax: expandedInlineImageSyntax,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       baseUrl: baseUrl,
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
@@ -317,6 +328,7 @@ class MemosListMemoCardContainer extends ConsumerWidget {
       onLongPress: removing ? () {} : onLongPress,
       onSecondaryTapDown: removing ? null : onSecondaryTapDown,
       onFloatingGeometryChanged: onFloatingGeometryChanged,
+      includeReminderAction: includeReminderAction,
       onAction: removing ? (_) {} : onAction,
     );
   }

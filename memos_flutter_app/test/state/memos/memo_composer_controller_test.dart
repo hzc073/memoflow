@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/state/memos/memo_composer_controller.dart';
 import 'package:memos_flutter_app/state/memos/memo_composer_state.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
@@ -571,6 +572,7 @@ void main() {
     test('navigates and applies tag autocomplete suggestions', () {
       final controller = MemoComposerController(initialText: 'See #wo');
       addTearDown(controller.dispose);
+      const policy = TagRecognitionPolicy.memosCompatible;
       final tags = <TagStat>[
         const TagStat(tag: 'work', path: 'work', count: 3),
         const TagStat(tag: 'world', path: 'world', count: 2),
@@ -580,11 +582,15 @@ void main() {
       controller.textController.selection = TextSelection.collapsed(
         offset: controller.text.length,
       );
-      controller.syncTagAutocompleteState(tagStats: tags, hasFocus: true);
+      controller.syncTagAutocompleteState(
+        tagStats: tags,
+        hasFocus: true,
+        policy: policy,
+      );
 
       expect(
         controller
-            .currentTagSuggestions(tags, hasFocus: true)
+            .currentTagSuggestions(tags, hasFocus: true, policy: policy)
             .map((tag) => tag.path)
             .toList(),
         <String>['work', 'world'],
@@ -599,6 +605,7 @@ void main() {
         ),
         tagStats: tags,
         hasFocus: true,
+        policy: policy,
       );
       expect(moved, KeyEventResult.handled);
       expect(controller.tagAutocompleteIndex, 1);
@@ -611,6 +618,7 @@ void main() {
         ),
         tagStats: tags,
         hasFocus: true,
+        policy: policy,
       );
       expect(applied, KeyEventResult.handled);
       expect(controller.text, 'See #world ');

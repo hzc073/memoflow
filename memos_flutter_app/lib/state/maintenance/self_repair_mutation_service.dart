@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/tags.dart';
 import '../../data/db/app_database.dart';
 import '../system/database_provider.dart';
 
@@ -15,10 +16,21 @@ class SelfRepairMutationService {
   final AppDatabase db;
   Future<void>? _running;
 
-  Future<void> repairTagsFromContent() {
+  Future<void> repairTagsFromContent({
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+  }) {
     return _runExclusive(() async {
-      await db.rebuildMemoTagsFromContent();
+      await db.rebuildMemoTagsFromContent(policy: policy);
       await db.pruneOrphanTags();
+    });
+  }
+
+  Future<void> recomputeTagRecognitionPolicy(TagRecognitionPolicy policy) {
+    return _runExclusive(() async {
+      await db.rebuildMemoTagsFromContent(policy: policy);
+      await db.pruneOrphanTags();
+      await db.rebuildMemoSearchIndex();
+      await db.rebuildStatsCache();
     });
   }
 

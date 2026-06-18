@@ -55,6 +55,7 @@ List<MemoCardActionDescriptor> buildMemoCardActionDescriptors({
   required BuildContext context,
   required LocalMemo memo,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   if (memo.state == 'ARCHIVED') {
     return [
@@ -101,12 +102,13 @@ List<MemoCardActionDescriptor> buildMemoCardActionDescriptors({
       icon: Icons.edit_outlined,
       section: MemoCardActionMenuSection.primary,
     ),
-    MemoCardActionDescriptor(
-      action: MemoCardAction.reminder,
-      label: context.t.strings.legacy.msg_reminder,
-      icon: Icons.notifications_none,
-      section: MemoCardActionMenuSection.primary,
-    ),
+    if (includeReminder)
+      MemoCardActionDescriptor(
+        action: MemoCardAction.reminder,
+        label: context.t.strings.legacy.msg_reminder,
+        icon: Icons.notifications_none,
+        section: MemoCardActionMenuSection.primary,
+      ),
     MemoCardActionDescriptor(
       action: MemoCardAction.togglePinned,
       label: memo.pinned
@@ -155,11 +157,13 @@ List<MemoCardAction> buildMemoCardActionOrder({
   required BuildContext context,
   required LocalMemo memo,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   return buildMemoCardActionDescriptors(
     context: context,
     memo: memo,
     includeCopy: includeCopy,
+    includeReminder: includeReminder,
   ).map((descriptor) => descriptor.action).toList(growable: false);
 }
 
@@ -168,6 +172,7 @@ List<PopupMenuEntry<MemoCardAction>> buildMemoCardActionMenuItems({
   required LocalMemo memo,
   required Color deleteColor,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   final items = <PopupMenuEntry<MemoCardAction>>[];
   var lastSection = MemoCardActionMenuSection.primary;
@@ -175,6 +180,7 @@ List<PopupMenuEntry<MemoCardAction>> buildMemoCardActionMenuItems({
     context: context,
     memo: memo,
     includeCopy: includeCopy,
+    includeReminder: includeReminder,
   )) {
     if (items.isNotEmpty && descriptor.section != lastSection) {
       items.add(const PopupMenuDivider());
@@ -200,12 +206,14 @@ Future<MemoCardAction?> showMemoCardContextMenu({
   required LocalMemo memo,
   required Offset globalPosition,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   return showMemoCardActionPopover(
     context: context,
     memo: memo,
     globalPosition: globalPosition,
     includeCopy: includeCopy,
+    includeReminder: includeReminder,
   );
 }
 
@@ -215,6 +223,7 @@ Future<MemoCardAction?> showMemoCardActionPopover({
   BuildContext? anchorContext,
   Offset? globalPosition,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   return showMemoActionPopover(
     context: context,
@@ -222,6 +231,7 @@ Future<MemoCardAction?> showMemoCardActionPopover({
       context: context,
       memo: memo,
       includeCopy: includeCopy,
+      includeReminder: includeReminder,
     ),
     anchorContext: anchorContext,
     globalPosition: globalPosition,

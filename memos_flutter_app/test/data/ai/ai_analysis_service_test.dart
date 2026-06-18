@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_models.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_repository.dart';
 import 'package:memos_flutter_app/data/ai/ai_analysis_service.dart';
@@ -454,13 +455,14 @@ void main() {
 
       await harness.insertMemo(
         uid: 'memo-chicken',
-        content: 'Dinner idea: dapanji big plate chicken with potatoes.',
+        content:
+            '#food\n\nDinner idea: dapanji big plate chicken with potatoes.',
         tags: const <String>['food'],
         createTimeSec: _utcSec(2026, 3, 2),
       );
       await harness.insertMemo(
         uid: 'memo-breakfast',
-        content: 'Breakfast was congee, eggs, and warm soy milk.',
+        content: '#food\n\nBreakfast was congee, eggs, and warm soy milk.',
         tags: const <String>['food'],
         createTimeSec: _utcSec(2026, 3, 3),
       );
@@ -505,6 +507,79 @@ void main() {
         ),
         throwsA(isA<AiSemanticMemoSearchConfigurationException>()),
       );
+    },
+  );
+
+  test('semantic memo search tag filter follows recognition policy', () async {
+    final harness = await _SemanticSearchHarness.create(
+      dbNamePrefix: 'semantic_search_tag_policy',
+    );
+    addTearDown(harness.dispose);
+
+    await harness.insertMemo(
+      uid: 'memo-inline-life',
+      content: 'Dinner idea: noodles #life',
+      tags: const <String>['life'],
+      createTimeSec: _utcSec(2026, 3, 2),
+    );
+
+    final strictService = harness.buildSemanticService(
+      embedText: (_, input) async => _semanticVector(input),
+      currentTagRecognitionPolicy: () => TagRecognitionPolicy.memoflowStrict,
+    );
+    final strict = await strictService.search(
+      settings: _semanticSearchSettings,
+      query: 'what to eat',
+      state: 'NORMAL',
+      tag: 'life',
+    );
+    expect(strict.hits, isEmpty);
+
+    final compatibleService = harness.buildSemanticService(
+      embedText: (_, input) async => _semanticVector(input),
+      currentTagRecognitionPolicy: () => TagRecognitionPolicy.memosCompatible,
+    );
+    final compatible = await compatibleService.search(
+      settings: _semanticSearchSettings,
+      query: 'what to eat',
+      state: 'NORMAL',
+      tag: 'life',
+    );
+    expect(
+      compatible.hits.map((hit) => hit.memo.uid),
+      contains('memo-inline-life'),
+    );
+  });
+
+  test(
+    'semantic memo search tag filter follows custom recognition policy',
+    () async {
+      final harness = await _SemanticSearchHarness.create(
+        dbNamePrefix: 'semantic_search_custom_tag_policy',
+      );
+      addTearDown(harness.dispose);
+
+      await harness.insertMemo(
+        uid: 'memo-inline-custom',
+        content: 'Dinner idea: noodles #life',
+        tags: const <String>['life'],
+        createTimeSec: _utcSec(2026, 3, 2),
+      );
+
+      final customService = harness.buildSemanticService(
+        embedText: (_, input) async => _semanticVector(input),
+        currentTagRecognitionPolicy: () => TagRecognitionPolicy.custom(
+          const TagRecognitionCustomOptions(inlineBodyTags: false),
+        ),
+      );
+      final result = await customService.search(
+        settings: _semanticSearchSettings,
+        query: 'what to eat',
+        state: 'NORMAL',
+        tag: 'life',
+      );
+
+      expect(result.hits, isEmpty);
     },
   );
 
@@ -798,14 +873,15 @@ void main() {
 
       await harness.insertMemo(
         uid: 'memo-eligible',
-        content: 'Dinner idea: dapanji big plate chicken with potatoes.',
+        content:
+            '#food\n\nDinner idea: dapanji big plate chicken with potatoes.',
         tags: const <String>['food'],
         createTimeSec: _utcSec(2026, 3, 2),
         relationCount: 1,
       );
       await harness.insertMemo(
         uid: 'memo-policy-blocked',
-        content: 'Breakfast was congee, eggs, and warm soy milk.',
+        content: '#food\n\nBreakfast was congee, eggs, and warm soy milk.',
         tags: const <String>['food'],
         createTimeSec: _utcSec(2026, 3, 2),
       );
@@ -815,7 +891,7 @@ void main() {
       );
       await harness.insertMemo(
         uid: 'memo-archived',
-        content: 'Dinner idea: chicken noodles.',
+        content: '#food\n\nDinner idea: chicken noodles.',
         tags: const <String>['food'],
         state: 'ARCHIVED',
         createTimeSec: _utcSec(2026, 3, 2),
@@ -828,7 +904,7 @@ void main() {
       );
       await harness.insertMemo(
         uid: 'memo-out-of-range',
-        content: 'Dinner idea: chicken sandwich.',
+        content: '#food\n\nDinner idea: chicken sandwich.',
         tags: const <String>['food'],
         createTimeSec: _utcSec(2026, 2, 20),
       );
@@ -898,10 +974,12 @@ class _SemanticSearchHarness {
 
   AiSemanticMemoSearchService buildSemanticService({
     required AiSemanticTextEmbedder embedText,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
   }) {
     return AiSemanticMemoSearchService(
       repository: repository,
       embedText: embedText,
+      currentTagRecognitionPolicy: currentTagRecognitionPolicy,
     );
   }
 

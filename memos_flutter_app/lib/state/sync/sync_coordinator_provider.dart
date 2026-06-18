@@ -12,6 +12,7 @@ import '../../data/local_library/local_attachment_store.dart';
 import '../system/database_provider.dart';
 import '../system/local_library_provider.dart';
 import '../memos/memos_providers.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../system/session_provider.dart';
 import '../webdav/webdav_backup_provider.dart'
     show
@@ -80,6 +81,9 @@ final syncCoordinatorProvider =
         readCurrentLocalLibrary: () =>
             container.read(currentLocalLibraryProvider),
         readDatabase: () => container.read(databaseProvider),
+        readTagRecognitionPolicy: () => container
+            .read(currentWorkspacePreferencesProvider)
+            .tagRecognitionPolicy,
         runMemosSync: () =>
             container.read(syncControllerProvider.notifier).syncNow(),
         logWriter: (entry) =>

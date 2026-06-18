@@ -10,6 +10,7 @@ import '../../data/models/webdav_backup.dart';
 import '../../data/models/webdav_export_status.dart';
 import '../../data/models/webdav_sync_meta.dart';
 import '../../data/models/webdav_settings.dart';
+import '../../core/tags.dart';
 import 'local_library_scan_service.dart';
 import 'sync_dependencies.dart';
 import 'sync_error.dart';
@@ -1278,6 +1279,9 @@ class SyncCoordinator extends DesktopSyncFacade {
       db: _deps.readDatabase(),
       fileSystem: LocalLibraryFileSystem(localLibrary),
       attachmentStore: LocalAttachmentStore(),
+      tagRecognitionPolicy:
+          _deps.readTagRecognitionPolicy?.call() ??
+          TagRecognitionPolicy.defaultPolicy,
     );
     final conflictResolutions = _pendingLocalScanResolutions;
     _pendingLocalScanResolutions = null;

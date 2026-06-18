@@ -1,3 +1,4 @@
+import '../../core/tags.dart';
 import '../../data/db/app_database.dart';
 import '../../data/logs/debug_log_store.dart';
 import '../../data/models/account.dart';
@@ -19,6 +20,7 @@ class SyncDependencies {
     required this.readCurrentLocalLibrary,
     required this.readDatabase,
     required this.runMemosSync,
+    this.readTagRecognitionPolicy,
     this.logWriter,
   });
 
@@ -31,5 +33,6 @@ class SyncDependencies {
   final LocalLibrary? Function() readCurrentLocalLibrary;
   final AppDatabase Function() readDatabase;
   final Future<MemoSyncResult> Function() runMemosSync;
+  final TagRecognitionPolicy Function()? readTagRecognitionPolicy;
   final void Function(DebugLogEntry entry)? logWriter;
 }

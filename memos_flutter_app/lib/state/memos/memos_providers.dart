@@ -49,6 +49,7 @@ import '../system/database_provider.dart';
 import '../attachments/attachment_preprocessor_provider.dart';
 import '../settings/image_bed_settings_provider.dart';
 import '../settings/ai_settings_provider.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../system/local_library_provider.dart';
 import '../sync/local_sync_controller.dart';
 import '../system/logging_provider.dart';
@@ -104,6 +105,9 @@ final syncControllerProvider =
           syncStatusTracker: ref.read(syncStatusTrackerProvider),
           syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
           attachmentPreprocessor: ref.watch(attachmentPreprocessorProvider),
+          currentTagRecognitionPolicy: () => ref
+              .read(currentWorkspacePreferencesProvider)
+              .tagRecognitionPolicy,
         );
       }
 
@@ -123,6 +127,8 @@ final syncControllerProvider =
         syncQueueProgressTracker: ref.read(syncQueueProgressTrackerProvider),
         imageBedRepository: ref.watch(imageBedSettingsRepositoryProvider),
         attachmentPreprocessor: ref.watch(attachmentPreprocessorProvider),
+        currentTagRecognitionPolicy: () =>
+            ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
         onRelationsSynced: (memoUids) {
           for (final uid in memoUids) {
             final trimmed = uid.trim();

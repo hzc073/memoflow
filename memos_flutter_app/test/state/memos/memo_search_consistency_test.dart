@@ -2,13 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/core/storage_read.dart';
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/data/models/account.dart';
 import 'package:memos_flutter_app/data/models/instance_profile.dart';
 import 'package:memos_flutter_app/data/models/memo_sort_order.dart';
 import 'package:memos_flutter_app/data/models/user.dart';
+import 'package:memos_flutter_app/data/models/workspace_preferences.dart';
+import 'package:memos_flutter_app/state/settings/preferences_migration_service.dart';
+import 'package:memos_flutter_app/state/settings/workspace_preferences_provider.dart';
 import 'package:memos_flutter_app/state/memos/link_memo_providers.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 import 'package:memos_flutter_app/state/system/database_provider.dart';
@@ -310,6 +316,82 @@ void main() {
   );
 
   test(
+    'remoteSearchMemosProvider tag filters follow active recognition policy',
+    () async {
+      final dbName = uniqueDbName('remote_search_tag_policy');
+      final db = AppDatabase(dbName: dbName);
+      final server = await _FakeSearchServer.start(
+        memos: const <Map<String, Object?>>[
+          <String, Object?>{
+            'name': 'memos/memo-inline',
+            'creator': 'users/1',
+            'content': 'Dinner note #life',
+            'visibility': 'PRIVATE',
+            'pinned': false,
+            'state': 'NORMAL',
+            'createTime': '2026-04-18T07:30:00Z',
+            'updateTime': '2026-04-18T07:30:00Z',
+            'tags': <String>['life'],
+            'attachments': <Object>[],
+          },
+        ],
+      );
+      addTearDown(() async {
+        await server.close();
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      Future<List<String>> searchWith(TagRecognitionPolicy policy) async {
+        final container = ProviderContainer(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            appSessionProvider.overrideWith(
+              (ref) => _TestSessionController(server.baseUrl),
+            ),
+            currentWorkspacePreferencesProvider.overrideWith(
+              (ref) => _TestWorkspacePreferencesController(ref, policy),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final query = (
+          searchQuery: '',
+          state: 'NORMAL',
+          tag: 'life',
+          startTimeSec: null,
+          endTimeSecExclusive: null,
+          advancedFilters: AdvancedSearchFilters.empty,
+          pageSize: 20,
+          sortOrder: MemoSortOrder.createDesc,
+        );
+        final results = await HttpOverrides.runWithHttpOverrides(
+          () => container.read(remoteSearchMemosProvider(query).future),
+          _PassthroughHttpOverrides(),
+        );
+        return results.map((memo) => memo.uid).toList(growable: false);
+      }
+
+      expect(
+        await searchWith(TagRecognitionPolicy.memoflowStrict),
+        isNot(contains('memo-inline')),
+      );
+      expect(
+        await searchWith(TagRecognitionPolicy.memosCompatible),
+        contains('memo-inline'),
+      );
+      expect(
+        await searchWith(
+          TagRecognitionPolicy.custom(
+            const TagRecognitionCustomOptions(inlineBodyTags: false),
+          ),
+        ),
+        isNot(contains('memo-inline')),
+      );
+    },
+  );
+
+  test(
     'memosStreamProvider sees dirty matches after bounded index maintenance',
     () async {
       final dbName = uniqueDbName('memo_search_provider_dirty_backlog');
@@ -501,6 +583,47 @@ class _TestSessionController extends AppSessionController {
 
   @override
   Future<void> switchWorkspace(String workspaceKey) async {}
+}
+
+class _TestWorkspacePreferencesRepository
+    extends WorkspacePreferencesRepository {
+  _TestWorkspacePreferencesRepository(this._stored)
+    : super(
+        PreferencesMigrationService(const FlutterSecureStorage()),
+        workspaceKey: 'test-workspace',
+      );
+
+  WorkspacePreferences _stored;
+
+  @override
+  Future<StorageReadResult<WorkspacePreferences>> readWithStatus() async {
+    return StorageReadResult.success(_stored);
+  }
+
+  @override
+  Future<WorkspacePreferences> read() async {
+    return _stored;
+  }
+
+  @override
+  Future<void> write(WorkspacePreferences prefs) async {
+    _stored = prefs;
+  }
+}
+
+class _TestWorkspacePreferencesController
+    extends WorkspacePreferencesController {
+  _TestWorkspacePreferencesController(Ref ref, TagRecognitionPolicy policy)
+    : super(
+        ref,
+        _TestWorkspacePreferencesRepository(
+          WorkspacePreferences.defaults.copyWith(tagRecognitionPolicy: policy),
+        ),
+      ) {
+    state = WorkspacePreferences.defaults.copyWith(
+      tagRecognitionPolicy: policy,
+    );
+  }
 }
 
 class _FakeSearchServer {

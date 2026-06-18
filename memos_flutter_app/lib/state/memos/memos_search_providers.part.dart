@@ -132,6 +132,8 @@ final aiSemanticMemoSearchServiceProvider =
         ),
         runtime: AiTaskRuntime(registry: ref.watch(aiProviderRegistryProvider)),
         readCurrentSettings: () => ref.read(aiSettingsProvider),
+        currentTagRecognitionPolicy: () =>
+            ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
       );
     });
 
@@ -422,6 +424,7 @@ bool _matchesRemoteSearchMemoLocally({
   required int? currentUserId,
   required String normalizedSearch,
   required String normalizedTag,
+  required TagRecognitionPolicy tagRecognitionPolicy,
   required int? startTimeSec,
   required int? endTimeSecExclusive,
   Set<String> matchedLocalMemoKeys = const <String>{},
@@ -446,7 +449,11 @@ bool _matchesRemoteSearchMemoLocally({
         !MemoSearchMatcher.matchesText(
           text: MemoSearchDocumentBuilder.buildCanonical(
             content: memo.content,
-            tagsText: memo.tags.join(' '),
+            tagsText: deriveVisibleMemoTags(
+              content: memo.content,
+              remoteTags: memo.tags,
+              policy: tagRecognitionPolicy,
+            ).join(' '),
           ),
           query: normalizedSearch,
         )) {
@@ -455,21 +462,11 @@ bool _matchesRemoteSearchMemoLocally({
   }
 
   if (normalizedTag.isNotEmpty) {
-    final tags = <String>{};
-    for (final tag in memo.tags) {
-      final normalized = _normalizeTagInput(tag);
-      if (normalized.isNotEmpty) {
-        tags.add(normalized);
-      }
-    }
-    if (!tags.contains(normalizedTag)) {
-      for (final tag in extractTags(memo.content)) {
-        final normalized = _normalizeTagInput(tag);
-        if (normalized.isNotEmpty) {
-          tags.add(normalized);
-        }
-      }
-    }
+    final tags = deriveVisibleMemoTags(
+      content: memo.content,
+      remoteTags: memo.tags,
+      policy: tagRecognitionPolicy,
+    ).toSet();
     if (!tags.contains(normalizedTag)) {
       return false;
     }
@@ -785,7 +782,11 @@ bool _isMemoOnThisDay(LocalMemo memo, DateTime nowLocal) {
   return created.month == nowLocal.month && created.day == nowLocal.day;
 }
 
-LocalMemo _localMemoFromRemote(Memo memo) {
+LocalMemo _localMemoFromRemote(
+  Memo memo, {
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
+}) {
   return LocalMemo(
     uid: memo.uid,
     content: memo.content,
@@ -795,7 +796,11 @@ LocalMemo _localMemoFromRemote(Memo memo) {
     state: memo.state,
     createTime: memo.createTime.toLocal(),
     updateTime: memo.updateTime.toLocal(),
-    tags: memo.tags,
+    tags: deriveVisibleMemoTags(
+      content: memo.content,
+      remoteTags: memo.tags,
+      policy: tagRecognitionPolicy,
+    ),
     attachments: memo.attachments,
     relationCount: countReferenceRelations(
       memoUid: memo.uid,

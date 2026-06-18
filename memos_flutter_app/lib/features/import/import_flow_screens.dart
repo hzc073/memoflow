@@ -24,6 +24,7 @@ import '../../state/system/database_provider.dart';
 import '../../state/system/home_loading_overlay_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../memos/memos_list_screen.dart';
 import 'flomo_import_service.dart';
@@ -478,6 +479,9 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
 
     final db = ref.read(databaseProvider);
     final language = ref.read(devicePreferencesProvider).language;
+    final tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     Future<ImportResult> runImport() {
       final override = widget.importOverride;
       if (override != null) {
@@ -493,6 +497,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             account: account,
             importScopeKey: session?.currentKey,
             language: language,
+            tagRecognitionPolicy: tagRecognitionPolicy,
           ).importFile(
             filePath: widget.filePath,
             onProgress: _handleProgress,
@@ -504,6 +509,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             account: account,
             importScopeKey: session?.currentKey,
             language: language,
+            tagRecognitionPolicy: tagRecognitionPolicy,
           ).importFile(
             filePath: widget.filePath,
             onProgress: _handleProgress,
@@ -515,6 +521,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             account: account,
             importScopeKey: session?.currentKey,
             language: language,
+            tagRecognitionPolicy: tagRecognitionPolicy,
           ).importMemoFlowMarkdownFile(
             filePath: widget.filePath,
             onProgress: _handleProgress,
@@ -526,6 +533,7 @@ class _ImportRunScreenState extends ConsumerState<ImportRunScreen> {
             account: account,
             importScopeKey: session?.currentKey,
             language: language,
+            tagRecognitionPolicy: tagRecognitionPolicy,
           ).importFile(
             filePath: widget.filePath,
             onProgress: _handleProgress,

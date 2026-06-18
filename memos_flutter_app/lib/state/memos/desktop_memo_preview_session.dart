@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/log_sanitizer.dart';
 import '../../core/memo_content_diagnostics.dart';
+import '../../core/tags.dart';
 import '../../core/url.dart';
 import '../../data/logs/log_manager.dart';
 import '../../data/models/local_memo.dart';
 import '../../features/memos/memo_detail_screen.dart';
 import '../settings/device_preferences_provider.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../system/session_provider.dart';
 import 'memo_clip_card_providers.dart';
 
@@ -26,6 +28,7 @@ class DesktopMemoPreviewCacheKey {
     required this.authHeader,
     required this.rebaseAbsoluteFileUrlForV024,
     required this.attachAuthForSameOriginAbsolute,
+    required this.tagRecognitionPolicyToken,
   });
 
   final String memoUid;
@@ -36,6 +39,7 @@ class DesktopMemoPreviewCacheKey {
   final String authHeader;
   final bool rebaseAbsoluteFileUrlForV024;
   final bool attachAuthForSameOriginAbsolute;
+  final String tagRecognitionPolicyToken;
 
   @override
   bool operator ==(Object other) {
@@ -48,7 +52,8 @@ class DesktopMemoPreviewCacheKey {
         other.authHeader == authHeader &&
         other.rebaseAbsoluteFileUrlForV024 == rebaseAbsoluteFileUrlForV024 &&
         other.attachAuthForSameOriginAbsolute ==
-            attachAuthForSameOriginAbsolute;
+            attachAuthForSameOriginAbsolute &&
+        other.tagRecognitionPolicyToken == tagRecognitionPolicyToken;
   }
 
   @override
@@ -61,6 +66,7 @@ class DesktopMemoPreviewCacheKey {
     authHeader,
     rebaseAbsoluteFileUrlForV024,
     attachAuthForSameOriginAbsolute,
+    tagRecognitionPolicyToken,
   );
 }
 
@@ -172,9 +178,7 @@ class DesktopMemoPreviewSessionController
       _logPreviewEvent(
         'cache_hit',
         memo: memo,
-        context: <String, Object?>{
-          'requestId': requestId,
-        },
+        context: <String, Object?>{'requestId': requestId},
       );
       return;
     }
@@ -189,9 +193,7 @@ class DesktopMemoPreviewSessionController
     _logPreviewEvent(
       'cache_miss',
       memo: memo,
-      context: <String, Object?>{
-        'requestId': requestId,
-      },
+      context: <String, Object?>{'requestId': requestId},
     );
 
     unawaited(
@@ -199,9 +201,7 @@ class DesktopMemoPreviewSessionController
         _logPreviewEvent(
           'bundle_prepare_start',
           memo: memo,
-          context: <String, Object?>{
-            'requestId': requestId,
-          },
+          context: <String, Object?>{'requestId': requestId},
         );
         try {
           final data = _prepareResolvedData(memo);
@@ -292,6 +292,9 @@ class DesktopMemoPreviewSessionController
           );
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? '' : 'Bearer $token';
+    final TagRecognitionPolicy tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     return DesktopMemoPreviewCacheKey(
       memoUid: memo.uid.trim(),
       contentFingerprint: memo.contentFingerprint.trim(),
@@ -301,6 +304,7 @@ class DesktopMemoPreviewSessionController
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: isServerVersion024(serverVersion),
       attachAuthForSameOriginAbsolute: isServerVersion021(serverVersion),
+      tagRecognitionPolicyToken: tagRecognitionPolicy.cacheToken,
     );
   }
 
@@ -316,6 +320,9 @@ class DesktopMemoPreviewSessionController
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.trim().isEmpty ? null : 'Bearer $token';
     final appLanguage = ref.read(devicePreferencesProvider).language;
+    final TagRecognitionPolicy tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     return buildMemoDocumentResolvedData(
       memo: memo,
       appLanguage: appLanguage,
@@ -325,6 +332,7 @@ class DesktopMemoPreviewSessionController
       rebaseAbsoluteFileUrlForV024: isServerVersion024(serverVersion),
       attachAuthForSameOriginAbsolute: isServerVersion021(serverVersion),
       richContentEnabled: true,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
   }
 
@@ -375,7 +383,8 @@ class DesktopMemoPreviewSessionController
   }
 }
 
-final desktopMemoPreviewSessionProvider = AutoDisposeNotifierProvider<
-  DesktopMemoPreviewSessionController,
-  DesktopMemoPreviewSessionState
->(DesktopMemoPreviewSessionController.new);
+final desktopMemoPreviewSessionProvider =
+    AutoDisposeNotifierProvider<
+      DesktopMemoPreviewSessionController,
+      DesktopMemoPreviewSessionState
+    >(DesktopMemoPreviewSessionController.new);

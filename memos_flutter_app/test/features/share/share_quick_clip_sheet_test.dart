@@ -81,7 +81,7 @@ void main() {
 
     final initialSuggestionLeft = tester.getTopLeft(find.text('#world')).dx;
 
-    await tester.enterText(tagField, 'hello #wo');
+    await tester.enterText(tagField, '#hello #wo');
     await tester.pumpAndSettle();
 
     final movedSuggestionLeft = tester.getTopLeft(find.text('#world')).dx;

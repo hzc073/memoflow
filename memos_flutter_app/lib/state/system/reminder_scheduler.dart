@@ -70,7 +70,7 @@ class ReminderScheduler {
   bool _windowsReminderTicking = false;
 
   bool get _supportsReminderNotifications =>
-      Platform.isAndroid || Platform.isWindows;
+      Platform.isAndroid || Platform.isIOS || Platform.isWindows;
 
   void setTapHandler(ReminderTapHandler? handler) {
     _tapHandler = handler;
@@ -168,6 +168,11 @@ class ReminderScheduler {
 
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
     await _plugin.initialize(
       initializationSettings,
@@ -254,10 +259,7 @@ class ReminderScheduler {
 
     _logInfo('reschedule_loaded', context: {'memos': rows.length});
     final now = DateTime.now();
-    final channel = await _ensureChannel(settings);
-    final details = NotificationDetails(
-      android: _androidDetails(settings, channel),
-    );
+    final details = await _notificationDetails(settings);
     final title = settings.notificationTitle;
     final body = settings.notificationBody;
     var scheduledCount = 0;
@@ -744,10 +746,7 @@ class ReminderScheduler {
       return false;
     }
 
-    final channel = await _ensureChannel(settings);
-    final details = NotificationDetails(
-      android: _androidDetails(settings, channel),
-    );
+    final details = await _notificationDetails(settings);
     final payload = jsonEncode({'test': true});
     final id = _notificationId(
       'test',
@@ -825,10 +824,7 @@ class ReminderScheduler {
       return (ok: false, exactUsed: false, scheduledAt: null, pendingCount: 0);
     }
 
-    final channel = await _ensureChannel(settings);
-    final details = NotificationDetails(
-      android: _androidDetails(settings, channel),
-    );
+    final details = await _notificationDetails(settings);
     final now = DateTime.now();
     final when = now.add(delay);
     final payload = jsonEncode({'test': true});
@@ -840,7 +836,7 @@ class ReminderScheduler {
       when: when,
       details: details,
       payload: payload,
-      preferExact: true,
+      preferExact: Platform.isAndroid,
       logTag: 'test',
       logContext: {'id': id},
     );
@@ -880,6 +876,22 @@ class ReminderScheduler {
   }
 
   Future<_ReminderPermissionStatus> _checkPermissions() async {
+    if (Platform.isIOS) {
+      final notificationsGranted = await Permission.notification.isGranted;
+      final context = <String, Object?>{
+        'notificationsGranted': notificationsGranted,
+        'exactAlarmGranted': true,
+      };
+      if (notificationsGranted) {
+        _logInfo('permissions_check', context: context);
+      } else {
+        _logWarn('permissions_check', context: context);
+      }
+      return _ReminderPermissionStatus(
+        notificationsGranted: notificationsGranted,
+        exactAlarmGranted: true,
+      );
+    }
     if (!Platform.isAndroid) {
       return const _ReminderPermissionStatus(
         notificationsGranted: true,
@@ -950,6 +962,27 @@ class ReminderScheduler {
     );
   }
 
+  DarwinNotificationDetails _darwinDetails(ReminderSettings settings) {
+    return DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: settings.soundMode != ReminderSoundMode.silent,
+    );
+  }
+
+  Future<NotificationDetails> _notificationDetails(
+    ReminderSettings settings,
+  ) async {
+    if (Platform.isAndroid) {
+      final channel = await _ensureChannel(settings);
+      return NotificationDetails(android: _androidDetails(settings, channel));
+    }
+    if (Platform.isIOS) {
+      return NotificationDetails(iOS: _darwinDetails(settings));
+    }
+    return const NotificationDetails();
+  }
+
   Future<AndroidNotificationChannel> _ensureChannel(
     ReminderSettings settings,
   ) async {
@@ -1003,7 +1036,7 @@ class ReminderScheduler {
       when: when,
       details: details,
       payload: payload,
-      preferExact: true,
+      preferExact: Platform.isAndroid,
       logTag: 'memo',
       logContext: {'memo': _memoToken(memoUid), 'key': key},
     );
@@ -1037,7 +1070,9 @@ class ReminderScheduler {
         scheduleTime,
         details,
         payload: payload,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: Platform.isAndroid
+            ? AndroidScheduleMode.inexactAllowWhileIdle
+            : AndroidScheduleMode.alarmClock,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
@@ -1053,7 +1088,9 @@ class ReminderScheduler {
         scheduleTime,
         details,
         payload: payload,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: Platform.isAndroid
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.alarmClock,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
@@ -1073,7 +1110,9 @@ class ReminderScheduler {
         scheduleTime,
         details,
         payload: payload,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: Platform.isAndroid
+            ? AndroidScheduleMode.inexactAllowWhileIdle
+            : AndroidScheduleMode.alarmClock,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );

@@ -140,12 +140,16 @@ class NoteInputSubmitCoordinator {
     NoteInputSubmitWarnLogger? logWarn,
     String Function()? uidFactory,
     DateTime Function()? now,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
   }) : _controller = controller,
        _requestSync = requestSync,
        _logInfo = logInfo,
        _logWarn = logWarn,
        _uidFactory = uidFactory ?? generateUid,
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy);
 
   final NoteInputController _controller;
   final NoteInputSubmitSyncRequester? _requestSync;
@@ -153,6 +157,7 @@ class NoteInputSubmitCoordinator {
   final NoteInputSubmitWarnLogger? _logWarn;
   final String Function() _uidFactory;
   final DateTime Function() _now;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
 
   Future<NoteInputSubmitResult> submit(
     NoteInputSubmitDraft draft, {
@@ -162,6 +167,7 @@ class NoteInputSubmitCoordinator {
       draft,
       memoUid: _uidFactory(),
       now: _now(),
+      tagRecognitionPolicy: _currentTagRecognitionPolicy(),
     );
 
     await _controller.createMemo(
@@ -239,6 +245,8 @@ PreparedNoteInputSubmitDraft prepareNoteInputSubmitDraft(
   NoteInputSubmitDraft draft, {
   required String memoUid,
   required DateTime now,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
 }) {
   final content = draft.content.trimRight();
   final pendingAttachments =
@@ -270,7 +278,7 @@ PreparedNoteInputSubmitDraft prepareNoteInputSubmitDraft(
     content: content,
     syncContent: content,
     visibility: draft.visibility,
-    tags: extractTags(content),
+    tags: extractTags(content, policy: tagRecognitionPolicy),
     attachments: attachments,
     location: draft.location,
     hasAttachments: pendingUploads.isNotEmpty,

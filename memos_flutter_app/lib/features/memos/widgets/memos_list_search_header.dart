@@ -200,11 +200,17 @@ class MemosListTopSearchField extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         textInputAction: TextInputAction.search,
+        textAlignVertical: TextAlignVertical.center,
         decoration: InputDecoration(
           hintText: hintText ?? context.t.strings.legacy.msg_search,
           border: InputBorder.none,
           isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
           prefixIcon: Icon(PlatformIcons.search, size: 18),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 36,
+          ),
           suffixIconConstraints: BoxConstraints(
             minWidth: suffixIconWidth,
             minHeight: 36,

@@ -7,6 +7,7 @@ import '../../platform/widgets/platform_action_sheet.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/memos/memos_providers.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../memos/tag_autocomplete.dart';
 import 'share_handler.dart';
@@ -93,6 +94,9 @@ class _ShareQuickClipSheetState extends ConsumerState<_ShareQuickClipSheet> {
     _tagComposer.syncTagAutocompleteState(
       tagStats: _currentTagStats(),
       hasFocus: _tagFocusNode.hasFocus,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
     );
   }
 
@@ -104,6 +108,9 @@ class _ShareQuickClipSheetState extends ConsumerState<_ShareQuickClipSheet> {
       event,
       tagStats: _currentTagStats(),
       hasFocus: _tagFocusNode.hasFocus,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
       requestFocus: _tagFocusNode.requestFocus,
     );
     if (result == KeyEventResult.handled) {
@@ -143,11 +150,17 @@ class _ShareQuickClipSheetState extends ConsumerState<_ShareQuickClipSheet> {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.9;
     final tagStats =
         ref.watch(tagStatsProvider).valueOrNull ?? const <TagStat>[];
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select((p) => p.tagRecognitionPolicy),
+    );
     final tagColorLookup = TagColorLookup(tagStats);
-    final activeTagQuery = _tagComposer.activeTagQuery;
+    final activeTagQuery = _tagComposer.activeTagQuery(
+      policy: tagRecognitionPolicy,
+    );
     final tagSuggestions = _tagComposer.currentTagSuggestions(
       tagStats,
       hasFocus: _tagFocusNode.hasFocus,
+      policy: tagRecognitionPolicy,
     );
     final highlightedTagSuggestionIndex = tagSuggestions.isEmpty
         ? 0

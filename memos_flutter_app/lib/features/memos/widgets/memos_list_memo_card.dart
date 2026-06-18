@@ -12,6 +12,7 @@ import '../../../core/location_launcher.dart';
 import '../../../core/memo_content_diagnostics.dart';
 import '../../../core/memoflow_palette.dart';
 import '../../../core/platform_layout.dart';
+import '../../../core/tags.dart';
 import '../../../data/models/app_preferences.dart';
 import '../../../data/models/location_settings.dart';
 import '../../../data/models/local_memo.dart';
@@ -126,12 +127,14 @@ String _memoRenderCacheKey(
   required bool collapseLongContent,
   required bool collapseReferences,
   required AppLanguage language,
+  required TagRecognitionPolicy tagRecognitionPolicy,
 }) {
   return '${memo.uid}|'
       '${memo.contentFingerprint}|'
       '${collapseLongContent ? 1 : 0}|'
       '${collapseReferences ? 1 : 0}|'
-      '${language.name}';
+      '${language.name}|'
+      '${tagRecognitionPolicy.cacheToken}';
 }
 
 String _memoCardMarkdownCacheKey({
@@ -181,6 +184,7 @@ class MemoListCard extends StatefulWidget {
     this.contentHeader,
     this.useExpandedArticleBody = false,
     this.expandedInlineImageSyntax = MemoInlineImageSyntax.markdownAndHtml,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
     this.baseUrl,
     this.authHeader,
     this.rebaseAbsoluteFileUrlForV024 = false,
@@ -199,6 +203,7 @@ class MemoListCard extends StatefulWidget {
     this.onDoubleTap,
     this.onSecondaryTapDown,
     this.onFloatingGeometryChanged,
+    this.includeReminderAction = true,
     required this.onAction,
   });
 
@@ -224,6 +229,7 @@ class MemoListCard extends StatefulWidget {
   final Widget? contentHeader;
   final bool useExpandedArticleBody;
   final MemoInlineImageSyntax expandedInlineImageSyntax;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final Uri? baseUrl;
   final String? authHeader;
   final bool rebaseAbsoluteFileUrlForV024;
@@ -242,6 +248,7 @@ class MemoListCard extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   final ValueChanged<TapDownDetails>? onSecondaryTapDown;
   final ValueChanged<MemoFloatingCollapseGeometry?>? onFloatingGeometryChanged;
+  final bool includeReminderAction;
   final ValueChanged<MemoCardAction> onAction;
 
   @override
@@ -539,6 +546,7 @@ class MemoListCardState extends State<MemoListCard> {
       collapseLongContent: collapseLongContent,
       collapseReferences: collapseReferences,
       language: language,
+      tagRecognitionPolicy: widget.tagRecognitionPolicy,
     );
     final cacheKey = widget.contentTextOverride == null
         ? cacheKeyBase
@@ -783,6 +791,7 @@ class MemoListCardState extends State<MemoListCard> {
               blockSpacing: renderExpandedArticleBody ? 8 : 4,
               normalizeHeadings: true,
               renderImages: effectiveInlineImageSyntax.rendersImages,
+              tagRecognitionPolicy: widget.tagRecognitionPolicy,
               imageSyntax: effectiveInlineImageSyntax,
               tagColors: widget.tagColors,
               baseUrl: widget.baseUrl,
@@ -1072,6 +1081,8 @@ class MemoListCardState extends State<MemoListCard> {
                                               context: buttonContext,
                                               memo: memo,
                                               anchorContext: buttonContext,
+                                              includeReminder:
+                                                  widget.includeReminderAction,
                                             );
                                         if (!mounted || action == null) return;
                                         onAction(action);

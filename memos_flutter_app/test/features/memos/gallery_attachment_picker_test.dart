@@ -33,6 +33,7 @@ ImageCompressionUiPolicy _compressionPolicy({
     enabled: true,
     useSystemPhotoPicker: useSystemPhotoPicker,
     originalSelectionMode: originalSelectionMode,
+    supportedOutputFormats: ImageCompressionOutputFormat.values,
   );
 }
 
@@ -159,10 +160,12 @@ void main() {
           await tempDir.delete(recursive: true);
         }
       });
-      final imageFile = File('${tempDir.path}${Platform.pathSeparator}picked.png')
-        ..writeAsBytesSync(const [1, 2, 3, 4]);
-      final videoFile = File('${tempDir.path}${Platform.pathSeparator}picked.mp4')
-        ..writeAsBytesSync(const [1, 2, 3]);
+      final imageFile = File(
+        '${tempDir.path}${Platform.pathSeparator}picked.png',
+      )..writeAsBytesSync(const [1, 2, 3, 4]);
+      final videoFile = File(
+        '${tempDir.path}${Platform.pathSeparator}picked.mp4',
+      )..writeAsBytesSync(const [1, 2, 3]);
 
       final result = buildGalleryAttachmentPickResultFromSystemPickerFiles(
         files: [

@@ -27,6 +27,7 @@ import '../../state/memos/memo_composer_state.dart';
 import '../../state/settings/image_compression_settings_provider.dart';
 import '../../state/settings/location_settings_provider.dart';
 import '../../state/settings/memo_template_settings_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/settings/user_settings_provider.dart';
 import '../../state/system/session_provider.dart';
 import '../image_preview/image_preview_item.dart';
@@ -985,10 +986,14 @@ class MemosListInlineComposeCoordinator extends ChangeNotifier {
         })
         .toList(growable: false);
 
+    final tagRecognitionPolicy = _ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
+
     return InlineComposeSubmissionDraft(
       content: content,
       visibility: currentVisibility(),
-      tags: extractTags(content),
+      tags: extractTags(content, policy: tagRecognitionPolicy),
       relations: relations,
       attachmentsPayload: attachmentsPayload,
       pendingAttachments: pendingAttachments,

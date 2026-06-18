@@ -130,6 +130,31 @@ void main() {
     );
   });
 
+  testWidgets('normal memo action descriptors can hide reminder action', (
+    tester,
+  ) async {
+    late List<MemoCardAction> actions;
+
+    await tester.pumpWidget(
+      _buildTimeAdjustmentHarness(
+        Builder(
+          builder: (context) {
+            actions = buildMemoCardActionOrder(
+              context: context,
+              memo: _buildMemo(),
+              includeReminder: false,
+            );
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(actions, isNot(contains(MemoCardAction.reminder)));
+    expect(actions, contains(MemoCardAction.edit));
+    expect(actions, contains(MemoCardAction.togglePinned));
+  });
+
   testWidgets('archived memo more menu renders archived action subset', (
     tester,
   ) async {

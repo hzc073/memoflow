@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/sync/sync_request.dart';
 import '../../data/logs/log_manager.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../sync/sync_coordinator_provider.dart';
 export 'note_input_controller.dart'
     show
@@ -45,6 +46,8 @@ final noteInputSubmitCoordinatorProvider = Provider<NoteInputSubmitCoordinator>(
           context: context,
         );
       },
+      currentTagRecognitionPolicy: () =>
+          ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
     );
   },
 );

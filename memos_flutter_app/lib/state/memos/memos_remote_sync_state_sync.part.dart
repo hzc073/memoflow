@@ -1,23 +1,12 @@
 part of 'memos_providers.dart';
 
 extension _RemoteSyncStateSync on RemoteSyncController {
-  String _normalizeTag(String raw) {
-    return normalizeTagPath(raw);
-  }
-
   List<String> _mergeTags(List<String> remoteTags, String content) {
-    final merged = <String>{};
-    for (final tag in remoteTags) {
-      final normalized = _normalizeTag(tag);
-      if (normalized.isNotEmpty) merged.add(normalized);
-    }
-    for (final tag in extractTags(content)) {
-      final normalized = _normalizeTag(tag);
-      if (normalized.isNotEmpty) merged.add(normalized);
-    }
-    final list = merged.toList(growable: false);
-    list.sort();
-    return list;
+    return deriveVisibleMemoTags(
+      content: content,
+      remoteTags: remoteTags,
+      policy: _currentTagRecognitionPolicy(),
+    );
   }
 
   bool _shouldDuplicateConflictWithRemote({

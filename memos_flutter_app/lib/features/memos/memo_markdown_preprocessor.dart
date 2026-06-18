@@ -113,16 +113,25 @@ bool looksLikeFullHtmlDocument(String text) {
   ).hasMatch(trimmed);
 }
 
-String decorateMemoTagsForHtml(String text) {
+String decorateMemoTagsForHtml(
+  String text, {
+  TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+}) {
   final lines = text.split('\n');
-  final tagZoneLineIndexes = findStrictTagZoneLineIndexes(
-    lines,
+  final matches = findContentTagMatches(
+    text,
+    policy: policy,
     isNonContentLine: _isNonContentLine,
   );
-  if (tagZoneLineIndexes.isEmpty) return text;
+  if (matches.isEmpty) return text;
 
-  for (final index in tagZoneLineIndexes) {
-    lines[index] = _replaceTagsInLine(lines[index]);
+  final matchesByLine = <int, List<InlineTagMatch>>{};
+  for (final match in matches) {
+    matchesByLine.putIfAbsent(match.lineIndex, () => []).add(match.match);
+  }
+
+  for (final entry in matchesByLine.entries) {
+    lines[entry.key] = _replaceTagsInLine(lines[entry.key], entry.value);
   }
 
   return lines.join('\n');
@@ -269,8 +278,7 @@ String _normalizeFencedCodeBlocks(String text) {
   return lines.join('\n');
 }
 
-String _replaceTagsInLine(String line) {
-  final matches = findStrictTagZonePrefixMatches(line);
+String _replaceTagsInLine(String line, List<InlineTagMatch> matches) {
   if (matches.isEmpty) return line;
 
   final buffer = StringBuffer();

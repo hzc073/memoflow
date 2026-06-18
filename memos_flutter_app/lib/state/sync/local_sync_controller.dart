@@ -11,6 +11,7 @@ import '../../application/attachments/queued_attachment_stager.dart';
 import '../../application/sync/local_library_scan_service.dart';
 import '../../core/memo_relations.dart';
 import '../../core/share_inline_image_url_rewriter.dart';
+import '../../core/tags.dart';
 import '../../application/sync/sync_error.dart';
 import '../../application/sync/sync_types.dart';
 import '../../data/db/app_database.dart';
@@ -66,7 +67,11 @@ class LocalSyncController extends SyncControllerBase {
     required this.syncStatusTracker,
     required this.syncQueueProgressTracker,
     required this.attachmentPreprocessor,
-  }) : super(const AsyncValue.data(null));
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
+  }) : _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy),
+       super(const AsyncValue.data(null));
 
   final AppDatabase db;
   final LocalSyncMutationService mutations;
@@ -76,6 +81,7 @@ class LocalSyncController extends SyncControllerBase {
   final SyncStatusTracker syncStatusTracker;
   final SyncQueueProgressTracker syncQueueProgressTracker;
   final AttachmentPreprocessor attachmentPreprocessor;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
   MemoFlowBridgeSettings _bridgeSettingsSnapshot =
       MemoFlowBridgeSettings.defaults;
   int _syncRunSeq = 0;
@@ -249,6 +255,7 @@ class LocalSyncController extends SyncControllerBase {
       db: db,
       fileSystem: fileSystem,
       attachmentStore: attachmentStore,
+      tagRecognitionPolicy: _currentTagRecognitionPolicy(),
     );
     LogManager.instance.debug(
       'LocalSync scan: start',

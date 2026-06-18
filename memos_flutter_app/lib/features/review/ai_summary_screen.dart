@@ -39,6 +39,7 @@ import '../memos/memo_detail_screen.dart';
 import '../memos/memos_list_screen.dart';
 import '../settings/ai_settings_screen.dart';
 import '../../state/settings/ai_settings_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/review/ai_analysis_provider.dart';
 import '../../state/system/database_provider.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
@@ -719,7 +720,12 @@ class _AiSummaryScreenState extends ConsumerState<AiSummaryScreen> {
     final content = _buildStructuredReportText(report: report, forMemo: true);
     final uid = generateUid();
     final now = DateTime.now();
-    final tags = extractTags(content);
+    final tags = extractTags(
+      content,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
+    );
     final aiAnalysisRepository = ref.read(aiAnalysisRepositoryProvider);
 
     try {

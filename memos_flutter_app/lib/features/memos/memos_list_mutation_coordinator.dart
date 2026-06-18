@@ -10,6 +10,7 @@ import '../../data/models/local_memo.dart';
 import '../../data/models/memo_location.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/memos_list_providers.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
 import '../../state/system/logging_provider.dart';
 import 'memos_list_inline_compose_coordinator.dart';
@@ -267,7 +268,10 @@ class MemosListMutationCoordinator extends ChangeNotifier {
       final now = _now();
       final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
       final uid = _uidFactory();
-      final tags = extractTags(content);
+      final tagRecognitionPolicy = _read(
+        currentWorkspacePreferencesProvider,
+      ).tagRecognitionPolicy;
+      final tags = extractTags(content, policy: tagRecognitionPolicy);
       await _repository.createQuickInputMemo(
         uid: uid,
         content: content,

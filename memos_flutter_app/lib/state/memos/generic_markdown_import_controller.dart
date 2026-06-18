@@ -33,6 +33,8 @@ class GenericMarkdownImportController {
     required AppLanguage language,
     Account? account,
     String? importScopeKey,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     required String filePath,
     required ImportProgressCallback onProgress,
     required ImportCancelCheck isCancelled,
@@ -42,6 +44,7 @@ class GenericMarkdownImportController {
       language: language,
       account: account,
       importScopeKey: importScopeKey,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     return engine.importFile(
       filePath: filePath,
@@ -57,12 +60,14 @@ class _GenericMarkdownImportEngine {
     required this.language,
     this.account,
     this.importScopeKey,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
   });
 
   final GenericMarkdownImportDatabase db;
   final Account? account;
   final String? importScopeKey;
   final AppLanguage language;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final QueuedAttachmentStager _queuedAttachmentStager =
       QueuedAttachmentStager();
   late final FlomoImportMutationService _mutationService =
@@ -374,10 +379,11 @@ class _GenericMarkdownImportEngine {
       importRoot: importRoot,
       markdownArchivePath: entry.name,
     ).trim();
-    final tags = <String>{
-      ...(frontMatter?.tags ?? const <String>[]),
-      ...extractTags(content),
-    }.toList(growable: false)..sort();
+    final tags = deriveVisibleMemoTags(
+      content: content,
+      remoteTags: frontMatter?.tags ?? const <String>[],
+      policy: tagRecognitionPolicy,
+    );
     final fallbackTime = _archiveEntryTime(entry);
     final createTime = frontMatter?.created ?? fallbackTime;
     final updateTime = frontMatter?.updated ?? createTime;

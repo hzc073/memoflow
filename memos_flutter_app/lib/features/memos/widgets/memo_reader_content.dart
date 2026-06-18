@@ -11,6 +11,7 @@ import '../../../data/models/attachment.dart';
 import '../../../data/models/local_memo.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../state/settings/location_settings_provider.dart';
+import '../../../state/settings/workspace_preferences_provider.dart';
 import '../../../state/system/session_provider.dart';
 import '../../../state/tags/tag_color_lookup.dart';
 import '../../image_preview/image_preview_launcher.dart';
@@ -141,6 +142,11 @@ class MemoReaderContent extends ConsumerWidget {
             attachments: memo.attachments,
           )
         : MemoInlineImageSourcePolicy.empty;
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.tagRecognitionPolicy,
+      ),
+    );
     final mediaEntries =
         mediaEntriesOverride ??
         () {
@@ -240,9 +246,10 @@ class MemoReaderContent extends ConsumerWidget {
           contentOverride ??
               MemoMarkdown(
                 cacheKey:
-                    'reader|${memo.uid}|${memo.contentFingerprint}|${highlightQuery ?? ''}|${renderInlineImages ? 1 : 0}|localInline=${inlineImageSourcePolicy.fingerprint}',
+                    'reader|${memo.uid}|${memo.contentFingerprint}|${highlightQuery ?? ''}|${renderInlineImages ? 1 : 0}|tagPolicy=${tagRecognitionPolicy.cacheToken}|localInline=${inlineImageSourcePolicy.fingerprint}',
                 data: memo.content,
                 highlightQuery: highlightQuery,
+                tagRecognitionPolicy: tagRecognitionPolicy,
                 textStyle:
                     contentTextStyle ?? Theme.of(context).textTheme.bodyLarge,
                 selectable: selectable,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/markdown_editing.dart';
+import '../../core/tags.dart';
 import 'memo_composer_state.dart';
 import 'memo_tag_autocomplete.dart';
 import 'memos_providers.dart';
@@ -329,14 +330,16 @@ class MemoComposerController extends ChangeNotifier {
     return true;
   }
 
-  ActiveTagQuery? get activeTagQuery =>
-      detectActiveTagQuery(textController.value);
+  ActiveTagQuery? activeTagQuery({
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+  }) => detectActiveTagQuery(textController.value, policy: policy);
 
   void syncTagAutocompleteState({
     required List<TagStat> tagStats,
     required bool hasFocus,
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
   }) {
-    final query = activeTagQuery;
+    final query = activeTagQuery(policy: policy);
     final token = query == null
         ? null
         : '${query.start}:${query.query.toLowerCase()}';
@@ -345,7 +348,11 @@ class MemoComposerController extends ChangeNotifier {
       nextIndex = 0;
     }
 
-    final suggestions = currentTagSuggestions(tagStats, hasFocus: hasFocus);
+    final suggestions = currentTagSuggestions(
+      tagStats,
+      hasFocus: hasFocus,
+      policy: policy,
+    );
     if (suggestions.isEmpty) {
       nextIndex = 0;
     } else {
@@ -358,9 +365,10 @@ class MemoComposerController extends ChangeNotifier {
   List<TagStat> currentTagSuggestions(
     List<TagStat> tagStats, {
     required bool hasFocus,
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
   }) {
     if (!hasFocus) return const <TagStat>[];
-    final query = activeTagQuery;
+    final query = activeTagQuery(policy: policy);
     if (query == null) return const <TagStat>[];
     return buildTagSuggestions(tagStats, query: query.query);
   }
@@ -374,14 +382,19 @@ class MemoComposerController extends ChangeNotifier {
     KeyEvent event, {
     required List<TagStat> tagStats,
     required bool hasFocus,
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
     VoidCallback? requestFocus,
   }) {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
 
-    final query = activeTagQuery;
-    final suggestions = currentTagSuggestions(tagStats, hasFocus: hasFocus);
+    final query = activeTagQuery(policy: policy);
+    final suggestions = currentTagSuggestions(
+      tagStats,
+      hasFocus: hasFocus,
+      policy: policy,
+    );
     if (query == null || suggestions.isEmpty) {
       return KeyEventResult.ignored;
     }
@@ -416,8 +429,11 @@ class MemoComposerController extends ChangeNotifier {
     return KeyEventResult.ignored;
   }
 
-  void startTagAutocomplete({VoidCallback? requestFocus}) {
-    if (activeTagQuery == null) {
+  void startTagAutocomplete({
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+    VoidCallback? requestFocus,
+  }) {
+    if (activeTagQuery(policy: policy) == null) {
       insertText('#');
     }
     _updateState(tagAutocompleteIndex: 0);

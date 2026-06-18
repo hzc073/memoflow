@@ -25,12 +25,14 @@ class LocalLibraryScanService {
     LocalLibraryScanMutationService? mutations,
     required this.fileSystem,
     required this.attachmentStore,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
   }) : _mutations = mutations ?? LocalLibraryScanMutationService(db: db);
 
   final AppDatabase db;
   final LocalLibraryScanMutationService _mutations;
   final LocalLibraryFileSystem fileSystem;
   final LocalAttachmentStore attachmentStore;
+  final TagRecognitionPolicy tagRecognitionPolicy;
 
   Future<LocalScanResult> scanAndMerge({
     bool forceDisk = false,
@@ -881,7 +883,7 @@ class LocalLibraryScanService {
       final normalized = _normalizeTag(tag);
       if (normalized.isNotEmpty) merged.add(normalized);
     }
-    for (final tag in extractTags(content)) {
+    for (final tag in extractTags(content, policy: tagRecognitionPolicy)) {
       final normalized = _normalizeTag(tag);
       if (normalized.isNotEmpty) merged.add(normalized);
     }
@@ -916,10 +918,12 @@ class LocalLibraryScanService {
     final existingClipCard = MemoClipCardMetadata.fromDb(existingClipCardRow);
     return existingClipCard.clipKind == sidecarClipCard.clipKind &&
         existingClipCard.platform == sidecarClipCard.platform &&
-        existingClipCard.sourceName.trim() == sidecarClipCard.sourceName.trim() &&
+        existingClipCard.sourceName.trim() ==
+            sidecarClipCard.sourceName.trim() &&
         existingClipCard.sourceAvatarUrl.trim() ==
             sidecarClipCard.sourceAvatarUrl.trim() &&
-        existingClipCard.authorName.trim() == sidecarClipCard.authorName.trim() &&
+        existingClipCard.authorName.trim() ==
+            sidecarClipCard.authorName.trim() &&
         existingClipCard.authorAvatarUrl.trim() ==
             sidecarClipCard.authorAvatarUrl.trim() &&
         existingClipCard.sourceUrl.trim() == sidecarClipCard.sourceUrl.trim() &&

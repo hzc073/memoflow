@@ -1,17 +1,21 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/state/memos/memo_tag_autocomplete.dart';
 import 'package:memos_flutter_app/state/memos/memos_providers.dart';
 
 void main() {
   group('memo tag autocomplete', () {
-    test('detects active tag query at collapsed selection', () {
+    test('compatible policy detects inline body tag query', () {
       const value = TextEditingValue(
         text: 'See #work',
         selection: TextSelection.collapsed(offset: 9),
       );
 
-      final query = detectActiveTagQuery(value);
+      final query = detectActiveTagQuery(
+        value,
+        policy: TagRecognitionPolicy.memosCompatible,
+      );
 
       expect(query, isNotNull);
       expect(query!.start, 4);
@@ -31,6 +35,63 @@ void main() {
 
       expect(detectActiveTagQuery(selected), isNull);
       expect(detectActiveTagQuery(invalid), isNull);
+    });
+
+    test('strict policy ignores body prose tag query', () {
+      const value = TextEditingValue(
+        text: 'See #work',
+        selection: TextSelection.collapsed(offset: 9),
+      );
+
+      expect(
+        detectActiveTagQuery(
+          value,
+          policy: TagRecognitionPolicy.memoflowStrict,
+        ),
+        isNull,
+      );
+    });
+
+    test('strict policy detects first and last tag-zone prefix queries', () {
+      const firstLine = TextEditingValue(
+        text: '#work',
+        selection: TextSelection.collapsed(offset: 5),
+      );
+      const lastLine = TextEditingValue(
+        text: 'Body text\n\n#life',
+        selection: TextSelection.collapsed(offset: 16),
+      );
+
+      expect(
+        detectActiveTagQuery(
+          firstLine,
+          policy: TagRecognitionPolicy.memoflowStrict,
+        )?.query,
+        'work',
+      );
+      expect(
+        detectActiveTagQuery(
+          lastLine,
+          policy: TagRecognitionPolicy.memoflowStrict,
+        )?.query,
+        'life',
+      );
+    });
+
+    test('custom policy controls autocomplete eligibility', () {
+      const body = TextEditingValue(
+        text: 'See #work',
+        selection: TextSelection.collapsed(offset: 9),
+      );
+      final noInline = TagRecognitionPolicy.custom(
+        const TagRecognitionCustomOptions(inlineBodyTags: false),
+      );
+      final inline = TagRecognitionPolicy.custom(
+        const TagRecognitionCustomOptions(inlineBodyTags: true),
+      );
+
+      expect(detectActiveTagQuery(body, policy: noInline), isNull);
+      expect(detectActiveTagQuery(body, policy: inline)?.query, 'work');
     });
 
     test(

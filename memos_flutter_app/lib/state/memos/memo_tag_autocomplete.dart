@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import '../../core/tags.dart';
 import 'memos_providers.dart';
 
 const int kEditorTagSuggestionLimit = 100;
@@ -16,7 +17,10 @@ class ActiveTagQuery {
   final String query;
 }
 
-ActiveTagQuery? detectActiveTagQuery(TextEditingValue value) {
+ActiveTagQuery? detectActiveTagQuery(
+  TextEditingValue value, {
+  TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+}) {
   final selection = value.selection;
   if (!selection.isValid || !selection.isCollapsed) return null;
   final text = value.text;
@@ -34,7 +38,49 @@ ActiveTagQuery? detectActiveTagQuery(TextEditingValue value) {
   final query = text.substring(tokenStart + 1, caret);
   if (query.contains('#')) return null;
   if (!_partialTagPattern.hasMatch(query)) return null;
+  if (!_isTagQueryVisibleUnderPolicy(
+    text: text,
+    tokenStart: tokenStart,
+    tokenEnd: caret,
+    query: query,
+    policy: policy,
+  )) {
+    return null;
+  }
   return ActiveTagQuery(start: tokenStart, end: caret, query: query);
+}
+
+bool _isTagQueryVisibleUnderPolicy({
+  required String text,
+  required int tokenStart,
+  required int tokenEnd,
+  required String query,
+  required TagRecognitionPolicy policy,
+}) {
+  final (lineIndex, lineStart) = _linePositionForOffset(text, tokenStart);
+  final relativeStart = tokenStart - lineStart;
+  final probeText = query.isEmpty
+      ? text.replaceRange(tokenEnd, tokenEnd, 'x')
+      : text;
+  final relativeEnd = tokenEnd - lineStart + (query.isEmpty ? 1 : 0);
+  for (final match in findContentTagMatches(probeText, policy: policy)) {
+    if (match.lineIndex != lineIndex) continue;
+    if (match.match.start == relativeStart && match.match.end == relativeEnd) {
+      return true;
+    }
+  }
+  return false;
+}
+
+(int lineIndex, int lineStart) _linePositionForOffset(String text, int offset) {
+  var lineIndex = 0;
+  var lineStart = 0;
+  for (var i = 0; i < offset && i < text.length; i++) {
+    if (text.codeUnitAt(i) != 0x0A) continue;
+    lineIndex += 1;
+    lineStart = i + 1;
+  }
+  return (lineIndex, lineStart);
 }
 
 List<TagStat> buildTagSuggestions(

@@ -122,6 +122,41 @@ settings:
     launchAction: Ação de lançamento
     quickInputKeyboard: Teclado de abertura automática para entrada rápida
     confirmExitOnBack: Confirmar na saída
+    tagRecognition:
+      title: Regras de reconhecimento de tags
+      strict: MemoFlow estrito
+      strictDescription: Apenas tags na primeira ou na última linha de tags ficam visíveis.
+      compatible: Compatível com Memos
+      compatibleDescription: Reconhece #tags inline no texto Markdown, próximo ao comportamento do Memos.
+      custom: Personalizado
+      customDescription: Crie uma regra a partir das opções de reconhecimento compatíveis.
+      helpTitle: Regras de reconhecimento de tags
+      helpMessage: 'MemoFlow estrito mantém a regra atual: #vida no início ou no fim da área de tags vira tag, mas hoje #vida no corpo do texto não vira. Compatível com Memos reconhece tags no corpo, como hoje #vida. Personalizado permite combinar regras compatíveis.'
+      customTitle: Reconhecimento de tags personalizado
+      customIntro: 'Estas opções decidem quais #tags aparecem na lista de tags, renderização, autocompletar, busca e reparo local. Depois de alterar as regras, reconstrua os dados de tags se quiser atualizar notas antigas imediatamente.'
+      strictFirstLine: Apenas tags no topo
+      strictFirstLineTip: "Reconhece apenas tags no início da primeira linha.\n\nExemplo:\n#trabalho\nHoje organizei o projeto\n\nIndicado para quem costuma colocar tags no topo da nota."
+      strictLastLine: Apenas tags no rodapé
+      strictLastLineTip: "Reconhece apenas tags no início da última linha.\n\nExemplo:\nHoje organizei o projeto\n#trabalho\n\nIndicado para quem costuma colocar tags separadas no fim da nota."
+      strictAnyLine: Tags no início da linha
+      strictAnyLineTip: "Reconhece tags no início de qualquer linha.\n\nExemplo:\nHoje organizei o projeto\n#tarefa Continuar amanhã\nRevisar à noite\n\nIndicado para quem usa tags para marcar parágrafos ou tarefas."
+      inlineBodyTags: Tags no texto
+      inlineBodyTagsTip: "Reconhece #tags no meio das frases.\n\nExemplo:\nHoje organizei o projeto #trabalho\n\n#conteúdo em código, links, imagens e URLs não será tratado como tag."
+      numericOnlyTags: Tags numéricas
+      numericOnlyTagsTip: "Permite tags formadas apenas por números.\n\nExemplo:\n#123\n\nIndicado para quem usa números, datas ou sequências como tags. Desative se números de issues ou contadores não devem virar tags."
+      hierarchicalTags: Tags hierárquicas
+      hierarchicalTagsTip: "Permite usar / para criar tags hierárquicas.\n\nExemplo:\n#trabalho/projeto\n\nIndicado para organizar tags com categorias pai e filho. Quando desativado, apenas tags de um nível são reconhecidas."
+      emojiAndSymbolTags: Tags com emoji e símbolos
+      emojiAndSymbolTagsTip: "Permite incluir emoji ou símbolos nas tags.\n\nExemplo:\n#humor🚀\n\nIndicado para quem usa emoji para marcar estado ou clima. Quando desativado, as tags ficam mais próximas de texto e números comuns."
+      mergeRemoteTags: Mesclar tags do servidor
+      mergeRemoteTagsTip: "Inclui tags retornadas pelo servidor Memos, mesmo que as regras locais atuais não as tenham reconhecido no texto da nota.\n\nIndicado para quem quer manter o MemoFlow próximo aos resultados de tags do servidor Memos. Desative se as regras locais devem ser a fonte visível da verdade."
+      recomputeTitle: Reconstruir dados de tags?
+      recomputeMessage: A nova regra de reconhecimento de tags foi salva. Reconstruir agora os mapeamentos locais de tags de memos, o índice de busca e o cache de estatísticas para que os memos existentes sejam atualizados imediatamente?
+      recomputeNow: Reconstruir agora
+      recomputeSkip: Depois
+      recomputeInProgress: Reconstruindo dados de tags...
+      recomputeSuccess: Dados de tags reconstruídos
+      recomputeFailed: "Falha ao reconstruir dados de tags: $error"
     editorToolbar:
       title: Personalizar barra de ferramentas do editor
       description: Pressione e segure as ferramentas para reordená-las ou mova as ferramentas entre a caixa de ferramentas e a barra de ferramentas.

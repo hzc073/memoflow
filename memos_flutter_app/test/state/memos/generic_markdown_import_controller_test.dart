@@ -137,6 +137,7 @@ void main() {
         'pinned: true\n'
         'visibility: PUBLIC\n'
         '---\n'
+        '#alpha #beta\n\n'
         '# Asset memo #inline\n\n'
         '![photo](assets/photo.png)\n\n'
         '[document](assets/doc.pdf)\n\n'

@@ -12,6 +12,7 @@ import '../../data/models/memo_location.dart';
 import '../../data/models/memo_relation.dart';
 import '../../features/share/share_clip_models.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../system/database_provider.dart';
 import '../system/reminder_scheduler.dart';
 import 'create_memo_outbox_enqueue.dart';
@@ -499,7 +500,10 @@ class MemoMutationService {
     final updateTime = preserveUpdateTime ? memo.updateTime : DateTime.now();
     final db = this.db;
     final timelineService = _ref.read(memoTimelineServiceProvider);
-    final tags = extractTags(content);
+    final tagRecognitionPolicy = _ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
+    final tags = extractTags(content, policy: tagRecognitionPolicy);
     final syncPolicy = resolveMemoSyncMutationPolicy(
       currentLastError: memo.lastError,
     );
@@ -928,6 +932,9 @@ class MemoMutationService {
     if (!contentChanged && !attachmentsChanged) return;
     final db = this.db;
     final now = DateTime.now().toUtc();
+    final tagRecognitionPolicy = _ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     final syncPolicy = resolveMemoSyncMutationPolicy(
       currentLastError: memo.lastError,
     );
@@ -940,7 +947,7 @@ class MemoMutationService {
       state: memo.state,
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
-      tags: extractTags(updatedContent),
+      tags: extractTags(updatedContent, policy: tagRecognitionPolicy),
       attachments: updatedAttachments,
       location: memo.location,
       relationCount: memo.relationCount,

@@ -18,6 +18,7 @@ import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/memo_mutation_service.dart';
 import '../../state/memos/quick_clip_recovery_mutation_service.dart';
 import '../../state/memos/third_party_share_attachment_appender.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import 'share_capture_engine.dart';
 import 'share_capture_formatter.dart';
 import 'share_capture_inappwebview_engine.dart';
@@ -235,6 +236,9 @@ class ShareQuickClipService {
     final now = DateTime.now();
     final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
     final visibility = _resolveVisibility();
+    final tagRecognitionPolicy = _ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     if (submission.titleAndLinkOnly) {
       final content = buildLinkOnlyMemoText(payload, tags: submission.tags);
       await _ref
@@ -244,7 +248,7 @@ class ShareQuickClipService {
             content: content,
             visibility: visibility,
             nowSec: nowSec,
-            tags: extractTags(content),
+            tags: extractTags(content, policy: tagRecognitionPolicy),
             attachments: const <Map<String, dynamic>>[],
             location: null,
             relations: const <Map<String, dynamic>>[],
@@ -295,7 +299,7 @@ class ShareQuickClipService {
           content: placeholderContent,
           visibility: visibility,
           nowSec: nowSec,
-          tags: extractTags(placeholderContent),
+          tags: extractTags(placeholderContent, policy: tagRecognitionPolicy),
           attachments: const <Map<String, dynamic>>[],
           location: null,
           relations: const <Map<String, dynamic>>[],

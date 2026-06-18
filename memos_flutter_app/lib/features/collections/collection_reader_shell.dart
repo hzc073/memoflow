@@ -9,6 +9,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/tags.dart';
 import '../../data/models/collection_reader.dart';
 import '../../data/models/collection_readable_item.dart';
 import '../../data/models/device_preferences.dart';
@@ -23,6 +24,7 @@ import '../../state/collections/collection_rss_providers.dart';
 import '../../state/collections/collections_provider.dart';
 import '../../state/memos/memos_list_providers.dart';
 import '../../state/settings/device_preferences_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../memos/memo_detail_screen.dart';
 import 'add_to_collection_sheet.dart';
 import 'collection_reader_animation_delegate.dart';
@@ -122,6 +124,9 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
   Size _viewportSize = Size.zero;
   ReaderPageTurnDirection _turnDirection = ReaderPageTurnDirection.none;
   double _lastKnownListScrollOffset = 0;
+
+  TagRecognitionPolicy get _activeTagRecognitionPolicy =>
+      ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy;
 
   @override
   void initState() {
@@ -645,6 +650,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
         viewportSize: _viewportSize,
         preferences: preferences,
         collectionTitle: widget.collectionTitle,
+        tagRecognitionPolicy: _activeTagRecognitionPolicy,
       );
       pageIndex = _pageEngine.resolveRestoredChapterPageIndex(
         chapter: chapter,
@@ -805,6 +811,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
         viewportSize: _viewportSize,
         preferences: preferences,
         collectionTitle: widget.collectionTitle,
+        tagRecognitionPolicy: _activeTagRecognitionPolicy,
       );
       final pageIndex = _pageEngine.resolveChapterPageIndexForOffset(
         chapter,
@@ -1635,6 +1642,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
       viewportSize: _viewportSize,
       preferences: preferences,
       collectionTitle: widget.collectionTitle,
+      tagRecognitionPolicy: _activeTagRecognitionPolicy,
       retainMemoIndexes: _resolveRetainedPagedChapterIndexes(
         anchorIndexes: anchorIndexes,
       ),
@@ -1678,6 +1686,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
         viewportSize: _viewportSize,
         preferences: preferences,
         collectionTitle: widget.collectionTitle,
+        tagRecognitionPolicy: _activeTagRecognitionPolicy,
       );
       if (previousChapter.pages.isEmpty) {
         return null;
@@ -1697,6 +1706,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
       viewportSize: _viewportSize,
       preferences: preferences,
       collectionTitle: widget.collectionTitle,
+      tagRecognitionPolicy: _activeTagRecognitionPolicy,
     );
     if (nextChapter.pages.isEmpty) {
       return null;
@@ -1725,6 +1735,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
       viewportSize: _viewportSize,
       preferences: preferences,
       collectionTitle: widget.collectionTitle,
+      tagRecognitionPolicy: _activeTagRecognitionPolicy,
     );
     if (currentChapter.pages.isEmpty) {
       return false;
@@ -1745,6 +1756,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
         viewportSize: _viewportSize,
         preferences: preferences,
         collectionTitle: widget.collectionTitle,
+        tagRecognitionPolicy: _activeTagRecognitionPolicy,
       );
       if (previousChapter.pages.isEmpty) {
         return false;
@@ -1762,6 +1774,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
         viewportSize: _viewportSize,
         preferences: preferences,
         collectionTitle: widget.collectionTitle,
+        tagRecognitionPolicy: _activeTagRecognitionPolicy,
       );
       if (nextChapter.pages.isEmpty) {
         return false;
@@ -1811,6 +1824,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
       viewportSize: _viewportSize,
       preferences: preferences,
       collectionTitle: widget.collectionTitle,
+      tagRecognitionPolicy: _activeTagRecognitionPolicy,
     );
     final safePage = chapterPageIndex
         .clamp(0, math.max(0, chapter.pages.length - 1))
@@ -1856,6 +1870,11 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
     final preferences = ref.watch(
       devicePreferencesProvider.select(
         (prefs) => prefs.collectionReaderPreferences,
+      ),
+    );
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.tagRecognitionPolicy,
       ),
     );
     _lastKnownPreferences = preferences;
@@ -1928,6 +1947,7 @@ class _CollectionReaderShellState extends ConsumerState<CollectionReaderShell>
                 viewportSize: _viewportSize,
                 preferences: preferences,
                 collectionTitle: widget.collectionTitle,
+                tagRecognitionPolicy: tagRecognitionPolicy,
               );
         final safeChapterPageIndex = currentChapter == null
             ? 0

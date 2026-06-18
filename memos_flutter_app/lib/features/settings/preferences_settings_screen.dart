@@ -8,23 +8,32 @@ import '../../core/app_route_transitions.dart';
 import '../../core/app_localization.dart';
 import '../../core/app_typography_policy.dart';
 import '../../core/memoflow_palette.dart';
-import '../../core/top_toast.dart';
 import '../../core/system_fonts.dart';
+import '../../core/tags.dart';
 import '../../core/theme_colors.dart';
+import '../../core/top_toast.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../platform/widgets/platform_dialog.dart';
 import '../../platform/widgets/platform_picker.dart';
 import '../../data/models/app_preferences.dart';
 import '../../data/models/device_preferences.dart';
+import '../../data/models/workspace_preferences.dart';
 import '../../i18n/strings.g.dart';
 import '../../platform/platform_target.dart';
+import '../../state/maintenance/self_repair_mutation_service.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../state/settings/resolved_preferences_provider.dart';
 import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/system_fonts_provider.dart';
 import 'settings_ui.dart';
 import 'memo_toolbar_settings_screen.dart';
+
+final tagRecognitionRecomputeInProgressProvider = StateProvider.autoDispose((
+  ref,
+) {
+  return false;
+});
 
 class PreferencesSettingsScreen extends ConsumerWidget {
   const PreferencesSettingsScreen({super.key, this.showBackButton = true});
@@ -39,38 +48,18 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     required T selected,
     required ValueChanged<T> onSelect,
   }) async {
-    Widget selectionContent(BuildContext context) {
-      return SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            SettingsSection(
-              header: Text(title),
-              children: [
-                for (final value in values)
-                  SettingsSingleChoiceRow<T>(
-                    option: SettingsChoiceOption<T>(
-                      value: value,
-                      label: label(value),
-                    ),
-                    selected: value == selected,
-                    onChanged: (value) {
-                      context.safePop();
-                      onSelect(value);
-                    },
-                  ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    await showPlatformPicker<void>(
+    final next = await showSettingsSingleChoicePicker<T>(
       context: context,
-      desktopMaxWidth: 440,
-      builder: selectionContent,
+      title: title,
+      value: selected,
+      options: [
+        for (final value in values)
+          SettingsChoiceOption<T>(value: value, label: label(value)),
+      ],
+      maxWidth: 440,
     );
+    if (next == null || !context.mounted) return;
+    onSelect(next);
   }
 
   Future<void> _selectFont({
@@ -137,6 +126,135 @@ class PreferencesSettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _showTagRecognitionHelp(BuildContext context) {
+    final strings = context.t.strings.settings.preferences.tagRecognition;
+    return showPlatformAlertDialog<void>(
+      context: context,
+      title: strings.helpTitle,
+      message: strings.helpMessage,
+      actions: [
+        PlatformDialogAction<void>(
+          value: null,
+          label: context.t.strings.legacy.msg_ok,
+          isDefault: true,
+        ),
+      ],
+    );
+  }
+
+  String _tagRecognitionPolicyLabel(
+    BuildContext context,
+    TagRecognitionPolicy policy,
+  ) {
+    final strings = context.t.strings.settings.preferences.tagRecognition;
+    return switch (policy.kind) {
+      TagRecognitionPolicyKind.memoflowStrict => strings.strict,
+      TagRecognitionPolicyKind.memosCompatible => strings.compatible,
+      TagRecognitionPolicyKind.custom => strings.custom,
+    };
+  }
+
+  List<SettingsChoiceOption<TagRecognitionPolicyKind>>
+  _tagRecognitionPolicyOptions(BuildContext context) {
+    final strings = context.t.strings.settings.preferences.tagRecognition;
+    return [
+      SettingsChoiceOption<TagRecognitionPolicyKind>(
+        value: TagRecognitionPolicyKind.memoflowStrict,
+        label: strings.strict,
+        description: strings.strictDescription,
+        icon: Icons.filter_alt_outlined,
+      ),
+      SettingsChoiceOption<TagRecognitionPolicyKind>(
+        value: TagRecognitionPolicyKind.memosCompatible,
+        label: strings.compatible,
+        description: strings.compatibleDescription,
+        icon: Icons.tag_outlined,
+      ),
+      SettingsChoiceOption<TagRecognitionPolicyKind>(
+        value: TagRecognitionPolicyKind.custom,
+        label: strings.custom,
+        description: strings.customDescription,
+        icon: Icons.tune_outlined,
+      ),
+    ];
+  }
+
+  Future<TagRecognitionPolicy?> _showCustomTagRecognitionPolicyEditor({
+    required BuildContext context,
+    required TagRecognitionPolicy initial,
+  }) {
+    return showPlatformPicker<TagRecognitionPolicy>(
+      context: context,
+      desktopMaxWidth: 560,
+      builder: (_) =>
+          _TagRecognitionCustomPolicySheet(initial: initial.asCustom()),
+    );
+  }
+
+  Future<void> _selectTagRecognitionPolicy({
+    required BuildContext context,
+    required WidgetRef ref,
+    required WorkspacePreferences prefs,
+  }) async {
+    final strings = context.t.strings.settings.preferences.tagRecognition;
+    if (ref.read(tagRecognitionRecomputeInProgressProvider)) return;
+
+    final selected =
+        await showSettingsSingleChoicePicker<TagRecognitionPolicyKind>(
+          context: context,
+          title: strings.title,
+          value: prefs.tagRecognitionPolicy.kind,
+          options: _tagRecognitionPolicyOptions(context),
+          maxWidth: 480,
+        );
+    if (selected == null || !context.mounted) return;
+
+    final TagRecognitionPolicy? nextPolicy;
+    switch (selected) {
+      case TagRecognitionPolicyKind.memoflowStrict:
+        nextPolicy = TagRecognitionPolicy.memoflowStrict;
+      case TagRecognitionPolicyKind.memosCompatible:
+        nextPolicy = TagRecognitionPolicy.memosCompatible;
+      case TagRecognitionPolicyKind.custom:
+        nextPolicy = await _showCustomTagRecognitionPolicyEditor(
+          context: context,
+          initial: prefs.tagRecognitionPolicy,
+        );
+    }
+    if (nextPolicy == null || !context.mounted) return;
+    if (nextPolicy == prefs.tagRecognitionPolicy) return;
+
+    ref
+        .read(currentWorkspacePreferencesProvider.notifier)
+        .setTagRecognitionPolicy(nextPolicy);
+
+    final recompute = await showSettingsConfirmationDialog(
+      context: context,
+      title: strings.recomputeTitle,
+      message: strings.recomputeMessage,
+      confirmLabel: strings.recomputeNow,
+      cancelLabel: strings.recomputeSkip,
+    );
+    if (!recompute || !context.mounted) return;
+
+    ref.read(tagRecognitionRecomputeInProgressProvider.notifier).state = true;
+    try {
+      await ref
+          .read(selfRepairMutationServiceProvider)
+          .recomputeTagRecognitionPolicy(nextPolicy);
+      if (!context.mounted) return;
+      showTopToast(context, strings.recomputeSuccess);
+    } catch (error) {
+      if (!context.mounted) return;
+      showTopToast(context, strings.recomputeFailed(error: error));
+    } finally {
+      if (context.mounted) {
+        ref.read(tagRecognitionRecomputeInProgressProvider.notifier).state =
+            false;
+      }
+    }
+  }
+
   String _fontLabel(
     BuildContext context,
     DevicePreferences prefs,
@@ -197,6 +315,13 @@ class PreferencesSettingsScreen extends ConsumerWidget {
       devicePrefs,
       fontsAsync?.valueOrNull ?? const [],
       canChooseSystemFonts: canChooseSystemFonts,
+    );
+    final tagRecognitionLabel = _tagRecognitionPolicyLabel(
+      context,
+      workspacePrefs.tagRecognitionPolicy,
+    );
+    final tagRecognitionRecomputing = ref.watch(
+      tagRecognitionRecomputeInProgressProvider,
     );
 
     final tokens = settingsPageTokens(context);
@@ -335,6 +460,34 @@ class PreferencesSettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
+            _TagRecognitionPolicyRow(
+              label:
+                  context.t.strings.settings.preferences.tagRecognition.title,
+              helpTooltip: context
+                  .t
+                  .strings
+                  .settings
+                  .preferences
+                  .tagRecognition
+                  .helpTitle,
+              value: tagRecognitionRecomputing
+                  ? context
+                        .t
+                        .strings
+                        .settings
+                        .preferences
+                        .tagRecognition
+                        .recomputeInProgress
+                  : tagRecognitionLabel,
+              busy: tagRecognitionRecomputing,
+              enabled: !tagRecognitionRecomputing,
+              onHelp: () => _showTagRecognitionHelp(context),
+              onTap: () => _selectTagRecognitionPolicy(
+                context: context,
+                ref: ref,
+                prefs: workspacePrefs,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -381,6 +534,301 @@ class PreferencesSettingsScreen extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _TagRecognitionPolicyRow extends StatelessWidget {
+  const _TagRecognitionPolicyRow({
+    required this.label,
+    required this.helpTooltip,
+    required this.value,
+    required this.busy,
+    required this.enabled,
+    required this.onHelp,
+    required this.onTap,
+  });
+
+  final String label;
+  final String helpTooltip;
+  final String value;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onHelp;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    return SettingsCustomRow(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: SettingsRowTitle(label)),
+          const SizedBox(width: 6),
+          Tooltip(
+            message: helpTooltip,
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+              padding: EdgeInsets.zero,
+              iconSize: 17,
+              color: tokens.textMuted,
+              onPressed: enabled ? onHelp : null,
+              icon: const Icon(Icons.help_outline),
+            ),
+          ),
+        ],
+      ),
+      value: Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.end,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: tokens.textMuted,
+        ),
+      ),
+      trailing: busy
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tokens.textMuted,
+              ),
+            )
+          : Icon(Icons.chevron_right, size: 18, color: tokens.textMuted),
+      onTap: enabled ? onTap : null,
+      enabled: enabled,
+      valueMaxWidthFactor: 0.34,
+    );
+  }
+}
+
+class _TagRecognitionCustomPolicySheet extends StatefulWidget {
+  const _TagRecognitionCustomPolicySheet({required this.initial});
+
+  final TagRecognitionPolicy initial;
+
+  @override
+  State<_TagRecognitionCustomPolicySheet> createState() =>
+      _TagRecognitionCustomPolicySheetState();
+}
+
+class _TagRecognitionCustomPolicySheetState
+    extends State<_TagRecognitionCustomPolicySheet> {
+  late TagRecognitionCustomOptions _options;
+
+  @override
+  void initState() {
+    super.initState();
+    _options = widget.initial.options;
+  }
+
+  void _update(TagRecognitionCustomOptions next) {
+    setState(() => _options = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.t.strings.settings.preferences.tagRecognition;
+    final tokens = settingsPageTokens(context);
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.78;
+
+    return SafeArea(
+      child: ColoredBox(
+        color: tokens.background,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: SettingsContentHeader(
+                  title: strings.customTitle,
+                  prominent: true,
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SettingsSection(
+                        children: [
+                          SettingsInfoRow(description: strings.customIntro),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SettingsSection(
+                        children: [
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.strictFirstLine,
+                            tip: strings.strictFirstLineTip,
+                            value: _options.strictFirstLine,
+                            onChanged: (value) => _update(
+                              _options.copyWith(strictFirstLine: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.strictLastLine,
+                            tip: strings.strictLastLineTip,
+                            value: _options.strictLastLine,
+                            onChanged: (value) => _update(
+                              _options.copyWith(strictLastLine: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.strictAnyLine,
+                            tip: strings.strictAnyLineTip,
+                            value: _options.strictAnyLine,
+                            onChanged: (value) => _update(
+                              _options.copyWith(strictAnyLine: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.inlineBodyTags,
+                            tip: strings.inlineBodyTagsTip,
+                            value: _options.inlineBodyTags,
+                            onChanged: (value) => _update(
+                              _options.copyWith(inlineBodyTags: value),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SettingsSection(
+                        children: [
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.numericOnlyTags,
+                            tip: strings.numericOnlyTagsTip,
+                            value: _options.numericOnlyTags,
+                            onChanged: (value) => _update(
+                              _options.copyWith(numericOnlyTags: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.hierarchicalTags,
+                            tip: strings.hierarchicalTagsTip,
+                            value: _options.hierarchicalTags,
+                            onChanged: (value) => _update(
+                              _options.copyWith(hierarchicalTags: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.emojiAndSymbolTags,
+                            tip: strings.emojiAndSymbolTagsTip,
+                            value: _options.emojiAndSymbolTags,
+                            onChanged: (value) => _update(
+                              _options.copyWith(emojiAndSymbolTags: value),
+                            ),
+                          ),
+                          _TagRecognitionOptionToggleRow(
+                            label: strings.mergeRemoteTags,
+                            tip: strings.mergeRemoteTagsTip,
+                            value:
+                                _options.remoteTagHandling ==
+                                RemoteTagHandling.mergeRemote,
+                            onChanged: (value) => _update(
+                              _options.copyWith(
+                                remoteTagHandling: value
+                                    ? RemoteTagHandling.mergeRemote
+                                    : RemoteTagHandling.localContentAuthority,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        child: Text(context.t.strings.common.cancel),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(TagRecognitionPolicy.custom(_options)),
+                        child: Text(context.t.strings.common.save),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagRecognitionOptionToggleRow extends StatelessWidget {
+  const _TagRecognitionOptionToggleRow({
+    required this.label,
+    required this.tip,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String tip;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  Future<void> _showHelpDialog(BuildContext context) {
+    return showPlatformAlertDialog<void>(
+      context: context,
+      title: label,
+      message: tip,
+      actions: [
+        PlatformDialogAction<void>(
+          value: null,
+          label: context.t.strings.legacy.msg_ok,
+          isDefault: true,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = settingsPageTokens(context);
+    return SettingsCustomRow(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: SettingsRowTitle(label)),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: label,
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+            padding: EdgeInsets.zero,
+            iconSize: 16,
+            color: tokens.textMuted,
+            onPressed: () => _showHelpDialog(context),
+            icon: const Icon(Icons.info_outline),
+          ),
+        ],
+      ),
+      trailing: PlatformSwitch(value: value, onChanged: onChanged),
+      onTap: () => onChanged(!value),
     );
   }
 }

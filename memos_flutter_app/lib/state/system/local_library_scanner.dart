@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../application/sync/local_library_scan_service.dart';
 import '../../data/local_library/local_attachment_store.dart';
 import '../../data/local_library/local_library_fs.dart';
+import '../settings/workspace_preferences_provider.dart';
 import 'database_provider.dart';
 import 'local_library_provider.dart';
 
@@ -13,5 +14,10 @@ final localLibraryScannerProvider = Provider<LocalLibraryScanService?>((ref) {
     db: ref.watch(databaseProvider),
     fileSystem: LocalLibraryFileSystem(library),
     attachmentStore: LocalAttachmentStore(),
+    tagRecognitionPolicy: ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.tagRecognitionPolicy,
+      ),
+    ),
   );
 });

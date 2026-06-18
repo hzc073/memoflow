@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform_layout.dart';
+import '../../core/tags.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../i18n/strings.g.dart';
@@ -31,6 +32,7 @@ class MemosListInlineComposeUiController extends ChangeNotifier {
     required MemoComposerController composer,
     required FocusNode focusNode,
     required List<TagStat> Function() currentTagStats,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
     required AsyncValue<String> Function() readDraft,
     required MemosListInlineDraftListener listenDraft,
     required FutureOr<void> Function(String value) saveDraft,
@@ -38,6 +40,9 @@ class MemosListInlineComposeUiController extends ChangeNotifier {
   }) : _composer = composer,
        _focusNode = focusNode,
        _currentTagStats = currentTagStats,
+       _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy),
        _readDraft = readDraft,
        _listenDraft = listenDraft,
        _saveDraft = saveDraft,
@@ -46,6 +51,7 @@ class MemosListInlineComposeUiController extends ChangeNotifier {
   final MemoComposerController _composer;
   final FocusNode _focusNode;
   final List<TagStat> Function() _currentTagStats;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
   final AsyncValue<String> Function() _readDraft;
   final MemosListInlineDraftListener _listenDraft;
   final FutureOr<void> Function(String value) _saveDraft;
@@ -110,6 +116,7 @@ class MemosListInlineComposeUiController extends ChangeNotifier {
     _composer.syncTagAutocompleteState(
       tagStats: currentInlineTagStats(),
       hasFocus: _focusNode.hasFocus,
+      policy: _currentTagRecognitionPolicy(),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/tag_list_mode.dart';
+import '../../core/tags.dart';
 import '../../core/theme_colors.dart';
 import 'app_preferences.dart';
 import 'home_navigation_preferences.dart';
@@ -29,6 +30,7 @@ class WorkspacePreferences {
     homeNavigationPreferences: HomeNavigationPreferences.defaults,
     aiSummaryAllowPrivateMemos: false,
     memoToolbarPreferences: MemoToolbarPreferences.defaults,
+    tagRecognitionPolicy: TagRecognitionPolicy.defaultPolicy,
     themeColorOverride: null,
     customThemeOverride: null,
   );
@@ -53,6 +55,7 @@ class WorkspacePreferences {
     required this.homeNavigationPreferences,
     required this.aiSummaryAllowPrivateMemos,
     required this.memoToolbarPreferences,
+    required this.tagRecognitionPolicy,
     required this.themeColorOverride,
     required this.customThemeOverride,
   });
@@ -77,6 +80,7 @@ class WorkspacePreferences {
   final HomeNavigationPreferences homeNavigationPreferences;
   final bool aiSummaryAllowPrivateMemos;
   final MemoToolbarPreferences memoToolbarPreferences;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final AppThemeColor? themeColorOverride;
   final CustomThemeSettings? customThemeOverride;
 
@@ -100,6 +104,7 @@ class WorkspacePreferences {
     'homeNavigationPreferences': homeNavigationPreferences.toJson(),
     'aiSummaryAllowPrivateMemos': aiSummaryAllowPrivateMemos,
     'memoToolbarPreferences': memoToolbarPreferences.toJson(),
+    'tagRecognitionPolicy': tagRecognitionPolicy.toJson(),
     'themeColorOverride': themeColorOverride?.name,
     'customThemeOverride': customThemeOverride?.toJson(),
   };
@@ -144,9 +149,13 @@ class WorkspacePreferences {
       return HomeNavigationPreferences.fromJson(raw.cast<String, dynamic>());
     }();
     final tagListMode = TagListMode.fromStorage(json['tagListMode']);
+    final tagRecognitionPolicy = TagRecognitionPolicy.fromStorage(
+      json['tagRecognitionPolicy'],
+    );
     return WorkspacePreferences.fromLegacy(
       legacy,
       tagListMode: tagListMode,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       themeColorOverride: themeColorOverride,
       customThemeOverride: customThemeOverride,
       homeNavigationPreferences: homeNavigationPreferences,
@@ -157,6 +166,8 @@ class WorkspacePreferences {
     AppPreferences legacy, {
     String? workspaceKey,
     TagListMode tagListMode = TagListMode.all,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     AppThemeColor? themeColorOverride,
     CustomThemeSettings? customThemeOverride,
     HomeNavigationPreferences? homeNavigationPreferences,
@@ -185,6 +196,7 @@ class WorkspacePreferences {
           homeNavigationPreferences ?? HomeNavigationPreferences.defaults,
       aiSummaryAllowPrivateMemos: legacy.aiSummaryAllowPrivateMemos,
       memoToolbarPreferences: legacy.memoToolbarPreferences,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       themeColorOverride:
           themeColorOverride ??
           (normalizedKey == null
@@ -248,6 +260,7 @@ class WorkspacePreferences {
     HomeNavigationPreferences? homeNavigationPreferences,
     bool? aiSummaryAllowPrivateMemos,
     MemoToolbarPreferences? memoToolbarPreferences,
+    TagRecognitionPolicy? tagRecognitionPolicy,
     Object? themeColorOverride = _unset,
     Object? customThemeOverride = _unset,
   }) {
@@ -283,6 +296,7 @@ class WorkspacePreferences {
           aiSummaryAllowPrivateMemos ?? this.aiSummaryAllowPrivateMemos,
       memoToolbarPreferences:
           memoToolbarPreferences ?? this.memoToolbarPreferences,
+      tagRecognitionPolicy: tagRecognitionPolicy ?? this.tagRecognitionPolicy,
       themeColorOverride: identical(themeColorOverride, _unset)
           ? this.themeColorOverride
           : themeColorOverride as AppThemeColor?,

@@ -499,6 +499,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
     required List<Map<String, dynamic>> attachments,
   }) async {
     final now = DateTime.now().toUtc();
+    final policy = _currentTagRecognitionPolicy();
     await _mutations.upsertMemo(
       uid: memo.uid,
       content: content,
@@ -507,7 +508,7 @@ extension _RemoteSyncAttachments on RemoteSyncController {
       state: memo.state,
       createTimeSec: memo.createTime.toUtc().millisecondsSinceEpoch ~/ 1000,
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
-      tags: extractTags(content),
+      tags: extractTags(content, policy: policy),
       attachments: attachments,
       location: memo.location,
       relationCount: memo.relationCount,
@@ -540,7 +541,10 @@ extension _RemoteSyncAttachments on RemoteSyncController {
         .map((a) => a.toJson())
         .toList(growable: false);
 
-    final tags = extractTags(updatedContent);
+    final tags = extractTags(
+      updatedContent,
+      policy: _currentTagRecognitionPolicy(),
+    );
     final now = DateTime.now().toUtc();
     await _mutations.upsertMemo(
       uid: memo.uid,

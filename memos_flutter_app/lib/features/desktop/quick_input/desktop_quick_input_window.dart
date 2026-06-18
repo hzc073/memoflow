@@ -892,9 +892,17 @@ class _DesktopQuickInputWindowScreenState
 
   Future<List<String>> _loadTagCandidates() async {
     try {
+      final tagRecognitionPolicy = ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy;
       final result = await _invokeMainWindowMethod(
         desktopQuickInputListTagsMethod,
-        <String, dynamic>{'existingTags': extractTags(_controller.text)},
+        <String, dynamic>{
+          'existingTags': extractTags(
+            _controller.text,
+            policy: tagRecognitionPolicy,
+          ),
+        },
       );
       if (result is! List) return const <String>[];
       final values = <String>{};

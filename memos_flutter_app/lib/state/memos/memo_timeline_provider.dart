@@ -29,6 +29,7 @@ import 'create_memo_outbox_payload.dart';
 import 'memo_timeline_mutation_service.dart';
 import 'memos_update_time_payload.dart';
 import '../attachments/queued_attachment_stager_provider.dart';
+import '../settings/workspace_preferences_provider.dart';
 import '../system/database_provider.dart';
 import '../system/session_provider.dart';
 
@@ -49,6 +50,8 @@ final memoTimelineServiceProvider = Provider<MemoTimelineService>((ref) {
     },
     queuedAttachmentStager: ref.watch(queuedAttachmentStagerProvider),
     mutations: ref.watch(memoTimelineMutationServiceProvider),
+    currentTagRecognitionPolicy: () =>
+        ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
   );
 });
 
@@ -100,10 +103,14 @@ class MemoTimelineService {
     MemoTimelineMutationService? mutations,
     QueuedAttachmentStager? queuedAttachmentStager,
     Future<void> Function(Duration delay)? waitForRetry,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
   }) : _mutations = mutations ?? MemoTimelineMutationService(db: db),
        _queuedAttachmentStager =
            queuedAttachmentStager ?? QueuedAttachmentStager(),
-       _waitForRetry = waitForRetry ?? Future<void>.delayed;
+       _waitForRetry = waitForRetry ?? Future<void>.delayed,
+       _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy);
 
   final AppDatabase db;
   final Account? account;
@@ -111,6 +118,7 @@ class MemoTimelineService {
   final MemoTimelineMutationService _mutations;
   final QueuedAttachmentStager _queuedAttachmentStager;
   final Future<void> Function(Duration delay) _waitForRetry;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -226,7 +234,10 @@ class MemoTimelineService {
     );
 
     final now = DateTime.now().toUtc();
-    final tags = extractTags(restoredContent);
+    final tags = extractTags(
+      restoredContent,
+      policy: _currentTagRecognitionPolicy(),
+    );
     await _mutations.upsertMemo(
       uid: current.uid,
       content: restoredContent,
@@ -442,7 +453,7 @@ class MemoTimelineService {
       state: state,
       createTimeSec: safeCreateTimeSec,
       updateTimeSec: now.millisecondsSinceEpoch ~/ 1000,
-      tags: extractTags(content),
+      tags: extractTags(content, policy: _currentTagRecognitionPolicy()),
       attachments: restoredAttachments
           .map((attachment) => attachment.toJson())
           .toList(growable: false),

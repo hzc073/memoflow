@@ -508,7 +508,13 @@ class AppDatabase {
         );
         return null;
       case 'rebuildMemoTagsFromContent':
-        await _runLocalWrite(rebuildMemoTagsFromContent);
+        await _runLocalWrite(
+          () => rebuildMemoTagsFromContent(
+            policy: TagRecognitionPolicy.fromStorage(
+              payload['tagRecognitionPolicy'],
+            ),
+          ),
+        );
         return null;
       case 'pruneOrphanTags':
         return _runLocalWrite(pruneOrphanTags);
@@ -1696,16 +1702,18 @@ class AppDatabase {
     await _writeDao.deleteMemoInlineImageSources(memoUid);
   }
 
-  Future<void> rebuildMemoTagsFromContent() async {
+  Future<void> rebuildMemoTagsFromContent({
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+  }) async {
     if (_writeProxyEnabled && _localWriteDepth == 0) {
       await _dispatchWriteCommand<void>(
         operation: 'rebuildMemoTagsFromContent',
-        payload: const <String, dynamic>{},
+        payload: <String, dynamic>{'tagRecognitionPolicy': policy.toJson()},
         decode: (_) {},
       );
       return;
     }
-    await _writeDao.rebuildMemoTagsFromContent();
+    await _writeDao.rebuildMemoTagsFromContent(policy: policy);
   }
 
   Future<int> pruneOrphanTags() async {

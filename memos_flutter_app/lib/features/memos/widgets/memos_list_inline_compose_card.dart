@@ -6,6 +6,7 @@ import '../../../core/image_thumbnail_cache.dart';
 import '../../../core/measure_size.dart';
 import '../../../core/markdown_editing.dart';
 import '../../../core/memoflow_palette.dart';
+import '../../../core/tags.dart';
 import '../../../data/models/memo_location.dart';
 import '../../../data/models/memo_template_settings.dart';
 import '../../../platform/platform_target.dart';
@@ -59,6 +60,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
     required this.visibilityColor,
     required this.isDark,
     required this.tagStats,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
     required this.availableTemplates,
     required this.tagColorLookup,
     required this.toolbarPreferences,
@@ -99,6 +101,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
   final Color visibilityColor;
   final bool isDark;
   final List<TagStat> tagStats;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final List<MemoTemplate> availableTemplates;
   final TagColorLookup tagColorLookup;
   final MemoToolbarPreferences toolbarPreferences;
@@ -305,6 +308,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
                             location: location,
                             pendingDraftCount: pendingDraftCount,
                             tagStats: tagStats,
+                            tagRecognitionPolicy: tagRecognitionPolicy,
                             tagColorLookup: tagColorLookup,
                             textColor: textColor,
                             hintColor: hintColor,
@@ -326,6 +330,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
                           location: location,
                           pendingDraftCount: pendingDraftCount,
                           tagStats: tagStats,
+                          tagRecognitionPolicy: tagRecognitionPolicy,
                           tagColorLookup: tagColorLookup,
                           textColor: textColor,
                           hintColor: hintColor,
@@ -352,6 +357,7 @@ class MemosListInlineComposeCard extends StatelessWidget {
                           visibilityIcon: visibilityIcon,
                           visibilityColor: visibilityColor,
                           tagMenuKey: tagMenuKey,
+                          tagRecognitionPolicy: tagRecognitionPolicy,
                           templateMenuKey: templateMenuKey,
                           todoMenuKey: todoMenuKey,
                           visibilityMenuKey: visibilityMenuKey,
@@ -388,6 +394,7 @@ class _InlineComposeEditorRegion extends StatelessWidget {
     required this.location,
     required this.pendingDraftCount,
     required this.tagStats,
+    required this.tagRecognitionPolicy,
     required this.tagColorLookup,
     required this.textColor,
     required this.hintColor,
@@ -405,6 +412,7 @@ class _InlineComposeEditorRegion extends StatelessWidget {
   final MemoLocation? location;
   final int pendingDraftCount;
   final List<TagStat> tagStats;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final TagColorLookup tagColorLookup;
   final Color textColor;
   final Color hintColor;
@@ -440,7 +448,7 @@ class _InlineComposeEditorRegion extends StatelessWidget {
               )
             : context.t.strings.legacy.msg_write_thoughts;
         final inlineActiveTagQuery = focusNode.hasFocus
-            ? detectActiveTagQuery(value)
+            ? detectActiveTagQuery(value, policy: tagRecognitionPolicy)
             : null;
         final inlineTagSuggestions = inlineActiveTagQuery == null
             ? const <TagStat>[]
@@ -462,6 +470,7 @@ class _InlineComposeEditorRegion extends StatelessWidget {
                       event,
                       tagStats: tagStats,
                       hasFocus: focusNode.hasFocus,
+                      policy: tagRecognitionPolicy,
                       requestFocus: focusNode.requestFocus,
                     ),
                 child: PlatformTextField(
@@ -539,6 +548,7 @@ class _InlineComposeBottomChrome extends StatelessWidget {
     required this.visibilityIcon,
     required this.visibilityColor,
     required this.tagMenuKey,
+    required this.tagRecognitionPolicy,
     required this.templateMenuKey,
     required this.todoMenuKey,
     required this.visibilityMenuKey,
@@ -568,6 +578,7 @@ class _InlineComposeBottomChrome extends StatelessWidget {
   final IconData visibilityIcon;
   final Color visibilityColor;
   final GlobalKey tagMenuKey;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final GlobalKey templateMenuKey;
   final GlobalKey todoMenuKey;
   final GlobalKey visibilityMenuKey;
@@ -607,6 +618,7 @@ class _InlineComposeBottomChrome extends StatelessWidget {
                 visibilityIcon: visibilityIcon,
                 visibilityColor: visibilityColor,
                 tagMenuKey: tagMenuKey,
+                tagRecognitionPolicy: tagRecognitionPolicy,
                 templateMenuKey: templateMenuKey,
                 todoMenuKey: todoMenuKey,
                 visibilityMenuKey: visibilityMenuKey,
@@ -774,6 +786,7 @@ class _InlineComposeToolbar extends StatelessWidget {
     required this.visibilityIcon,
     required this.visibilityColor,
     required this.tagMenuKey,
+    required this.tagRecognitionPolicy,
     required this.templateMenuKey,
     required this.todoMenuKey,
     required this.visibilityMenuKey,
@@ -802,6 +815,7 @@ class _InlineComposeToolbar extends StatelessWidget {
   final IconData visibilityIcon;
   final Color visibilityColor;
   final GlobalKey tagMenuKey;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final GlobalKey templateMenuKey;
   final GlobalKey todoMenuKey;
   final GlobalKey visibilityMenuKey;
@@ -938,8 +952,10 @@ class _InlineComposeToolbar extends StatelessWidget {
         id: MemoToolbarActionId.tag,
         buttonKey: tagMenuKey,
         enabled: !busy,
-        onPressed: () =>
-            composer.startTagAutocomplete(requestFocus: focusNode.requestFocus),
+        onPressed: () => composer.startTagAutocomplete(
+          policy: tagRecognitionPolicy,
+          requestFocus: focusNode.requestFocus,
+        ),
       ),
       MemoComposeToolbarActionSpec.builtin(
         id: MemoToolbarActionId.template,

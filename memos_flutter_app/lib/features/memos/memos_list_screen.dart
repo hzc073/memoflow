@@ -40,6 +40,7 @@ import '../../data/repositories/scene_micro_guide_repository.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/platform_target.dart';
 import '../../platform/widgets/platform_dialog.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../../state/memos/memo_composer_controller.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/compose_draft_provider.dart';
@@ -1470,6 +1471,8 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
       focusNode: _inlineComposeFocusNode,
       currentTagStats: () =>
           ref.read(tagStatsProvider).valueOrNull ?? const <TagStat>[],
+      currentTagRecognitionPolicy: () =>
+          ref.read(currentWorkspacePreferencesProvider).tagRecognitionPolicy,
       readDraft: () => ref.read(noteDraftProvider),
       listenDraft: (listener) => ref.listenManual<AsyncValue<String>>(
         noteDraftProvider,
@@ -3082,6 +3085,17 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
   }
 
   Future<void> _openMemoReminder(LocalMemo memo) async {
+    final readiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.memoReminders,
+    );
+    if (!readiness.canRun) {
+      final message =
+          readiness.manualFallbackDescription ??
+          readiness.nativeRequirement ??
+          context.t.strings.legacy.msg_reminder;
+      showTopToast(context, message);
+      return;
+    }
     await Navigator.of(context).push(
       buildPlatformPageRoute<void>(
         context: context,
@@ -3505,6 +3519,18 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
 
   @override
   Widget build(BuildContext context) {
+    final workspaceKey = ref.watch(
+      appSessionProvider.select(
+        (state) => state.valueOrNull?.currentKey?.trim(),
+      ),
+    );
+    if (workspaceKey == null || workspaceKey.isEmpty) {
+      _composeDraftRepository = null;
+      _noteDraftController = null;
+      _noteDraftRepository = null;
+      return const SizedBox.shrink();
+    }
+
     _composeDraftRepository = ref.watch(composeDraftRepositoryProvider);
     _noteDraftController = ref.watch(noteDraftProvider.notifier);
     _noteDraftRepository = ref.watch(noteDraftRepositoryProvider);
@@ -4110,6 +4136,7 @@ class _MemosListScreenState extends ConsumerState<MemosListScreen>
           visibilityColor: inlineVisibilityPresentation.color,
           isDark: isDark,
           tagStats: tagStats,
+          tagRecognitionPolicy: workspacePrefs.tagRecognitionPolicy,
           availableTemplates: viewState.availableTemplates,
           tagColorLookup: tagColorLookup,
           toolbarPreferences: toolbarPreferences,

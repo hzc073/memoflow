@@ -1223,9 +1223,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
   }
 
   void _syncTagAutocompleteState() {
+    final tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
     _composer.syncTagAutocompleteState(
       tagStats: _currentTagStats(),
       hasFocus: _editorFocusNode.hasFocus,
+      policy: tagRecognitionPolicy,
     );
   }
 
@@ -1237,6 +1241,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     _composer.syncTagAutocompleteState(
       tagStats: _currentTagStats(),
       hasFocus: false,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
     );
   }
 
@@ -1252,6 +1259,9 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
       event,
       tagStats: _currentTagStats(),
       hasFocus: _editorFocusNode.hasFocus,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
       requestFocus: _editorFocusNode.requestFocus,
     );
     if (result == KeyEventResult.handled) {
@@ -1281,7 +1291,12 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
 
   void _startTagAutocomplete() {
     if (_busy) return;
-    _composer.startTagAutocomplete(requestFocus: _editorFocusNode.requestFocus);
+    _composer.startTagAutocomplete(
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
+      requestFocus: _editorFocusNode.requestFocus,
+    );
     setState(() {});
   }
 
@@ -2640,7 +2655,13 @@ class _NoteInputSheetState extends ConsumerState<NoteInputSheet> {
     final (visibilityLabel, visibilityIcon, visibilityColor) =
         _resolveVisibilityStyle(context, _visibility);
     final tagStats = ref.watch(tagStatsProvider).valueOrNull ?? _tagStatsCache;
-    final activeTagQuery = detectActiveTagQuery(_controller.value);
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select((p) => p.tagRecognitionPolicy),
+    );
+    final activeTagQuery = detectActiveTagQuery(
+      _controller.value,
+      policy: tagRecognitionPolicy,
+    );
     final tagColorLookup = ref.watch(tagColorLookupProvider);
     final tagSuggestions = activeTagQuery == null
         ? const <TagStat>[]

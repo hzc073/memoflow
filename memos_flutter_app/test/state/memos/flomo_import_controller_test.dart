@@ -103,7 +103,8 @@ void main() {
         'state: NORMAL\n'
         'tags: export flow\n'
         '---\n'
-        '# Flow memo #flow\n\n'
+        '#export #flow\n\n'
+        '# Flow memo\n\n'
         'MemoFlow body',
       ),
       'memos/_meta/memo-001.json': utf8.encode(
@@ -157,7 +158,10 @@ void main() {
     expect(memos, hasLength(1));
     final memo = memos.single;
     expect(memo['uid'], 'memo-001');
-    expect(memo['content'] as String, '# Flow memo #flow\n\nMemoFlow body');
+    expect(
+      memo['content'] as String,
+      '#export #flow\n\n# Flow memo\n\nMemoFlow body',
+    );
     expect(memo['content'] as String, isNot(contains('uid: memo-001')));
     expect(memo['pinned'], 1);
     expect(

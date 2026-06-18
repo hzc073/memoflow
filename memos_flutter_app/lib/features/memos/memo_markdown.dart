@@ -184,6 +184,7 @@ class MemoMarkdown extends StatelessWidget {
     this.blockSpacing = 6,
     this.shrinkWrap = true,
     this.renderImages = true,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
     this.imageSyntax,
     this.tagColors,
     this.onToggleTask,
@@ -207,6 +208,7 @@ class MemoMarkdown extends StatelessWidget {
   final double blockSpacing;
   final bool shrinkWrap;
   final bool renderImages;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final MemoInlineImageSyntax? imageSyntax;
   final TagColorLookup? tagColors;
   final TaskToggleHandler? onToggleTask;
@@ -231,6 +233,7 @@ class MemoMarkdown extends StatelessWidget {
         buildMemoRenderArtifact(
           data: data,
           renderImages: effectiveRenderImages,
+          tagRecognitionPolicy: tagRecognitionPolicy,
           imageSyntax: effectiveImageSyntax,
           highlightQuery: highlightQuery,
           cacheKey: cacheKey,

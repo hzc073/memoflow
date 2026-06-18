@@ -444,7 +444,9 @@ class AppDatabaseWriteDao {
     _db.notifyDataChanged();
   }
 
-  Future<void> rebuildMemoTagsFromContent() async {
+  Future<void> rebuildMemoTagsFromContent({
+    TagRecognitionPolicy policy = TagRecognitionPolicy.defaultPolicy,
+  }) async {
     final sqlite = await _db.db;
     var lastId = 0;
     var changed = false;
@@ -463,7 +465,7 @@ class AppDatabaseWriteDao {
           final content = (row['content'] as String?) ?? '';
           final reconciled = await MemoTagReconciler.reconcile(
             txn,
-            extractTags(content),
+            extractTags(content, policy: policy),
           );
           await TagDbPersistence.updateMemoTagsMapping(
             txn,

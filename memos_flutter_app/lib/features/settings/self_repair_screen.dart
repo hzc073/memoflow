@@ -6,6 +6,7 @@ import '../../core/top_toast.dart';
 import '../../platform/widgets/platform_controls.dart';
 import '../../state/maintenance/self_repair_mutation_service.dart';
 import '../../state/settings/device_preferences_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../i18n/strings.g.dart';
 import 'settings_ui.dart';
 
@@ -41,7 +42,10 @@ class _SelfRepairScreenState extends ConsumerState<SelfRepairScreen> {
       switch (action) {
         case _RepairAction.tags:
           final service = ref.read(selfRepairMutationServiceProvider);
-          await service.repairTagsFromContent();
+          final policy = ref
+              .read(currentWorkspacePreferencesProvider)
+              .tagRecognitionPolicy;
+          await service.repairTagsFromContent(policy: policy);
           break;
         case _RepairAction.search:
           final service = ref.read(selfRepairMutationServiceProvider);

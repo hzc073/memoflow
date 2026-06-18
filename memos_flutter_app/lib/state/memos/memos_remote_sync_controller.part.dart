@@ -11,8 +11,12 @@ class RemoteSyncController extends SyncControllerBase {
     required this.syncQueueProgressTracker,
     required this.imageBedRepository,
     required this.attachmentPreprocessor,
+    TagRecognitionPolicy Function()? currentTagRecognitionPolicy,
     this.onRelationsSynced,
   }) : _mutations = mutations ?? RemoteSyncMutationService(db: db),
+       _currentTagRecognitionPolicy =
+           currentTagRecognitionPolicy ??
+           (() => TagRecognitionPolicy.defaultPolicy),
        super(const AsyncValue.data(null));
 
   final AppDatabase db;
@@ -24,6 +28,7 @@ class RemoteSyncController extends SyncControllerBase {
   final SyncQueueProgressTracker syncQueueProgressTracker;
   final ImageBedSettingsRepository imageBedRepository;
   final AttachmentPreprocessor attachmentPreprocessor;
+  final TagRecognitionPolicy Function() _currentTagRecognitionPolicy;
   final void Function(Set<String> memoUids)? onRelationsSynced;
   int _syncRunSeq = 0;
   bool _isDisposed = false;

@@ -2,6 +2,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:markdown/markdown.dart' as md;
 
+import '../../core/tags.dart';
 import 'memo_html_sanitizer.dart';
 import 'memo_inline_image_syntax.dart';
 import 'memo_markdown_preprocessor.dart';
@@ -31,6 +32,8 @@ class MemoRenderPipeline {
   MemoRenderArtifact build({
     required String data,
     required bool renderImages,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     MemoInlineImageSyntax? imageSyntax,
     String? highlightQuery,
     String? cacheKey,
@@ -67,7 +70,10 @@ class MemoRenderPipeline {
     if (trimmed.isEmpty) {
       return const MemoRenderArtifact(mode: MemoRenderMode.html, content: '');
     }
-    final tagged = decorateMemoTagsForHtml(trimmed);
+    final tagged = decorateMemoTagsForHtml(
+      trimmed,
+      policy: tagRecognitionPolicy,
+    );
 
     final effectiveCacheKey = _withLocalImageAllowlistFingerprint(
       cacheKey,
@@ -104,6 +110,8 @@ final MemoRenderPipeline _sharedMemoRenderPipeline = MemoRenderPipeline();
 MemoRenderArtifact buildMemoRenderArtifact({
   required String data,
   required bool renderImages,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
   MemoInlineImageSyntax? imageSyntax,
   String? highlightQuery,
   String? cacheKey,
@@ -112,6 +120,7 @@ MemoRenderArtifact buildMemoRenderArtifact({
   return _sharedMemoRenderPipeline.build(
     data: data,
     renderImages: renderImages,
+    tagRecognitionPolicy: tagRecognitionPolicy,
     imageSyntax: imageSyntax,
     highlightQuery: highlightQuery,
     cacheKey: cacheKey,

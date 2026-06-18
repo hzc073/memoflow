@@ -10,6 +10,7 @@ import '../attachments/queued_attachment_stager.dart';
 import '../../state/memos/app_bootstrap_adapter_provider.dart';
 import '../../state/memos/memo_composer_state.dart';
 import '../../state/memos/memo_mutation_service.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 
 class QuickInputService {
   QuickInputService({
@@ -82,7 +83,10 @@ class QuickInputService {
     final nowSec = now.toUtc().millisecondsSinceEpoch ~/ 1000;
     final uid = generateUid();
     final visibility = resolveVisibility(ref);
-    final tags = extractTags(content);
+    final tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
+    final tags = extractTags(content, policy: tagRecognitionPolicy);
     final uploadPayloads = <Map<String, dynamic>>[];
     for (final payload in attachmentPayloads) {
       final rawUid = (payload['uid'] as String? ?? '').trim();

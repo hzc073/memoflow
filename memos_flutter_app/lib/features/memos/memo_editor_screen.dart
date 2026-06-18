@@ -334,13 +334,20 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   }
 
   void _syncTagAutocompleteState() {
-    final activeQuery = detectActiveTagQuery(_contentController.value);
+    final tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
+    final activeQuery = detectActiveTagQuery(
+      _contentController.value,
+      policy: tagRecognitionPolicy,
+    );
     if (activeQuery != null) {
       _markSceneGuideSeen(SceneMicroGuideId.memoEditorTagAutocomplete);
     }
     _composer.syncTagAutocompleteState(
       tagStats: _currentTagStats(),
       hasFocus: _editorFocusNode.hasFocus,
+      policy: tagRecognitionPolicy,
     );
   }
 
@@ -352,6 +359,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     _composer.syncTagAutocompleteState(
       tagStats: _currentTagStats(),
       hasFocus: false,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
     );
   }
 
@@ -392,6 +402,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
       event,
       tagStats: _currentTagStats(),
       hasFocus: _editorFocusNode.hasFocus,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
       requestFocus: _editorFocusNode.requestFocus,
     );
     if (result == KeyEventResult.handled) {
@@ -1245,7 +1258,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
           ).toJson();
         }),
       ];
-      final tags = extractTags(content);
+      final tagRecognitionPolicy = ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy;
+      final tags = extractTags(content, policy: tagRecognitionPolicy);
       final pendingUploads = pendingAttachments
           .map(
             (attachment) => MemoEditorPendingAttachment(
@@ -1360,7 +1376,12 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
   void _startTagAutocomplete() {
     if (_saving) return;
     _markSceneGuideSeen(SceneMicroGuideId.memoEditorTagAutocomplete);
-    _composer.startTagAutocomplete(requestFocus: _editorFocusNode.requestFocus);
+    _composer.startTagAutocomplete(
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
+      requestFocus: _editorFocusNode.requestFocus,
+    );
     setState(() {});
   }
 
@@ -3231,6 +3252,9 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
         (p) => p.memoToolbarPreferences,
       ),
     );
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select((p) => p.tagRecognitionPolicy),
+    );
     final account = ref.watch(appSessionProvider).valueOrNull?.currentAccount;
     final baseUrl = account?.baseUrl;
     final sessionController = ref.read(appSessionProvider.notifier);
@@ -3244,7 +3268,10 @@ class _MemoEditorScreenState extends ConsumerState<MemoEditorScreen> {
     final token = account?.personalAccessToken ?? '';
     final authHeader = token.isEmpty ? null : 'Bearer $token';
     final tagStats = ref.watch(tagStatsProvider).valueOrNull ?? _tagStatsCache;
-    final activeTagQuery = detectActiveTagQuery(_contentController.value);
+    final activeTagQuery = detectActiveTagQuery(
+      _contentController.value,
+      policy: tagRecognitionPolicy,
+    );
     final tagColorLookup = ref.watch(tagColorLookupProvider);
     final tagSuggestions = activeTagQuery == null
         ? const <TagStat>[]

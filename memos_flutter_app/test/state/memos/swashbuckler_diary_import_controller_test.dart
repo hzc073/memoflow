@@ -79,7 +79,7 @@ void main() {
         jsonEncode({
           'title': 'My Diary',
           'content':
-              '#trip\n\nTrip notes\n![cover](appdata/Image/trip.png)\n[voice](appdata/Audio/trip.m4a)',
+              '#travel #trip\n\nTrip notes\n![cover](appdata/Image/trip.png)\n[voice](appdata/Audio/trip.m4a)',
           'mood': 'Happy',
           'weather': 'Sunny',
           'location': 'Paris',

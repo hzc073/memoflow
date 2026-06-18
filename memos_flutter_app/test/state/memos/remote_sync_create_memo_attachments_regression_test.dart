@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/application/attachments/attachment_preprocessor.dart';
 import 'package:memos_flutter_app/application/sync/sync_error.dart';
 import 'package:memos_flutter_app/application/sync/sync_types.dart';
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/data/api/memo_api_facade.dart';
 import 'package:memos_flutter_app/data/api/memo_api_version.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
@@ -68,7 +69,11 @@ void main() {
         await deleteTestDatabase(dbName);
       });
 
-      await _runTagCompatibilitySync(server: server, db: db);
+      await _runTagCompatibilitySync(
+        server: server,
+        db: db,
+        tagRecognitionPolicy: TagRecognitionPolicy.memosCompatible,
+      );
 
       await _expectLocalTag(db, memoUid: memoUid, tag: ampersandTag);
       await _expectLocalTag(db, memoUid: memoUid, tag: emojiTag);
@@ -1618,6 +1623,8 @@ void main() {
 Future<void> _runTagCompatibilitySync({
   required _RemoteSyncTagCompatibilityServer server,
   required AppDatabase db,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
 }) async {
   final api = MemoApiFacade.authenticated(
     baseUrl: server.baseUrl,
@@ -1632,6 +1639,7 @@ Future<void> _runTagCompatibilitySync({
     syncQueueProgressTracker: SyncQueueProgressTracker(),
     imageBedRepository: _FakeImageBedSettingsRepository(),
     attachmentPreprocessor: _PassThroughAttachmentPreprocessor(),
+    currentTagRecognitionPolicy: () => tagRecognitionPolicy,
   );
   addTearDown(controller.dispose);
 

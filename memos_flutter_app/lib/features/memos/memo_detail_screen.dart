@@ -25,6 +25,7 @@ import '../../platform/platform_icons.dart';
 import '../../platform/platform_route.dart';
 import '../../platform/platform_target.dart';
 import '../../platform/widgets/platform_dialog.dart';
+import '../../platform_capabilities/ios_mobile_feature_readiness.dart';
 import '../../state/memos/memo_detail_providers.dart';
 import '../../state/memos/memo_clip_card_providers.dart';
 import '../../state/memos/memos_providers.dart';
@@ -73,6 +74,8 @@ const double _memoDetailDesktopMaxReadWidth = 820;
 String memoDetailMarkdownCacheKey(
   LocalMemo memo, {
   required bool renderImages,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
   MemoInlineImageSyntax? imageSyntax,
   bool stripClipTitle = false,
   String localInlineImageFingerprint = '',
@@ -83,12 +86,14 @@ String memoDetailMarkdownCacheKey(
   );
   final renderFlag = renderImages ? 1 : 0;
   final stripFlag = stripClipTitle ? 1 : 0;
-  return 'detail|${memo.uid}|${memo.contentFingerprint}|renderImages=$renderFlag|imageSyntax=${resolvedImageSyntax.cacheToken}|clip=$stripFlag|localInline=$localInlineImageFingerprint|highlight=';
+  return 'detail|${memo.uid}|${memo.contentFingerprint}|renderImages=$renderFlag|imageSyntax=${resolvedImageSyntax.cacheToken}|tagPolicy=${tagRecognitionPolicy.cacheToken}|clip=$stripFlag|localInline=$localInlineImageFingerprint|highlight=';
 }
 
 String buildMemoDocumentMarkdownCacheKey(
   LocalMemo memo, {
   required bool renderImages,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
   MemoInlineImageSyntax? imageSyntax,
   bool stripClipTitle = false,
   String localInlineImageFingerprint = '',
@@ -96,6 +101,7 @@ String buildMemoDocumentMarkdownCacheKey(
   return memoDetailMarkdownCacheKey(
     memo,
     renderImages: renderImages,
+    tagRecognitionPolicy: tagRecognitionPolicy,
     imageSyntax: imageSyntax,
     stripClipTitle: stripClipTitle,
     localInlineImageFingerprint: localInlineImageFingerprint,
@@ -124,6 +130,7 @@ class MemoDocumentResolvedData {
     required this.richContentEnabled,
     required this.effectiveRenderInlineImages,
     required this.inlineImageSyntax,
+    required this.tagRecognitionPolicy,
   });
 
   final LocalMemo memo;
@@ -146,6 +153,7 @@ class MemoDocumentResolvedData {
   final bool richContentEnabled;
   final bool effectiveRenderInlineImages;
   final MemoInlineImageSyntax inlineImageSyntax;
+  final TagRecognitionPolicy tagRecognitionPolicy;
 }
 
 MemoDocumentResolvedData buildMemoDocumentResolvedData({
@@ -157,6 +165,8 @@ MemoDocumentResolvedData buildMemoDocumentResolvedData({
   required bool rebaseAbsoluteFileUrlForV024,
   required bool attachAuthForSameOriginAbsolute,
   required bool richContentEnabled,
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
 }) {
   final clipParts = clipCard == null
       ? null
@@ -232,6 +242,7 @@ MemoDocumentResolvedData buildMemoDocumentResolvedData({
   final markdownCacheKey = buildMemoDocumentMarkdownCacheKey(
     memo,
     renderImages: effectiveRenderInlineImages,
+    tagRecognitionPolicy: tagRecognitionPolicy,
     imageSyntax: inlineImageSyntax,
     stripClipTitle: clipCard != null,
     localInlineImageFingerprint: inlineImageSourcePolicy.fingerprint,
@@ -243,6 +254,7 @@ MemoDocumentResolvedData buildMemoDocumentResolvedData({
     markdownArtifact: buildMemoRenderArtifact(
       data: displayContentText,
       renderImages: effectiveRenderInlineImages,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       imageSyntax: inlineImageSyntax,
       cacheKey: markdownCacheKey,
       allowedLocalImageUrls: inlineImageSourcePolicy.allowedLocalImageUrls,
@@ -264,6 +276,7 @@ MemoDocumentResolvedData buildMemoDocumentResolvedData({
     richContentEnabled: richContentEnabled,
     effectiveRenderInlineImages: effectiveRenderInlineImages,
     inlineImageSyntax: inlineImageSyntax,
+    tagRecognitionPolicy: tagRecognitionPolicy,
   );
 }
 
@@ -329,6 +342,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
 
   ScrollController get _scrollController =>
       widget.scrollController ?? _ownedScrollController;
+
+  bool get _includeReminderAction => resolveIosMobileFeatureReadiness(
+    featureId: IosMobileFeatureId.memoReminders,
+  ).canRun;
 
   @override
   void initState() {
@@ -400,6 +417,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
     required bool attachAuthForSameOriginAbsolute,
+    required TagRecognitionPolicy tagRecognitionPolicy,
   }) {
     return '${memo.uid}|'
         '${memo.contentFingerprint}|'
@@ -408,7 +426,8 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         '${baseUrl?.toString() ?? ''}|'
         '${authHeader ?? ''}|'
         '${rebaseAbsoluteFileUrlForV024 ? 1 : 0}|'
-        '${attachAuthForSameOriginAbsolute ? 1 : 0}';
+        '${attachAuthForSameOriginAbsolute ? 1 : 0}|'
+        '${tagRecognitionPolicy.cacheToken}';
   }
 
   MemoDocumentResolvedData _buildDeferredDetailContent({
@@ -418,6 +437,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
     required bool attachAuthForSameOriginAbsolute,
+    required TagRecognitionPolicy tagRecognitionPolicy,
   }) {
     return buildMemoDocumentResolvedData(
       memo: memo,
@@ -428,6 +448,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
       richContentEnabled: widget.richContentEnabled,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
   }
 
@@ -438,6 +459,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     required String? authHeader,
     required bool rebaseAbsoluteFileUrlForV024,
     required bool attachAuthForSameOriginAbsolute,
+    required TagRecognitionPolicy tagRecognitionPolicy,
   }) {
     if (!_routeSettled) return;
     final key = _buildDeferredContentKey(
@@ -446,6 +468,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     if (_preparedDeferredContentKey == key) return;
     if (_pendingDeferredContentKey == key) return;
@@ -460,6 +483,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         authHeader: authHeader,
         rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
         attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        tagRecognitionPolicy: tagRecognitionPolicy,
       );
       if (!mounted || _pendingDeferredContentKey != key) return;
       setState(() {
@@ -508,6 +532,17 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (widget.readOnly || _isArchivedMemo()) return;
     final memo = _memo;
     if (memo == null) return;
+    final readiness = resolveIosMobileFeatureReadiness(
+      featureId: IosMobileFeatureId.memoReminders,
+    );
+    if (!readiness.canRun) {
+      final message =
+          readiness.manualFallbackDescription ??
+          readiness.nativeRequirement ??
+          context.t.strings.legacy.msg_reminder;
+      showTopToast(context, message);
+      return;
+    }
     await Navigator.of(context).push(
       buildPlatformPageRoute<void>(
         context: context,
@@ -603,6 +638,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       memo: memo,
       readOnly: widget.readOnly,
       globalPosition: details.globalPosition,
+      includeReminder: _includeReminderAction,
     );
     if (!mounted || action == null) return;
     await _handleDetailAction(action);
@@ -617,6 +653,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       memo: memo,
       readOnly: widget.readOnly,
       globalPosition: globalPosition,
+      includeReminder: _includeReminderAction,
     );
     if (!mounted || action == null) return;
     await _handleDetailAction(action);
@@ -633,6 +670,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       memo: memo,
       readOnly: widget.readOnly,
       anchorContext: anchorContext,
+      includeReminder: _includeReminderAction,
     );
     if (!mounted || action == null) return;
     await _handleDetailAction(action);
@@ -802,7 +840,10 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
     if (updated == memo.content) return;
 
     final updateTime = memo.updateTime;
-    final tags = extractTags(updated);
+    final tagRecognitionPolicy = ref
+        .read(currentWorkspacePreferencesProvider)
+        .tagRecognitionPolicy;
+    final tags = extractTags(updated, policy: tagRecognitionPolicy);
 
     try {
       await ref
@@ -973,6 +1014,11 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         (prefs) => prefs.collapseReferences,
       ),
     );
+    final tagRecognitionPolicy = ref.watch(
+      currentWorkspacePreferencesProvider.select(
+        (prefs) => prefs.tagRecognitionPolicy,
+      ),
+    );
     final effectiveShowMemoEngagement = ref.watch(
       resolvedAppSettingsProvider.select(
         (settings) => settings.effectiveShowMemoEngagement,
@@ -1008,6 +1054,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       authHeader: authHeader,
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     if (_routeSettled && richContentEnabled) {
       _scheduleDeferredDetailContentPreparation(
@@ -1017,6 +1064,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
         authHeader: authHeader,
         rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
         attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
+        tagRecognitionPolicy: tagRecognitionPolicy,
       );
     }
     final deferredContent =
@@ -1032,6 +1080,7 @@ class _MemoDetailScreenState extends ConsumerState<MemoDetailScreen> {
       rebaseAbsoluteFileUrlForV024: rebaseAbsoluteFileUrlForV024,
       attachAuthForSameOriginAbsolute: attachAuthForSameOriginAbsolute,
       richContentEnabled: richContentEnabled && _routeSettled,
+      tagRecognitionPolicy: tagRecognitionPolicy,
     );
     final resolvedData = deferredContent ?? immediateResolvedData;
     final canToggleTasks = !widget.readOnly && !isArchived;
@@ -1438,6 +1487,7 @@ class MemoDocumentPrimaryContent extends ConsumerWidget {
       markdownSelectable: markdownSelectable && resolvedData.richContentEnabled,
       renderImages: resolvedData.effectiveRenderInlineImages,
       imageSyntax: resolvedData.inlineImageSyntax,
+      tagRecognitionPolicy: resolvedData.tagRecognitionPolicy,
       baseUrl: resolvedData.baseUrl,
       authHeader: resolvedData.authHeader,
       rebaseAbsoluteFileUrlForV024: resolvedData.rebaseAbsoluteFileUrlForV024,
@@ -1936,6 +1986,7 @@ class _CollapsibleText extends StatefulWidget {
     this.markdownArtifact,
     this.markdownSelectable = true,
     this.renderImages = false,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
     this.imageSyntax,
     this.baseUrl,
     this.authHeader,
@@ -1957,6 +2008,7 @@ class _CollapsibleText extends StatefulWidget {
   final MemoRenderArtifact? markdownArtifact;
   final bool markdownSelectable;
   final bool renderImages;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final MemoInlineImageSyntax? imageSyntax;
   final Uri? baseUrl;
   final String? authHeader;
@@ -2040,6 +2092,7 @@ class _CollapsibleTextState extends State<_CollapsibleText> {
           selectable: widget.markdownSelectable && !showCollapsed,
           blockSpacing: 8,
           renderImages: effectiveImageSyntax.rendersImages,
+          tagRecognitionPolicy: widget.tagRecognitionPolicy,
           imageSyntax: effectiveImageSyntax,
           baseUrl: widget.baseUrl,
           authHeader: widget.authHeader,

@@ -39,6 +39,8 @@ class FlomoImportController {
     required AppLanguage language,
     Account? account,
     String? importScopeKey,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     required String filePath,
     required ImportProgressCallback onProgress,
     required ImportCancelCheck isCancelled,
@@ -48,6 +50,7 @@ class FlomoImportController {
       language: language,
       account: account,
       importScopeKey: importScopeKey,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       mode: _FlomoImportMode.flomoHtml,
     );
     return engine.importFile(
@@ -62,6 +65,8 @@ class FlomoImportController {
     required AppLanguage language,
     Account? account,
     String? importScopeKey,
+    TagRecognitionPolicy tagRecognitionPolicy =
+        TagRecognitionPolicy.defaultPolicy,
     required String filePath,
     required ImportProgressCallback onProgress,
     required ImportCancelCheck isCancelled,
@@ -71,6 +76,7 @@ class FlomoImportController {
       language: language,
       account: account,
       importScopeKey: importScopeKey,
+      tagRecognitionPolicy: tagRecognitionPolicy,
       mode: _FlomoImportMode.memoFlowMarkdown,
     );
     return engine.importFile(
@@ -90,6 +96,7 @@ class _FlomoImportEngine {
     required this.mode,
     this.account,
     this.importScopeKey,
+    this.tagRecognitionPolicy = TagRecognitionPolicy.defaultPolicy,
   });
 
   final FlomoImportDatabase db;
@@ -97,6 +104,7 @@ class _FlomoImportEngine {
   final String? importScopeKey;
   final AppLanguage language;
   final _FlomoImportMode mode;
+  final TagRecognitionPolicy tagRecognitionPolicy;
   final QueuedAttachmentStager _queuedAttachmentStager =
       QueuedAttachmentStager();
   late final FlomoImportMutationService _mutationService =
@@ -475,10 +483,11 @@ class _FlomoImportEngine {
 
       final memoUid = parsed.uid.isNotEmpty ? parsed.uid : generateUid();
       final sidecar = sidecarsByMemoUid[memoUid];
-      final mergedTags = <String>{
-        ...parsed.tags,
-        ...extractTags(content),
-      }.toList(growable: false)..sort();
+      final mergedTags = deriveVisibleMemoTags(
+        content: content,
+        remoteTags: parsed.tags,
+        policy: tagRecognitionPolicy,
+      );
       importedTags.addAll(mergedTags);
 
       final memoAttachments = _resolveMemoFlowArchiveAttachments(
@@ -683,7 +692,7 @@ class _FlomoImportEngine {
 
       final content = rawContent;
       final memoUid = generateUid();
-      final tags = extractTags(content);
+      final tags = extractTags(content, policy: tagRecognitionPolicy);
       importedTags.addAll(tags);
 
       final attachments = <Map<String, dynamic>>[];

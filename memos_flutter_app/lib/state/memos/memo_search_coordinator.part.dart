@@ -297,6 +297,9 @@ class MemoSearchCoordinator {
           break;
         }
 
+        final tagRecognitionPolicy = _ref
+            .read(currentWorkspacePreferencesProvider)
+            .tagRecognitionPolicy;
         for (final memo in memos) {
           remoteFetchedCount += 1;
           final memoKey = _memoRemoteKey(memo);
@@ -311,6 +314,7 @@ class MemoSearchCoordinator {
             currentUserId: creatorId,
             normalizedSearch: normalizedSearch,
             normalizedTag: normalizedTag,
+            tagRecognitionPolicy: tagRecognitionPolicy,
             startTimeSec: startTimeSec,
             endTimeSecExclusive: endTimeSecExclusive,
             matchedLocalMemoKeys: matchedLocalMemoKeys,
@@ -327,11 +331,17 @@ class MemoSearchCoordinator {
               localMemo = LocalMemo.fromDb(row);
               dbHitCount += 1;
             } else {
-              localMemo = _localMemoFromRemote(memo);
+              localMemo = _localMemoFromRemote(
+                memo,
+                tagRecognitionPolicy: tagRecognitionPolicy,
+              );
               dbMissCount += 1;
             }
           } else {
-            localMemo = _localMemoFromRemote(memo);
+            localMemo = _localMemoFromRemote(
+              memo,
+              tagRecognitionPolicy: tagRecognitionPolicy,
+            );
             dbMissCount += 1;
           }
 
@@ -484,6 +494,9 @@ class MemoSearchCoordinator {
       );
 
       final results = <LocalMemo>[];
+      final tagRecognitionPolicy = _ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy;
       for (final memo in memos) {
         final uid = memo.uid.trim();
         LocalMemo localMemo;
@@ -492,10 +505,16 @@ class MemoSearchCoordinator {
           if (row != null) {
             localMemo = LocalMemo.fromDb(row);
           } else {
-            localMemo = _localMemoFromRemote(memo);
+            localMemo = _localMemoFromRemote(
+              memo,
+              tagRecognitionPolicy: tagRecognitionPolicy,
+            );
           }
         } else {
-          localMemo = _localMemoFromRemote(memo);
+          localMemo = _localMemoFromRemote(
+            memo,
+            tagRecognitionPolicy: tagRecognitionPolicy,
+          );
         }
         if (!advancedFilters.matches(localMemo)) continue;
         results.add(localMemo);
@@ -625,6 +644,9 @@ class MemoSearchCoordinator {
         merged.add(memo);
       }
 
+      final tagRecognitionPolicy = _ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy;
       for (final memo in remoteMemos) {
         if (normalizedQuery.isNotEmpty) {
           final uid = memo.uid.trim();
@@ -634,7 +656,11 @@ class MemoSearchCoordinator {
               !MemoSearchMatcher.matchesText(
                 text: MemoSearchDocumentBuilder.buildCanonical(
                   content: memo.content,
-                  tagsText: memo.tags.join(' '),
+                  tagsText: deriveVisibleMemoTags(
+                    content: memo.content,
+                    remoteTags: memo.tags,
+                    policy: tagRecognitionPolicy,
+                  ).join(' '),
                 ),
                 query: normalizedQuery,
               )) {

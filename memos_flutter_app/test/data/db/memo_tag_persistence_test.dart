@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memos_flutter_app/core/tags.dart';
 import 'package:memos_flutter_app/data/db/app_database.dart';
 import 'package:memos_flutter_app/state/maintenance/self_repair_mutation_service.dart';
 import 'package:memos_flutter_app/state/tags/tag_repository.dart';
@@ -179,6 +180,77 @@ void main() {
       expect(await _ftsTagsForMemo(db, 'memo-1'), '');
       expect(await _tagIdByPath(db, legacyTag), isNull);
       expect((await _tagStats(db)).containsKey(legacyTag), isFalse);
+    },
+  );
+
+  test(
+    'policy-aware rebuild keeps inline tags under compatible policy',
+    () async {
+      final dbName = uniqueDbName('memo_tag_rebuild_compatible_inline');
+      final db = AppDatabase(dbName: dbName);
+      addTearDown(() async {
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await _upsertMemo(
+        db,
+        uid: 'memo-1',
+        content: 'Today #life',
+        tags: const <String>[],
+      );
+
+      await SelfRepairMutationService(
+        db: db,
+      ).repairTagsFromContent(policy: TagRecognitionPolicy.memosCompatible);
+
+      expect((await db.getMemoByUid('memo-1'))?['tags'], 'life');
+      expect(await _memoTagPaths(db, 'memo-1'), const ['life']);
+      expect(await _memoUidsForTag(db, 'life'), const ['memo-1']);
+      expect(await _ftsTagsForMemo(db, 'memo-1'), 'life');
+      expect(await _tagStats(db), containsPair('life', 1));
+    },
+  );
+
+  test(
+    'policy-aware rebuild follows custom options and prunes rejected tags',
+    () async {
+      final dbName = uniqueDbName('memo_tag_rebuild_custom_options');
+      final db = AppDatabase(dbName: dbName);
+      addTearDown(() async {
+        await db.close();
+        await deleteTestDatabase(dbName);
+      });
+
+      await _upsertMemo(
+        db,
+        uid: 'memo-1',
+        content: 'Today #life Issue #123 #work/project',
+        tags: const ['123', 'life', 'work/project'],
+      );
+      expect(await _tagIdByPath(db, '123'), isNotNull);
+      expect(await _tagIdByPath(db, 'work/project'), isNotNull);
+
+      final policy = TagRecognitionPolicy.custom(
+        const TagRecognitionCustomOptions(
+          inlineBodyTags: true,
+          numericOnlyTags: false,
+          hierarchicalTags: false,
+        ),
+      );
+      await SelfRepairMutationService(
+        db: db,
+      ).repairTagsFromContent(policy: policy);
+
+      expect((await db.getMemoByUid('memo-1'))?['tags'], 'life');
+      expect(await _memoTagPaths(db, 'memo-1'), const ['life']);
+      expect(await _memoUidsForTag(db, '123'), isEmpty);
+      expect(await _memoUidsForTag(db, 'work/project'), isEmpty);
+      expect(await _ftsTagsForMemo(db, 'memo-1'), 'life');
+      expect(await _tagIdByPath(db, '123'), isNull);
+      expect(await _tagIdByPath(db, 'work/project'), isNull);
+      expect(await _tagStats(db), containsPair('life', 1));
+      expect((await _tagStats(db)).containsKey('123'), isFalse);
     },
   );
 

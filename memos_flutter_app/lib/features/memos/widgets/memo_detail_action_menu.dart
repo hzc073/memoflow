@@ -9,12 +9,14 @@ List<MemoCardActionDescriptor> buildMemoDetailActionDescriptors({
   required LocalMemo memo,
   required bool readOnly,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   if (readOnly) return const <MemoCardActionDescriptor>[];
   return buildMemoCardActionDescriptors(
     context: context,
     memo: memo,
     includeCopy: includeCopy,
+    includeReminder: includeReminder,
   );
 }
 
@@ -25,6 +27,7 @@ Future<MemoCardAction?> showMemoDetailActionPopover({
   BuildContext? anchorContext,
   Offset? globalPosition,
   bool includeCopy = true,
+  bool includeReminder = true,
 }) {
   return showMemoActionPopover(
     context: context,
@@ -33,6 +36,7 @@ Future<MemoCardAction?> showMemoDetailActionPopover({
       memo: memo,
       readOnly: readOnly,
       includeCopy: includeCopy,
+      includeReminder: includeReminder,
     ),
     anchorContext: anchorContext,
     globalPosition: globalPosition,

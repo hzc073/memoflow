@@ -4,6 +4,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
 import 'package:markdown/markdown.dart' as markdown;
 
+import '../../core/tags.dart';
 import '../../data/models/collection_reader.dart';
 import '../../data/models/collection_readable_item.dart';
 import '../../data/models/local_memo.dart';
@@ -160,8 +161,15 @@ String extractCollectionReaderContentText(Object item) {
   ).text;
 }
 
-CollectionReaderParsedContent parseCollectionReaderContent(String sourceRaw) {
-  final fragment = _parseCollectionReaderFragment(sourceRaw);
+CollectionReaderParsedContent parseCollectionReaderContent(
+  String sourceRaw, {
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
+}) {
+  final fragment = _parseCollectionReaderFragment(
+    sourceRaw,
+    tagRecognitionPolicy: tagRecognitionPolicy,
+  );
   if (fragment == null) {
     return const CollectionReaderParsedContent(
       text: '',
@@ -247,7 +255,11 @@ CollectionReaderParsedContent parseCollectionReaderContent(String sourceRaw) {
   );
 }
 
-dom.DocumentFragment? _parseCollectionReaderFragment(String sourceRaw) {
+dom.DocumentFragment? _parseCollectionReaderFragment(
+  String sourceRaw, {
+  TagRecognitionPolicy tagRecognitionPolicy =
+      TagRecognitionPolicy.defaultPolicy,
+}) {
   final source = sourceRaw.trim();
   if (source.isEmpty) {
     return null;
@@ -263,7 +275,10 @@ dom.DocumentFragment? _parseCollectionReaderFragment(String sourceRaw) {
   if (sanitized.isEmpty) {
     return null;
   }
-  final tagged = decorateMemoTagsForHtml(sanitized);
+  final tagged = decorateMemoTagsForHtml(
+    sanitized,
+    policy: tagRecognitionPolicy,
+  );
   final html = markdown.markdownToHtml(
     tagged,
     extensionSet: markdown.ExtensionSet.gitHubFlavored,

@@ -5,6 +5,7 @@ import 'package:memos_flutter_app/features/memos/memos_list_header_controller.da
 import 'package:memos_flutter_app/features/memos/widgets/memos_list_search_header.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/platform/platform_icons.dart';
+import 'package:memos_flutter_app/platform/widgets/platform_controls.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,44 @@ void main() {
     await tester.tap(find.byIcon(PlatformIcons.filter));
     await tester.pump();
     expect(openAdvancedFiltersCount, 1);
+  });
+
+  testWidgets('top search field centers text within the fixed height', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: 'Search');
+    final focusNode = FocusNode();
+    addTearDown(() {
+      controller.dispose();
+      focusNode.dispose();
+    });
+
+    await tester.pumpWidget(
+      _buildHarness(
+        child: MemosListTopSearchField(
+          controller: controller,
+          focusNode: focusNode,
+          isDark: false,
+          autofocus: false,
+          hasAdvancedFilters: false,
+          onOpenAdvancedFilters: () {},
+          onSubmitted: (_) {},
+        ),
+      ),
+    );
+
+    final field = tester.widget<PlatformTextField>(
+      find.byType(PlatformTextField),
+    );
+    expect(field.textAlignVertical, TextAlignVertical.center);
+    expect(
+      field.decoration?.contentPadding,
+      const EdgeInsets.symmetric(vertical: 8),
+    );
+    expect(
+      field.decoration?.prefixIconConstraints,
+      const BoxConstraints(minWidth: 40, minHeight: 36),
+    );
   });
 
   testWidgets('active advanced filter sliver forwards clear actions', (

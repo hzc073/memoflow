@@ -136,6 +136,17 @@ class _ReminderSettingsScreenState
   }
 
   Future<bool> _requestPermissions() async {
+    if (Platform.isIOS) {
+      final status = await Permission.notification.request();
+      final granted = status.isGranted;
+      if (!mounted) return granted;
+      if (!granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.t.strings.legacy.msg_permissions_denied)),
+        );
+      }
+      return granted;
+    }
     if (!Platform.isAndroid) return true;
 
     final confirmed =
@@ -400,21 +411,28 @@ class _ReminderSettingsScreenState
         const SizedBox(height: 8),
         _Group(
           children: [
-            _SelectRow(
-              label: context.t.strings.legacy.msg_ringtone,
-              value: _soundLabel(settings),
-              onTap: () => _pickRingtone(settings),
-            ),
-            _ToggleRow(
-              label: context.t.strings.legacy.msg_vibration,
-              value: settings.vibrationEnabled,
-              onChanged: (value) async {
-                ref
-                    .read(reminderSettingsProvider.notifier)
-                    .setVibrationEnabled(value);
-                await ref.read(reminderSchedulerProvider).rescheduleAll();
-              },
-            ),
+            if (Platform.isAndroid) ...[
+              _SelectRow(
+                label: context.t.strings.legacy.msg_ringtone,
+                value: _soundLabel(settings),
+                onTap: () => _pickRingtone(settings),
+              ),
+              _ToggleRow(
+                label: context.t.strings.legacy.msg_vibration,
+                value: settings.vibrationEnabled,
+                onChanged: (value) async {
+                  ref
+                      .read(reminderSettingsProvider.notifier)
+                      .setVibrationEnabled(value);
+                  await ref.read(reminderSchedulerProvider).rescheduleAll();
+                },
+              ),
+            ] else
+              SettingsInfoRow(
+                description:
+                    '${context.t.strings.legacy.msg_ringtone}: '
+                    '${context.t.strings.legacy.msg_system_default}',
+              ),
           ],
         ),
         const SizedBox(height: 16),

@@ -1597,7 +1597,7 @@ void main() {
         'originWindowId': 0,
       },
     );
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(db.notifyCalls, 1);
   });

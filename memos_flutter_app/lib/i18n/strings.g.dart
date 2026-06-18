@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 7
-/// Strings: 15001 (2143 per locale)
+/// Strings: 15239 (2177 per locale)
 ///
-/// Built on 2026-06-16 at 08:50 UTC
+/// Built on 2026-06-18 at 05:04 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -2171,6 +2171,7 @@ class _StringsStringsSettingsPreferencesEn {
 	String get launchAction => 'Launch Action';
 	String get quickInputKeyboard => 'Auto-open keyboard for Quick Input';
 	String get confirmExitOnBack => 'Confirm on Exit';
+	late final _StringsStringsSettingsPreferencesTagRecognitionEn tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionEn._(_root);
 	late final _StringsStringsSettingsPreferencesEditorToolbarEn editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarEn._(_root);
 	String get appearance => 'Appearance';
 	String get themeColor => 'Theme Color';
@@ -2720,6 +2721,49 @@ class _StringsStringsCollectionsArticleFlowEn {
 	String get densityComfortable => 'Comfortable';
 	String get autoHideToolbar => 'Auto-hide article toolbar';
 	String get fullContentFallback => 'Showing feed content. Retry full article or open the original page.';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionEn._(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+	String get title => 'Tag recognition rules';
+	String get strict => 'MemoFlow strict';
+	String get strictDescription => 'Only tags in the first or last tag-zone line become visible tags.';
+	String get compatible => 'Memos compatible';
+	String get compatibleDescription => 'Recognizes inline #tags in Markdown text, close to Memos behavior.';
+	String get custom => 'Custom';
+	String get customDescription => 'Build a rule from supported recognition options.';
+	String get helpTitle => 'Tag recognition rules';
+	String get helpMessage => 'MemoFlow strict keeps the current rule: #life at the start or end tag zone is a tag, but today #life in body text is not. Memos compatible recognizes inline body tags such as today #life. Custom lets you combine supported rules.';
+	String get customTitle => 'Custom tag recognition';
+	String get customIntro => 'These options decide which #tags appear in tag lists, rendering, autocomplete, search, and local repair. After changing rules, rebuild tag data if you want old notes to update immediately.';
+	String get strictFirstLine => 'Only top tags';
+	String get strictFirstLineTip => 'Only recognizes tags at the start of the first line.\n\nExample:\n#work\nToday I organized the project.\n\nBest for users who put tags at the top of a note.';
+	String get strictLastLine => 'Only bottom tags';
+	String get strictLastLineTip => 'Only recognizes tags at the start of the last line.\n\nExample:\nToday I organized the project.\n#work\n\nBest for users who put tags separately at the end of a note.';
+	String get strictAnyLine => 'Line-start tags';
+	String get strictAnyLineTip => 'Recognizes tags at the start of any line.\n\nExample:\nToday I organized the project.\n#todo Continue tomorrow.\nReview it tonight.\n\nBest for users who mark sections or tasks with tags.';
+	String get inlineBodyTags => 'Tags in text';
+	String get inlineBodyTagsTip => 'Recognizes #tags in the middle of sentences.\n\nExample:\nToday I organized the project #work\n\n#content in code, links, images, and URLs will not be treated as tags.';
+	String get numericOnlyTags => 'Numeric tags';
+	String get numericOnlyTagsTip => 'Allows numbers-only tags.\n\nExample:\n#123\n\nBest for users who use numbers, dates, or sequence numbers as tags. Turn this off if issue numbers or counters should not become tags.';
+	String get hierarchicalTags => 'Nested tags';
+	String get hierarchicalTagsTip => 'Allows / to create nested tags.\n\nExample:\n#work/project\n\nBest for users who organize tags with parent and child categories. When off, only single-level tags are recognized.';
+	String get emojiAndSymbolTags => 'Emoji and symbol tags';
+	String get emojiAndSymbolTagsTip => 'Allows tags to contain emoji or symbols.\n\nExample:\n#mood🚀\n\nBest for users who use emoji to mark status or tone. When off, tags stay closer to plain text and numbers.';
+	String get mergeRemoteTags => 'Merge server tags';
+	String get mergeRemoteTagsTip => 'Includes tags returned by the Memos server, even if the current local rules did not recognize them from the note text.\n\nBest for users who want MemoFlow to stay close to server tag results. Turn this off if local recognition rules should be the visible source of truth.';
+	String get recomputeTitle => 'Rebuild tag data?';
+	String get recomputeMessage => 'The new tag recognition rule is saved. Rebuild local memo tag mappings, search index, and statistics now so existing memos match it immediately?';
+	String get recomputeNow => 'Rebuild now';
+	String get recomputeSkip => 'Later';
+	String get recomputeInProgress => 'Rebuilding tag data...';
+	String get recomputeSuccess => 'Tag data rebuilt';
+	String recomputeFailed({required Object error}) => 'Failed to rebuild tag data: ${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -4867,6 +4911,7 @@ class _StringsStringsSettingsPreferencesDe extends _StringsStringsSettingsPrefer
 	@override String get launchAction => 'Aktion beim Start';
 	@override String get quickInputKeyboard => 'Tastatur bei Schnellnotiz automatisch öffnen';
 	@override String get confirmExitOnBack => 'Beenden bestätigen';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionDe tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionDe._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarDe editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarDe._(_root);
 	@override String get appearance => 'Darstellung';
 	@override String get themeColor => 'Themenfarbe';
@@ -5391,6 +5436,49 @@ class _StringsStringsCollectionsArticleFlowDe extends _StringsStringsCollections
 	@override String get densityComfortable => 'Komfortabel';
 	@override String get autoHideToolbar => 'Artikel-Werkzeugleiste automatisch ausblenden';
 	@override String get fullContentFallback => 'Feed-Inhalt wird angezeigt. Volltext erneut abrufen oder Originalseite oeffnen.';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionDe extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionDe._(_StringsDe root) : this._root = root, super._(root);
+
+	@override final _StringsDe _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Tag-Erkennungsregeln';
+	@override String get strict => 'MemoFlow streng';
+	@override String get strictDescription => 'Nur Tags in der ersten oder letzten Tag-Zeile werden sichtbare Tags.';
+	@override String get compatible => 'Memos-kompatibel';
+	@override String get compatibleDescription => 'Erkennt Inline-#Tags in Markdown-Text, nah am Verhalten von Memos.';
+	@override String get custom => 'Benutzerdefiniert';
+	@override String get customDescription => 'Stellen Sie eine Regel aus unterstützten Erkennungsoptionen zusammen.';
+	@override String get helpTitle => 'Tag-Erkennungsregeln';
+	@override String get helpMessage => 'MemoFlow streng behält die aktuelle Regel bei: #Leben am Anfang oder Ende einer Tag-Zone wird ein Tag, aber Heute #Leben im Fließtext nicht. Memos-kompatibel erkennt Inline-Tags wie Heute #Leben. Benutzerdefiniert kombiniert unterstützte Regeln.';
+	@override String get customTitle => 'Benutzerdefinierte Tag-Erkennung';
+	@override String get customIntro => 'Diese Optionen entscheiden, welche #Tags in Taglisten, Darstellung, Autovervollständigung, Suche und lokaler Reparatur erscheinen. Nach Regeländerungen müssen Tag-Daten neu aufgebaut werden, damit alte Notizen sofort aktualisiert werden.';
+	@override String get strictFirstLine => 'Nur obere Tags';
+	@override String get strictFirstLineTip => 'Erkennt nur Tags am Anfang der ersten Zeile.\n\nBeispiel:\n#Arbeit\nHeute habe ich das Projekt sortiert.\n\nGeeignet für Nutzer, die Tags ganz oben in der Notiz platzieren.';
+	@override String get strictLastLine => 'Nur untere Tags';
+	@override String get strictLastLineTip => 'Erkennt nur Tags am Anfang der letzten Zeile.\n\nBeispiel:\nHeute habe ich das Projekt sortiert.\n#Arbeit\n\nGeeignet für Nutzer, die Tags separat ans Ende einer Notiz setzen.';
+	@override String get strictAnyLine => 'Tags am Zeilenanfang';
+	@override String get strictAnyLineTip => 'Erkennt Tags am Anfang jeder Zeile.\n\nBeispiel:\nHeute habe ich das Projekt sortiert.\n#Todo Morgen weiter bearbeiten\nHeute Abend prüfen\n\nGeeignet für Nutzer, die Abschnitte oder Aufgaben mit Tags markieren.';
+	@override String get inlineBodyTags => 'Tags im Text';
+	@override String get inlineBodyTagsTip => 'Erkennt #Tags mitten in Sätzen.\n\nBeispiel:\nHeute habe ich das Projekt sortiert #Arbeit\n\n#Inhalte in Code, Links, Bildern und URLs werden nicht als Tags behandelt.';
+	@override String get numericOnlyTags => 'Zahlen-Tags';
+	@override String get numericOnlyTagsTip => 'Erlaubt Tags, die nur aus Zahlen bestehen.\n\nBeispiel:\n#123\n\nGeeignet für Nutzer, die Nummern, Daten oder Reihenfolgen als Tags verwenden. Deaktivieren, wenn Issue-Nummern oder Zähler keine Tags werden sollen.';
+	@override String get hierarchicalTags => 'Hierarchische Tags';
+	@override String get hierarchicalTagsTip => 'Erlaubt / zum Erstellen hierarchischer Tags.\n\nBeispiel:\n#Arbeit/Projekt\n\nGeeignet für Nutzer, die Tags mit über- und untergeordneten Kategorien organisieren. Wenn deaktiviert, werden nur einstufige Tags erkannt.';
+	@override String get emojiAndSymbolTags => 'Emoji- und Symbol-Tags';
+	@override String get emojiAndSymbolTagsTip => 'Erlaubt Emoji oder Symbole in Tags.\n\nBeispiel:\n#Stimmung🚀\n\nGeeignet für Nutzer, die Status oder Stimmung mit Emoji markieren. Wenn deaktiviert, bleiben Tags näher an normalem Text und Zahlen.';
+	@override String get mergeRemoteTags => 'Server-Tags zusammenführen';
+	@override String get mergeRemoteTagsTip => 'Bezieht Tags ein, die der Memos-Server zurückgibt, auch wenn die aktuellen lokalen Regeln sie nicht aus dem Notiztext erkannt haben.\n\nGeeignet für Nutzer, die MemoFlow möglichst nah an den Tag-Ergebnissen des Servers halten möchten. Deaktivieren, wenn nur lokale Erkennungsregeln als sichtbare Quelle gelten sollen.';
+	@override String get recomputeTitle => 'Tag-Daten neu aufbauen?';
+	@override String get recomputeMessage => 'Die neue Tag-Erkennungsregel wurde gespeichert. Jetzt lokale Memo-Tag-Zuordnungen, Suchindex und Statistik-Cache neu aufbauen, damit vorhandene Memos sofort passen?';
+	@override String get recomputeNow => 'Jetzt neu aufbauen';
+	@override String get recomputeSkip => 'Später';
+	@override String get recomputeInProgress => 'Tag-Daten werden neu aufgebaut...';
+	@override String get recomputeSuccess => 'Tag-Daten neu aufgebaut';
+	@override String recomputeFailed({required Object error}) => 'Tag-Daten konnten nicht neu aufgebaut werden: ${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -7538,6 +7626,7 @@ class _StringsStringsSettingsPreferencesJa extends _StringsStringsSettingsPrefer
 	@override String get launchAction => '起動時の動作';
 	@override String get quickInputKeyboard => 'クイック入力で自動的にキーボードを開く';
 	@override String get confirmExitOnBack => '終了時に確認する';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionJa tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionJa._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarJa editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarJa._(_root);
 	@override String get appearance => '外観';
 	@override String get themeColor => 'テーマカラー';
@@ -8062,6 +8151,49 @@ class _StringsStringsCollectionsArticleFlowJa extends _StringsStringsCollections
 	@override String get densityComfortable => 'ゆったり';
 	@override String get autoHideToolbar => '記事ツールバーを自動的に隠す';
 	@override String get fullContentFallback => 'フィード本文を表示しています。全文を再試行するか、元のページを開いてください。';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionJa extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionJa._(_StringsJa root) : this._root = root, super._(root);
+
+	@override final _StringsJa _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'タグ認識ルール';
+	@override String get strict => 'MemoFlow 厳格';
+	@override String get strictDescription => '最初または最後のタグ行にあるタグだけを表示タグにします。';
+	@override String get compatible => 'Memos 互換';
+	@override String get compatibleDescription => 'Markdown 本文内の inline #タグを Memos に近い挙動で認識します。';
+	@override String get custom => 'カスタム';
+	@override String get customDescription => '対応している認識オプションを組み合わせてルールを作ります。';
+	@override String get helpTitle => 'タグ認識ルール';
+	@override String get helpMessage => 'MemoFlow 厳格は現在のルールを保ちます。先頭または末尾のタグ行にある #生活 はタグになりますが、本文中の 今日は #生活 はタグになりません。Memos 互換は 今日は #生活 のような本文中タグを認識します。カスタムでは対応ルールを組み合わせられます。';
+	@override String get customTitle => 'カスタムタグ認識';
+	@override String get customIntro => 'これらのオプションは、どの #タグ がタグ一覧、表示、オートコンプリート、検索、ローカル修復に出るかを決めます。ルール変更後、古いメモをすぐ新しいルールで更新するにはタグデータの再構築が必要です。';
+	@override String get strictFirstLine => '上部タグのみ認識';
+	@override String get strictFirstLineTip => 'メモの1行目の先頭にあるタグだけを認識します。\n\n例:\n#仕事\n今日はプロジェクトを整理しました\n\nタグをメモの一番上に置くユーザーに向いています。';
+	@override String get strictLastLine => '下部タグのみ認識';
+	@override String get strictLastLineTip => 'メモの最後の行の先頭にあるタグだけを認識します。\n\n例:\n今日はプロジェクトを整理しました\n#仕事\n\nタグをメモの末尾に単独で置くユーザーに向いています。';
+	@override String get strictAnyLine => '各行先頭のタグを認識';
+	@override String get strictAnyLineTip => '任意の行の先頭にあるタグを認識します。\n\n例:\n今日はプロジェクトを整理しました\n#やること 明日も修正を続ける\n夜に振り返る\n\n段落やタスクをタグで示すユーザーに向いています。';
+	@override String get inlineBodyTags => '本文中のタグを認識';
+	@override String get inlineBodyTagsTip => '文の途中にある #タグ を認識します。\n\n例:\n今日はプロジェクトを整理しました #仕事\n\nコード、リンク、画像、URL 内の #内容 はタグとして扱われません。';
+	@override String get numericOnlyTags => '数字だけのタグを認識';
+	@override String get numericOnlyTagsTip => '数字だけをタグとして使えるようにします。\n\n例:\n#123\n\n番号、日付、連番をタグにしたいユーザーに向いています。Issue 番号やカウンターをタグにしたくない場合はオフにできます。';
+	@override String get hierarchicalTags => '階層タグを認識';
+	@override String get hierarchicalTagsTip => '/ を使って階層タグを作れるようにします。\n\n例:\n#仕事/プロジェクト\n\n親子分類でタグを整理したいユーザーに向いています。オフにすると単一階層のタグだけを認識します。';
+	@override String get emojiAndSymbolTags => '絵文字と記号のタグを認識';
+	@override String get emojiAndSymbolTagsTip => 'タグに絵文字や記号を含められるようにします。\n\n例:\n#気分🚀\n\n絵文字で状態や雰囲気を区別したいユーザーに向いています。オフにするとタグは通常の文字と数字に近くなります。';
+	@override String get mergeRemoteTags => 'サーバータグを統合';
+	@override String get mergeRemoteTagsTip => '現在のローカルルールが本文から認識しなかった場合でも、Memos サーバーが返したタグを取り込みます。\n\nMemoFlow のタグ結果を Memos サーバーにできるだけ近づけたいユーザーに向いています。ローカル認識ルールだけを表示の基準にしたい場合はオフにできます。';
+	@override String get recomputeTitle => 'タグデータを再構築しますか？';
+	@override String get recomputeMessage => '新しいタグ認識ルールは保存されました。既存のメモをすぐ新しいルールに合わせるため、ローカルのメモタグ対応、検索インデックス、統計キャッシュを再構築しますか？';
+	@override String get recomputeNow => '今すぐ再構築';
+	@override String get recomputeSkip => 'あとで';
+	@override String get recomputeInProgress => 'タグデータを再構築しています...';
+	@override String get recomputeSuccess => 'タグデータを再構築しました';
+	@override String recomputeFailed({required Object error}) => 'タグデータの再構築に失敗しました: ${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -10300,6 +10432,7 @@ class _StringsStringsSettingsPreferencesKo extends _StringsStringsSettingsPrefer
 	@override String get launchAction => '실행 작업';
 	@override String get quickInputKeyboard => '빠른 입력을 위한 자동 열기 키보드';
 	@override String get confirmExitOnBack => '종료 시 확인';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionKo tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionKo._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarKo editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarKo._(_root);
 	@override String get appearance => '모습';
 	@override String get themeColor => '테마 색상';
@@ -10849,6 +10982,49 @@ class _StringsStringsCollectionsArticleFlowKo extends _StringsStringsCollections
 	@override String get densityComfortable => '여유 있게';
 	@override String get autoHideToolbar => '글 도구 모음 자동 숨김';
 	@override String get fullContentFallback => '피드 내용을 표시하고 있습니다. 전체 글을 다시 가져오거나 원문 페이지를 여세요.';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionKo extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionKo._(_StringsKo root) : this._root = root, super._(root);
+
+	@override final _StringsKo _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '태그 인식 규칙';
+	@override String get strict => 'MemoFlow 엄격';
+	@override String get strictDescription => '첫 줄 또는 마지막 줄의 태그 영역에 있는 태그만 보이는 태그가 됩니다.';
+	@override String get compatible => 'Memos 호환';
+	@override String get compatibleDescription => 'Markdown 본문 안의 inline';
+	@override String get custom => '사용자 지정';
+	@override String get customDescription => '지원되는 인식 옵션을 조합해 규칙을 만듭니다.';
+	@override String get helpTitle => '태그 인식 규칙';
+	@override String get helpMessage => 'MemoFlow 엄격은 현재 규칙을 유지합니다. 시작 또는 끝 태그 영역의 #생활은 태그가 되지만, 본문 안의 오늘 #생활은 태그가 되지 않습니다. Memos 호환은 오늘 #생활 같은 본문 태그를 인식합니다. 사용자 지정에서는 지원되는 규칙을 조합할 수 있습니다.';
+	@override String get customTitle => '사용자 지정 태그 인식';
+	@override String get customIntro => '이 옵션은 어떤 #태그가 태그 목록, 렌더링, 자동 완성, 검색, 로컬 복구에 나타나는지 결정합니다. 규칙을 바꾼 뒤 기존 노트를 즉시 새 규칙으로 업데이트하려면 태그 데이터를 다시 빌드해야 합니다.';
+	@override String get strictFirstLine => '상단 태그만 인식';
+	@override String get strictFirstLineTip => '노트 첫 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n#업무\n오늘 프로젝트를 정리했습니다\n\n태그를 노트 맨 위에 두는 사용자에게 적합합니다.';
+	@override String get strictLastLine => '하단 태그만 인식';
+	@override String get strictLastLineTip => '노트 마지막 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#업무\n\n태그를 노트 끝에 따로 두는 사용자에게 적합합니다.';
+	@override String get strictAnyLine => '각 줄 시작 태그 인식';
+	@override String get strictAnyLineTip => '어느 줄이든 줄 시작 부분에 있는 태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#할일 내일 계속 수정\n저녁에 다시 검토\n\n태그로 문단이나 작업을 표시하는 사용자에게 적합합니다.';
+	@override String get inlineBodyTags => '본문 속 태그 인식';
+	@override String get inlineBodyTagsTip => '문장 중간에 나타나는 #태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다 #업무\n\n코드, 링크, 이미지, URL 안의 #내용은 태그로 처리되지 않습니다.';
+	@override String get numericOnlyTags => '숫자 태그 인식';
+	@override String get numericOnlyTagsTip => '숫자만으로 된 태그를 허용합니다.\n\n예시:\n#123\n\n번호, 날짜, 순번을 태그로 쓰는 사용자에게 적합합니다. 이슈 번호나 카운터가 태그가 되지 않게 하려면 끌 수 있습니다.';
+	@override String get hierarchicalTags => '계층 태그 인식';
+	@override String get hierarchicalTagsTip => '/ 를 사용해 계층 태그를 만들 수 있습니다.\n\n예시:\n#업무/프로젝트\n\n상위/하위 분류로 태그를 정리하는 사용자에게 적합합니다. 끄면 단일 단계 태그만 인식합니다.';
+	@override String get emojiAndSymbolTags => '이모지와 기호 태그 인식';
+	@override String get emojiAndSymbolTagsTip => '태그에 이모지나 기호를 포함할 수 있습니다.\n\n예시:\n#기분🚀\n\n이모지로 상태나 분위기를 구분하는 사용자에게 적합합니다. 끄면 태그가 일반 문자와 숫자에 가까워집니다.';
+	@override String get mergeRemoteTags => '서버 태그 병합';
+	@override String get mergeRemoteTagsTip => '현재 로컬 규칙이 본문에서 인식하지 못했더라도 Memos 서버가 반환한 태그를 포함합니다.\n\nMemoFlow의 태그 결과를 Memos 서버와 최대한 맞추고 싶은 사용자에게 적합합니다. 로컬 인식 규칙만 보이는 기준으로 삼고 싶다면 끌 수 있습니다.';
+	@override String get recomputeTitle => '태그 데이터를 다시 빌드할까요?';
+	@override String get recomputeMessage => '새 태그 인식 규칙이 저장되었습니다. 기존 메모가 즉시 새 규칙을 따르도록 로컬 메모 태그 매핑, 검색 인덱스, 통계 캐시를 다시 빌드할까요?';
+	@override String get recomputeNow => '지금 다시 빌드';
+	@override String get recomputeSkip => '나중에';
+	@override String get recomputeInProgress => '태그 데이터를 다시 빌드하는 중...';
+	@override String get recomputeSuccess => '태그 데이터를 다시 빌드했습니다';
+	@override String recomputeFailed({required Object error}) => '태그 데이터 다시 빌드 실패: ${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -13087,6 +13263,7 @@ class _StringsStringsSettingsPreferencesPtBr extends _StringsStringsSettingsPref
 	@override String get launchAction => 'Ação de lançamento';
 	@override String get quickInputKeyboard => 'Teclado de abertura automática para entrada rápida';
 	@override String get confirmExitOnBack => 'Confirmar na saída';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionPtBr tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionPtBr._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarPtBr editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarPtBr._(_root);
 	@override String get appearance => 'Aparência';
 	@override String get themeColor => 'Cor do tema';
@@ -13636,6 +13813,49 @@ class _StringsStringsCollectionsArticleFlowPtBr extends _StringsStringsCollectio
 	@override String get densityComfortable => 'Confortável';
 	@override String get autoHideToolbar => 'Ocultar barra do artigo automaticamente';
 	@override String get fullContentFallback => 'Exibindo conteúdo do feed. Tente buscar o artigo completo novamente ou abra a página original.';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionPtBr extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionPtBr._(_StringsPtBr root) : this._root = root, super._(root);
+
+	@override final _StringsPtBr _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => 'Regras de reconhecimento de tags';
+	@override String get strict => 'MemoFlow estrito';
+	@override String get strictDescription => 'Apenas tags na primeira ou na última linha de tags ficam visíveis.';
+	@override String get compatible => 'Compatível com Memos';
+	@override String get compatibleDescription => 'Reconhece';
+	@override String get custom => 'Personalizado';
+	@override String get customDescription => 'Crie uma regra a partir das opções de reconhecimento compatíveis.';
+	@override String get helpTitle => 'Regras de reconhecimento de tags';
+	@override String get helpMessage => 'MemoFlow estrito mantém a regra atual: #vida no início ou no fim da área de tags vira tag, mas hoje #vida no corpo do texto não vira. Compatível com Memos reconhece tags no corpo, como hoje #vida. Personalizado permite combinar regras compatíveis.';
+	@override String get customTitle => 'Reconhecimento de tags personalizado';
+	@override String get customIntro => 'Estas opções decidem quais #tags aparecem na lista de tags, renderização, autocompletar, busca e reparo local. Depois de alterar as regras, reconstrua os dados de tags se quiser atualizar notas antigas imediatamente.';
+	@override String get strictFirstLine => 'Apenas tags no topo';
+	@override String get strictFirstLineTip => 'Reconhece apenas tags no início da primeira linha.\n\nExemplo:\n#trabalho\nHoje organizei o projeto\n\nIndicado para quem costuma colocar tags no topo da nota.';
+	@override String get strictLastLine => 'Apenas tags no rodapé';
+	@override String get strictLastLineTip => 'Reconhece apenas tags no início da última linha.\n\nExemplo:\nHoje organizei o projeto\n#trabalho\n\nIndicado para quem costuma colocar tags separadas no fim da nota.';
+	@override String get strictAnyLine => 'Tags no início da linha';
+	@override String get strictAnyLineTip => 'Reconhece tags no início de qualquer linha.\n\nExemplo:\nHoje organizei o projeto\n#tarefa Continuar amanhã\nRevisar à noite\n\nIndicado para quem usa tags para marcar parágrafos ou tarefas.';
+	@override String get inlineBodyTags => 'Tags no texto';
+	@override String get inlineBodyTagsTip => 'Reconhece #tags no meio das frases.\n\nExemplo:\nHoje organizei o projeto #trabalho\n\n#conteúdo em código, links, imagens e URLs não será tratado como tag.';
+	@override String get numericOnlyTags => 'Tags numéricas';
+	@override String get numericOnlyTagsTip => 'Permite tags formadas apenas por números.\n\nExemplo:\n#123\n\nIndicado para quem usa números, datas ou sequências como tags. Desative se números de issues ou contadores não devem virar tags.';
+	@override String get hierarchicalTags => 'Tags hierárquicas';
+	@override String get hierarchicalTagsTip => 'Permite usar / para criar tags hierárquicas.\n\nExemplo:\n#trabalho/projeto\n\nIndicado para organizar tags com categorias pai e filho. Quando desativado, apenas tags de um nível são reconhecidas.';
+	@override String get emojiAndSymbolTags => 'Tags com emoji e símbolos';
+	@override String get emojiAndSymbolTagsTip => 'Permite incluir emoji ou símbolos nas tags.\n\nExemplo:\n#humor🚀\n\nIndicado para quem usa emoji para marcar estado ou clima. Quando desativado, as tags ficam mais próximas de texto e números comuns.';
+	@override String get mergeRemoteTags => 'Mesclar tags do servidor';
+	@override String get mergeRemoteTagsTip => 'Inclui tags retornadas pelo servidor Memos, mesmo que as regras locais atuais não as tenham reconhecido no texto da nota.\n\nIndicado para quem quer manter o MemoFlow próximo aos resultados de tags do servidor Memos. Desative se as regras locais devem ser a fonte visível da verdade.';
+	@override String get recomputeTitle => 'Reconstruir dados de tags?';
+	@override String get recomputeMessage => 'A nova regra de reconhecimento de tags foi salva. Reconstruir agora os mapeamentos locais de tags de memos, o índice de busca e o cache de estatísticas para que os memos existentes sejam atualizados imediatamente?';
+	@override String get recomputeNow => 'Reconstruir agora';
+	@override String get recomputeSkip => 'Depois';
+	@override String get recomputeInProgress => 'Reconstruindo dados de tags...';
+	@override String get recomputeSuccess => 'Dados de tags reconstruídos';
+	@override String recomputeFailed({required Object error}) => 'Falha ao reconstruir dados de tags: ${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -15876,6 +16096,7 @@ class _StringsStringsSettingsPreferencesZhHans extends _StringsStringsSettingsPr
 	@override String get launchAction => '启动动作';
 	@override String get quickInputKeyboard => '快速记录时唤醒键盘';
 	@override String get confirmExitOnBack => '退出时确认';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionZhHans tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionZhHans._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarZhHans editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarZhHans._(_root);
 	@override String get appearance => '外观';
 	@override String get themeColor => '主题色';
@@ -16425,6 +16646,49 @@ class _StringsStringsCollectionsArticleFlowZhHans extends _StringsStringsCollect
 	@override String get densityComfortable => '舒适';
 	@override String get autoHideToolbar => '自动隐藏文章工具栏';
 	@override String get fullContentFallback => '正在显示来源内容。可重试全文或打开原文。';
+}
+
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionZhHans extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionZhHans._(_StringsZhHans root) : this._root = root, super._(root);
+
+	@override final _StringsZhHans _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '标签识别规则';
+	@override String get strict => 'MemoFlow 严格';
+	@override String get strictDescription => '只有首尾标签区中的标签会成为可见标签。';
+	@override String get compatible => 'Memos 兼容';
+	@override String get compatibleDescription => '识别 Markdown 正文中的 inline #标签，尽量贴近 Memos 行为。';
+	@override String get custom => '自定义';
+	@override String get customDescription => '从受支持的识别选项组合一套规则。';
+	@override String get helpTitle => '标签识别规则';
+	@override String get helpMessage => 'MemoFlow 严格会保留当前规则：位于开头或结尾标签区的 #生活 会成为标签，但正文里的 今天 #生活 不会。Memos 兼容会识别 今天 #生活 这样的正文标签。自定义可以组合受支持的规则。';
+	@override String get customTitle => '自定义标签识别';
+	@override String get customIntro => '这些选项会决定哪些 #标签 会出现在标签列表、渲染、自动补全、搜索和本地修复中。规则变更后，旧笔记需要重建标签数据才会立即按新规则更新。';
+	@override String get strictFirstLine => '仅识别顶部标签';
+	@override String get strictFirstLineTip => '只识别笔记第一行开头的标签。\n\n示例：\n#工作\n今天整理项目\n\n适合习惯把标签放在笔记最上方的用户。';
+	@override String get strictLastLine => '仅识别底部标签';
+	@override String get strictLastLineTip => '只识别笔记最后一行开头的标签。\n\n示例：\n今天整理项目\n#工作\n\n适合习惯把标签单独放在笔记末尾的用户。';
+	@override String get strictAnyLine => '识别每行开头标签';
+	@override String get strictAnyLineTip => '识别任意一行开头的标签。\n\n示例：\n今天整理项目\n#待办 明天继续修改\n晚上复盘一下\n\n适合用标签标记段落或任务的用户。';
+	@override String get inlineBodyTags => '识别正文中的标签';
+	@override String get inlineBodyTagsTip => '识别句子中间出现的 #标签。\n\n示例：\n今天整理项目 #工作\n\n代码、链接、图片和 URL 中的 #内容 不会被当作标签。';
+	@override String get numericOnlyTags => '识别纯数字标签';
+	@override String get numericOnlyTagsTip => '允许纯数字作为标签。\n\n示例：\n#123\n\n适合把编号、日期或序号作为标签的用户；如果不希望 issue 编号、楼层号、计数被识别成标签，可以关闭。';
+	@override String get hierarchicalTags => '识别层级标签';
+	@override String get hierarchicalTagsTip => '允许用 / 创建层级标签。\n\n示例：\n#工作/项目\n\n适合用父子分类整理标签的用户；关闭后只识别单段标签。';
+	@override String get emojiAndSymbolTags => '识别表情和符号标签';
+	@override String get emojiAndSymbolTagsTip => '允许标签中包含表情或符号。\n\n示例：\n#心情🚀\n\n适合喜欢用表情区分状态或氛围的用户；关闭后标签会更接近普通文字和数字。';
+	@override String get mergeRemoteTags => '合并服务器标签';
+	@override String get mergeRemoteTagsTip => '纳入 Memos 服务器返回的标签，即使当前本地规则没有从正文中识别出来。\n\n适合希望 MemoFlow 与 Memos 服务器标签结果尽量一致的用户；如果希望只以本地识别规则为准，可以关闭。';
+	@override String get recomputeTitle => '重建标签数据？';
+	@override String get recomputeMessage => '新的标签识别规则已保存。是否现在重建本地 memo 标签映射、搜索索引和统计缓存，让已有 memo 立即按新规则显示？';
+	@override String get recomputeNow => '现在重建';
+	@override String get recomputeSkip => '稍后';
+	@override String get recomputeInProgress => '正在重建标签数据...';
+	@override String get recomputeSuccess => '标签数据已重建';
+	@override String recomputeFailed({required Object error}) => '标签数据重建失败：${error}';
 }
 
 // Path: strings.settings.preferences.editorToolbar
@@ -18634,6 +18898,7 @@ class _StringsStringsSettingsPreferencesZhHantTw extends _StringsStringsSettings
 	@override String get launchAction => '啟動動作';
 	@override String get quickInputKeyboard => '快速記錄時自動開啟鍵盤';
 	@override String get confirmExitOnBack => '退出時確認';
+	@override late final _StringsStringsSettingsPreferencesTagRecognitionZhHantTw tagRecognition = _StringsStringsSettingsPreferencesTagRecognitionZhHantTw._(_root);
 	@override late final _StringsStringsSettingsPreferencesEditorToolbarZhHantTw editorToolbar = _StringsStringsSettingsPreferencesEditorToolbarZhHantTw._(_root);
 	@override String get appearance => '外觀';
 	@override String get themeColor => '主題色';
@@ -19160,6 +19425,49 @@ class _StringsStringsCollectionsArticleFlowZhHantTw extends _StringsStringsColle
 	@override String get fullContentFallback => '正在顯示來源內容。可重試全文或開啟原文。';
 }
 
+// Path: strings.settings.preferences.tagRecognition
+class _StringsStringsSettingsPreferencesTagRecognitionZhHantTw extends _StringsStringsSettingsPreferencesTagRecognitionEn {
+	_StringsStringsSettingsPreferencesTagRecognitionZhHantTw._(_StringsZhHantTw root) : this._root = root, super._(root);
+
+	@override final _StringsZhHantTw _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '標籤識別規則';
+	@override String get strict => 'MemoFlow 嚴格';
+	@override String get strictDescription => '只有首尾標籤區中的標籤會成為可見標籤。';
+	@override String get compatible => 'Memos 相容';
+	@override String get compatibleDescription => '識別 Markdown 正文中的 inline #標籤，盡量貼近 Memos 行為。';
+	@override String get custom => '自訂';
+	@override String get customDescription => '從支援的識別選項組合一套規則。';
+	@override String get helpTitle => '標籤識別規則';
+	@override String get helpMessage => 'MemoFlow 嚴格會保留目前規則：位於開頭或結尾標籤區的 #生活 會成為標籤，但正文裡的 今天 #生活 不會。Memos 相容會識別 今天 #生活 這樣的正文標籤。自訂可以組合支援的規則。';
+	@override String get customTitle => '自訂標籤識別';
+	@override String get customIntro => '這些選項會決定哪些 #標籤 會出現在標籤列表、渲染、自動補全、搜尋和本地修復中。規則變更後，舊筆記需要重建標籤資料才會立即按新規則更新。';
+	@override String get strictFirstLine => '僅識別頂部標籤';
+	@override String get strictFirstLineTip => '只識別筆記第一行開頭的標籤。\n\n範例：\n#工作\n今天整理專案\n\n適合習慣把標籤放在筆記最上方的使用者。';
+	@override String get strictLastLine => '僅識別底部標籤';
+	@override String get strictLastLineTip => '只識別筆記最後一行開頭的標籤。\n\n範例：\n今天整理專案\n#工作\n\n適合習慣把標籤單獨放在筆記末尾的使用者。';
+	@override String get strictAnyLine => '識別每行開頭標籤';
+	@override String get strictAnyLineTip => '識別任意一行開頭的標籤。\n\n範例：\n今天整理專案\n#待辦 明天繼續修改\n晚上回顧一下\n\n適合用標籤標記段落或任務的使用者。';
+	@override String get inlineBodyTags => '識別正文中的標籤';
+	@override String get inlineBodyTagsTip => '識別句子中間出現的 #標籤。\n\n範例：\n今天整理專案 #工作\n\n程式碼、連結、圖片和 URL 中的 #內容 不會被當作標籤。';
+	@override String get numericOnlyTags => '識別純數字標籤';
+	@override String get numericOnlyTagsTip => '允許純數字作為標籤。\n\n範例：\n#123\n\n適合把編號、日期或序號作為標籤的使用者；如果不希望 issue 編號、樓層號、計數被識別成標籤，可以關閉。';
+	@override String get hierarchicalTags => '識別層級標籤';
+	@override String get hierarchicalTagsTip => '允許用 / 建立層級標籤。\n\n範例：\n#工作/專案\n\n適合用父子分類整理標籤的使用者；關閉後只識別單段標籤。';
+	@override String get emojiAndSymbolTags => '識別表情和符號標籤';
+	@override String get emojiAndSymbolTagsTip => '允許標籤中包含表情或符號。\n\n範例：\n#心情🚀\n\n適合喜歡用表情區分狀態或氛圍的使用者；關閉後標籤會更接近普通文字和數字。';
+	@override String get mergeRemoteTags => '合併伺服器標籤';
+	@override String get mergeRemoteTagsTip => '納入 Memos 伺服器返回的標籤，即使目前本地規則沒有從正文中識別出來。\n\n適合希望 MemoFlow 與 Memos 伺服器標籤結果盡量一致的使用者；如果希望只以本地識別規則為準，可以關閉。';
+	@override String get recomputeTitle => '重建標籤資料？';
+	@override String get recomputeMessage => '新的標籤識別規則已儲存。是否現在重建本地 memo 標籤映射、搜尋索引和統計快取，讓既有 memo 立即按新規則顯示？';
+	@override String get recomputeNow => '現在重建';
+	@override String get recomputeSkip => '稍後';
+	@override String get recomputeInProgress => '正在重建標籤資料...';
+	@override String get recomputeSuccess => '標籤資料已重建';
+	@override String recomputeFailed({required Object error}) => '標籤資料重建失敗：${error}';
+}
+
 // Path: strings.settings.preferences.editorToolbar
 class _StringsStringsSettingsPreferencesEditorToolbarZhHantTw extends _StringsStringsSettingsPreferencesEditorToolbarEn {
 	_StringsStringsSettingsPreferencesEditorToolbarZhHantTw._(_StringsZhHantTw root) : this._root = root, super._(root);
@@ -19468,6 +19776,40 @@ extension on Translations {
 			case 'strings.settings.preferences.launchAction': return 'Launch Action';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Auto-open keyboard for Quick Input';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Confirm on Exit';
+			case 'strings.settings.preferences.tagRecognition.title': return 'Tag recognition rules';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow strict';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return 'Only tags in the first or last tag-zone line become visible tags.';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos compatible';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return 'Recognizes inline #tags in Markdown text, close to Memos behavior.';
+			case 'strings.settings.preferences.tagRecognition.custom': return 'Custom';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return 'Build a rule from supported recognition options.';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return 'Tag recognition rules';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow strict keeps the current rule: #life at the start or end tag zone is a tag, but today #life in body text is not. Memos compatible recognizes inline body tags such as today #life. Custom lets you combine supported rules.';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return 'Custom tag recognition';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return 'These options decide which #tags appear in tag lists, rendering, autocomplete, search, and local repair. After changing rules, rebuild tag data if you want old notes to update immediately.';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return 'Only top tags';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return 'Only recognizes tags at the start of the first line.\n\nExample:\n#work\nToday I organized the project.\n\nBest for users who put tags at the top of a note.';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return 'Only bottom tags';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return 'Only recognizes tags at the start of the last line.\n\nExample:\nToday I organized the project.\n#work\n\nBest for users who put tags separately at the end of a note.';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return 'Line-start tags';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return 'Recognizes tags at the start of any line.\n\nExample:\nToday I organized the project.\n#todo Continue tomorrow.\nReview it tonight.\n\nBest for users who mark sections or tasks with tags.';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return 'Tags in text';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return 'Recognizes #tags in the middle of sentences.\n\nExample:\nToday I organized the project #work\n\n#content in code, links, images, and URLs will not be treated as tags.';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return 'Numeric tags';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return 'Allows numbers-only tags.\n\nExample:\n#123\n\nBest for users who use numbers, dates, or sequence numbers as tags. Turn this off if issue numbers or counters should not become tags.';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return 'Nested tags';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return 'Allows / to create nested tags.\n\nExample:\n#work/project\n\nBest for users who organize tags with parent and child categories. When off, only single-level tags are recognized.';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return 'Emoji and symbol tags';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return 'Allows tags to contain emoji or symbols.\n\nExample:\n#mood🚀\n\nBest for users who use emoji to mark status or tone. When off, tags stay closer to plain text and numbers.';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return 'Merge server tags';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return 'Includes tags returned by the Memos server, even if the current local rules did not recognize them from the note text.\n\nBest for users who want MemoFlow to stay close to server tag results. Turn this off if local recognition rules should be the visible source of truth.';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return 'Rebuild tag data?';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return 'The new tag recognition rule is saved. Rebuild local memo tag mappings, search index, and statistics now so existing memos match it immediately?';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return 'Rebuild now';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return 'Later';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return 'Rebuilding tag data...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return 'Tag data rebuilt';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => 'Failed to rebuild tag data: ${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return 'Customize Editor Toolbar';
 			case 'strings.settings.preferences.editorToolbar.description': return 'Long press tools to reorder them, or move tools between the toolbox and toolbar.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'Live Preview';
@@ -21657,6 +21999,40 @@ extension on _StringsDe {
 			case 'strings.settings.preferences.launchAction': return 'Aktion beim Start';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Tastatur bei Schnellnotiz automatisch öffnen';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Beenden bestätigen';
+			case 'strings.settings.preferences.tagRecognition.title': return 'Tag-Erkennungsregeln';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow streng';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return 'Nur Tags in der ersten oder letzten Tag-Zeile werden sichtbare Tags.';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos-kompatibel';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return 'Erkennt Inline-#Tags in Markdown-Text, nah am Verhalten von Memos.';
+			case 'strings.settings.preferences.tagRecognition.custom': return 'Benutzerdefiniert';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return 'Stellen Sie eine Regel aus unterstützten Erkennungsoptionen zusammen.';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return 'Tag-Erkennungsregeln';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow streng behält die aktuelle Regel bei: #Leben am Anfang oder Ende einer Tag-Zone wird ein Tag, aber Heute #Leben im Fließtext nicht. Memos-kompatibel erkennt Inline-Tags wie Heute #Leben. Benutzerdefiniert kombiniert unterstützte Regeln.';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return 'Benutzerdefinierte Tag-Erkennung';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return 'Diese Optionen entscheiden, welche #Tags in Taglisten, Darstellung, Autovervollständigung, Suche und lokaler Reparatur erscheinen. Nach Regeländerungen müssen Tag-Daten neu aufgebaut werden, damit alte Notizen sofort aktualisiert werden.';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return 'Nur obere Tags';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return 'Erkennt nur Tags am Anfang der ersten Zeile.\n\nBeispiel:\n#Arbeit\nHeute habe ich das Projekt sortiert.\n\nGeeignet für Nutzer, die Tags ganz oben in der Notiz platzieren.';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return 'Nur untere Tags';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return 'Erkennt nur Tags am Anfang der letzten Zeile.\n\nBeispiel:\nHeute habe ich das Projekt sortiert.\n#Arbeit\n\nGeeignet für Nutzer, die Tags separat ans Ende einer Notiz setzen.';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return 'Tags am Zeilenanfang';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return 'Erkennt Tags am Anfang jeder Zeile.\n\nBeispiel:\nHeute habe ich das Projekt sortiert.\n#Todo Morgen weiter bearbeiten\nHeute Abend prüfen\n\nGeeignet für Nutzer, die Abschnitte oder Aufgaben mit Tags markieren.';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return 'Tags im Text';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return 'Erkennt #Tags mitten in Sätzen.\n\nBeispiel:\nHeute habe ich das Projekt sortiert #Arbeit\n\n#Inhalte in Code, Links, Bildern und URLs werden nicht als Tags behandelt.';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return 'Zahlen-Tags';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return 'Erlaubt Tags, die nur aus Zahlen bestehen.\n\nBeispiel:\n#123\n\nGeeignet für Nutzer, die Nummern, Daten oder Reihenfolgen als Tags verwenden. Deaktivieren, wenn Issue-Nummern oder Zähler keine Tags werden sollen.';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return 'Hierarchische Tags';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return 'Erlaubt / zum Erstellen hierarchischer Tags.\n\nBeispiel:\n#Arbeit/Projekt\n\nGeeignet für Nutzer, die Tags mit über- und untergeordneten Kategorien organisieren. Wenn deaktiviert, werden nur einstufige Tags erkannt.';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return 'Emoji- und Symbol-Tags';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return 'Erlaubt Emoji oder Symbole in Tags.\n\nBeispiel:\n#Stimmung🚀\n\nGeeignet für Nutzer, die Status oder Stimmung mit Emoji markieren. Wenn deaktiviert, bleiben Tags näher an normalem Text und Zahlen.';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return 'Server-Tags zusammenführen';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return 'Bezieht Tags ein, die der Memos-Server zurückgibt, auch wenn die aktuellen lokalen Regeln sie nicht aus dem Notiztext erkannt haben.\n\nGeeignet für Nutzer, die MemoFlow möglichst nah an den Tag-Ergebnissen des Servers halten möchten. Deaktivieren, wenn nur lokale Erkennungsregeln als sichtbare Quelle gelten sollen.';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return 'Tag-Daten neu aufbauen?';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return 'Die neue Tag-Erkennungsregel wurde gespeichert. Jetzt lokale Memo-Tag-Zuordnungen, Suchindex und Statistik-Cache neu aufbauen, damit vorhandene Memos sofort passen?';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return 'Jetzt neu aufbauen';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return 'Später';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return 'Tag-Daten werden neu aufgebaut...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return 'Tag-Daten neu aufgebaut';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => 'Tag-Daten konnten nicht neu aufgebaut werden: ${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return 'Editor-Symbolleiste anpassen';
 			case 'strings.settings.preferences.editorToolbar.description': return 'Ziehen Sie Buttons, um sie neu anzuordnen oder zwischen oberer und unterer Reihe zu verschieben.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'Per Drag sortieren';
@@ -23738,6 +24114,40 @@ extension on _StringsJa {
 			case 'strings.settings.preferences.launchAction': return '起動時の動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'クイック入力で自動的にキーボードを開く';
 			case 'strings.settings.preferences.confirmExitOnBack': return '終了時に確認する';
+			case 'strings.settings.preferences.tagRecognition.title': return 'タグ認識ルール';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow 厳格';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return '最初または最後のタグ行にあるタグだけを表示タグにします。';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos 互換';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return 'Markdown 本文内の inline #タグを Memos に近い挙動で認識します。';
+			case 'strings.settings.preferences.tagRecognition.custom': return 'カスタム';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return '対応している認識オプションを組み合わせてルールを作ります。';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return 'タグ認識ルール';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow 厳格は現在のルールを保ちます。先頭または末尾のタグ行にある #生活 はタグになりますが、本文中の 今日は #生活 はタグになりません。Memos 互換は 今日は #生活 のような本文中タグを認識します。カスタムでは対応ルールを組み合わせられます。';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return 'カスタムタグ認識';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return 'これらのオプションは、どの #タグ がタグ一覧、表示、オートコンプリート、検索、ローカル修復に出るかを決めます。ルール変更後、古いメモをすぐ新しいルールで更新するにはタグデータの再構築が必要です。';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return '上部タグのみ認識';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return 'メモの1行目の先頭にあるタグだけを認識します。\n\n例:\n#仕事\n今日はプロジェクトを整理しました\n\nタグをメモの一番上に置くユーザーに向いています。';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return '下部タグのみ認識';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return 'メモの最後の行の先頭にあるタグだけを認識します。\n\n例:\n今日はプロジェクトを整理しました\n#仕事\n\nタグをメモの末尾に単独で置くユーザーに向いています。';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return '各行先頭のタグを認識';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return '任意の行の先頭にあるタグを認識します。\n\n例:\n今日はプロジェクトを整理しました\n#やること 明日も修正を続ける\n夜に振り返る\n\n段落やタスクをタグで示すユーザーに向いています。';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return '本文中のタグを認識';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return '文の途中にある #タグ を認識します。\n\n例:\n今日はプロジェクトを整理しました #仕事\n\nコード、リンク、画像、URL 内の #内容 はタグとして扱われません。';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return '数字だけのタグを認識';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return '数字だけをタグとして使えるようにします。\n\n例:\n#123\n\n番号、日付、連番をタグにしたいユーザーに向いています。Issue 番号やカウンターをタグにしたくない場合はオフにできます。';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return '階層タグを認識';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return '/ を使って階層タグを作れるようにします。\n\n例:\n#仕事/プロジェクト\n\n親子分類でタグを整理したいユーザーに向いています。オフにすると単一階層のタグだけを認識します。';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return '絵文字と記号のタグを認識';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return 'タグに絵文字や記号を含められるようにします。\n\n例:\n#気分🚀\n\n絵文字で状態や雰囲気を区別したいユーザーに向いています。オフにするとタグは通常の文字と数字に近くなります。';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return 'サーバータグを統合';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return '現在のローカルルールが本文から認識しなかった場合でも、Memos サーバーが返したタグを取り込みます。\n\nMemoFlow のタグ結果を Memos サーバーにできるだけ近づけたいユーザーに向いています。ローカル認識ルールだけを表示の基準にしたい場合はオフにできます。';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return 'タグデータを再構築しますか？';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return '新しいタグ認識ルールは保存されました。既存のメモをすぐ新しいルールに合わせるため、ローカルのメモタグ対応、検索インデックス、統計キャッシュを再構築しますか？';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return '今すぐ再構築';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return 'あとで';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return 'タグデータを再構築しています...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return 'タグデータを再構築しました';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => 'タグデータの再構築に失敗しました: ${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return 'エディターツールバーをカスタマイズ';
 			case 'strings.settings.preferences.editorToolbar.description': return 'ボタンをドラッグして並べ替えたり、上段と下段の間で移動できます。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'ドラッグで並べ替え';
@@ -25819,6 +26229,40 @@ extension on _StringsKo {
 			case 'strings.settings.preferences.launchAction': return '실행 작업';
 			case 'strings.settings.preferences.quickInputKeyboard': return '빠른 입력을 위한 자동 열기 키보드';
 			case 'strings.settings.preferences.confirmExitOnBack': return '종료 시 확인';
+			case 'strings.settings.preferences.tagRecognition.title': return '태그 인식 규칙';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow 엄격';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return '첫 줄 또는 마지막 줄의 태그 영역에 있는 태그만 보이는 태그가 됩니다.';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos 호환';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return 'Markdown 본문 안의 inline';
+			case 'strings.settings.preferences.tagRecognition.custom': return '사용자 지정';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return '지원되는 인식 옵션을 조합해 규칙을 만듭니다.';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return '태그 인식 규칙';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow 엄격은 현재 규칙을 유지합니다. 시작 또는 끝 태그 영역의 #생활은 태그가 되지만, 본문 안의 오늘 #생활은 태그가 되지 않습니다. Memos 호환은 오늘 #생활 같은 본문 태그를 인식합니다. 사용자 지정에서는 지원되는 규칙을 조합할 수 있습니다.';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return '사용자 지정 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return '이 옵션은 어떤 #태그가 태그 목록, 렌더링, 자동 완성, 검색, 로컬 복구에 나타나는지 결정합니다. 규칙을 바꾼 뒤 기존 노트를 즉시 새 규칙으로 업데이트하려면 태그 데이터를 다시 빌드해야 합니다.';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return '상단 태그만 인식';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return '노트 첫 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n#업무\n오늘 프로젝트를 정리했습니다\n\n태그를 노트 맨 위에 두는 사용자에게 적합합니다.';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return '하단 태그만 인식';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return '노트 마지막 줄의 시작 부분에 있는 태그만 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#업무\n\n태그를 노트 끝에 따로 두는 사용자에게 적합합니다.';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return '각 줄 시작 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return '어느 줄이든 줄 시작 부분에 있는 태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다\n#할일 내일 계속 수정\n저녁에 다시 검토\n\n태그로 문단이나 작업을 표시하는 사용자에게 적합합니다.';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return '본문 속 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return '문장 중간에 나타나는 #태그를 인식합니다.\n\n예시:\n오늘 프로젝트를 정리했습니다 #업무\n\n코드, 링크, 이미지, URL 안의 #내용은 태그로 처리되지 않습니다.';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return '숫자 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return '숫자만으로 된 태그를 허용합니다.\n\n예시:\n#123\n\n번호, 날짜, 순번을 태그로 쓰는 사용자에게 적합합니다. 이슈 번호나 카운터가 태그가 되지 않게 하려면 끌 수 있습니다.';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return '계층 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return '/ 를 사용해 계층 태그를 만들 수 있습니다.\n\n예시:\n#업무/프로젝트\n\n상위/하위 분류로 태그를 정리하는 사용자에게 적합합니다. 끄면 단일 단계 태그만 인식합니다.';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return '이모지와 기호 태그 인식';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return '태그에 이모지나 기호를 포함할 수 있습니다.\n\n예시:\n#기분🚀\n\n이모지로 상태나 분위기를 구분하는 사용자에게 적합합니다. 끄면 태그가 일반 문자와 숫자에 가까워집니다.';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return '서버 태그 병합';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return '현재 로컬 규칙이 본문에서 인식하지 못했더라도 Memos 서버가 반환한 태그를 포함합니다.\n\nMemoFlow의 태그 결과를 Memos 서버와 최대한 맞추고 싶은 사용자에게 적합합니다. 로컬 인식 규칙만 보이는 기준으로 삼고 싶다면 끌 수 있습니다.';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return '태그 데이터를 다시 빌드할까요?';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return '새 태그 인식 규칙이 저장되었습니다. 기존 메모가 즉시 새 규칙을 따르도록 로컬 메모 태그 매핑, 검색 인덱스, 통계 캐시를 다시 빌드할까요?';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return '지금 다시 빌드';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return '나중에';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return '태그 데이터를 다시 빌드하는 중...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return '태그 데이터를 다시 빌드했습니다';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => '태그 데이터 다시 빌드 실패: ${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return '편집기 도구 모음 사용자 정의';
 			case 'strings.settings.preferences.editorToolbar.description': return '도구를 길게 눌러 순서를 바꾸거나 도구 상자와 도구 모음 사이에서 도구를 이동하세요.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return '실시간 미리보기';
@@ -28006,6 +28450,40 @@ extension on _StringsPtBr {
 			case 'strings.settings.preferences.launchAction': return 'Ação de lançamento';
 			case 'strings.settings.preferences.quickInputKeyboard': return 'Teclado de abertura automática para entrada rápida';
 			case 'strings.settings.preferences.confirmExitOnBack': return 'Confirmar na saída';
+			case 'strings.settings.preferences.tagRecognition.title': return 'Regras de reconhecimento de tags';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow estrito';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return 'Apenas tags na primeira ou na última linha de tags ficam visíveis.';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Compatível com Memos';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return 'Reconhece';
+			case 'strings.settings.preferences.tagRecognition.custom': return 'Personalizado';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return 'Crie uma regra a partir das opções de reconhecimento compatíveis.';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return 'Regras de reconhecimento de tags';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow estrito mantém a regra atual: #vida no início ou no fim da área de tags vira tag, mas hoje #vida no corpo do texto não vira. Compatível com Memos reconhece tags no corpo, como hoje #vida. Personalizado permite combinar regras compatíveis.';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return 'Reconhecimento de tags personalizado';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return 'Estas opções decidem quais #tags aparecem na lista de tags, renderização, autocompletar, busca e reparo local. Depois de alterar as regras, reconstrua os dados de tags se quiser atualizar notas antigas imediatamente.';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return 'Apenas tags no topo';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return 'Reconhece apenas tags no início da primeira linha.\n\nExemplo:\n#trabalho\nHoje organizei o projeto\n\nIndicado para quem costuma colocar tags no topo da nota.';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return 'Apenas tags no rodapé';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return 'Reconhece apenas tags no início da última linha.\n\nExemplo:\nHoje organizei o projeto\n#trabalho\n\nIndicado para quem costuma colocar tags separadas no fim da nota.';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return 'Tags no início da linha';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return 'Reconhece tags no início de qualquer linha.\n\nExemplo:\nHoje organizei o projeto\n#tarefa Continuar amanhã\nRevisar à noite\n\nIndicado para quem usa tags para marcar parágrafos ou tarefas.';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return 'Tags no texto';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return 'Reconhece #tags no meio das frases.\n\nExemplo:\nHoje organizei o projeto #trabalho\n\n#conteúdo em código, links, imagens e URLs não será tratado como tag.';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return 'Tags numéricas';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return 'Permite tags formadas apenas por números.\n\nExemplo:\n#123\n\nIndicado para quem usa números, datas ou sequências como tags. Desative se números de issues ou contadores não devem virar tags.';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return 'Tags hierárquicas';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return 'Permite usar / para criar tags hierárquicas.\n\nExemplo:\n#trabalho/projeto\n\nIndicado para organizar tags com categorias pai e filho. Quando desativado, apenas tags de um nível são reconhecidas.';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return 'Tags com emoji e símbolos';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return 'Permite incluir emoji ou símbolos nas tags.\n\nExemplo:\n#humor🚀\n\nIndicado para quem usa emoji para marcar estado ou clima. Quando desativado, as tags ficam mais próximas de texto e números comuns.';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return 'Mesclar tags do servidor';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return 'Inclui tags retornadas pelo servidor Memos, mesmo que as regras locais atuais não as tenham reconhecido no texto da nota.\n\nIndicado para quem quer manter o MemoFlow próximo aos resultados de tags do servidor Memos. Desative se as regras locais devem ser a fonte visível da verdade.';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return 'Reconstruir dados de tags?';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return 'A nova regra de reconhecimento de tags foi salva. Reconstruir agora os mapeamentos locais de tags de memos, o índice de busca e o cache de estatísticas para que os memos existentes sejam atualizados imediatamente?';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return 'Reconstruir agora';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return 'Depois';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return 'Reconstruindo dados de tags...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return 'Dados de tags reconstruídos';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => 'Falha ao reconstruir dados de tags: ${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return 'Personalizar barra de ferramentas do editor';
 			case 'strings.settings.preferences.editorToolbar.description': return 'Pressione e segure as ferramentas para reordená-las ou mova as ferramentas entre a caixa de ferramentas e a barra de ferramentas.';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return 'Visualização ao vivo';
@@ -30193,6 +30671,40 @@ extension on _StringsZhHans {
 			case 'strings.settings.preferences.launchAction': return '启动动作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速记录时唤醒键盘';
 			case 'strings.settings.preferences.confirmExitOnBack': return '退出时确认';
+			case 'strings.settings.preferences.tagRecognition.title': return '标签识别规则';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow 严格';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return '只有首尾标签区中的标签会成为可见标签。';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos 兼容';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return '识别 Markdown 正文中的 inline #标签，尽量贴近 Memos 行为。';
+			case 'strings.settings.preferences.tagRecognition.custom': return '自定义';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return '从受支持的识别选项组合一套规则。';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return '标签识别规则';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow 严格会保留当前规则：位于开头或结尾标签区的 #生活 会成为标签，但正文里的 今天 #生活 不会。Memos 兼容会识别 今天 #生活 这样的正文标签。自定义可以组合受支持的规则。';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return '自定义标签识别';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return '这些选项会决定哪些 #标签 会出现在标签列表、渲染、自动补全、搜索和本地修复中。规则变更后，旧笔记需要重建标签数据才会立即按新规则更新。';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return '仅识别顶部标签';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return '只识别笔记第一行开头的标签。\n\n示例：\n#工作\n今天整理项目\n\n适合习惯把标签放在笔记最上方的用户。';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return '仅识别底部标签';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return '只识别笔记最后一行开头的标签。\n\n示例：\n今天整理项目\n#工作\n\n适合习惯把标签单独放在笔记末尾的用户。';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return '识别每行开头标签';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return '识别任意一行开头的标签。\n\n示例：\n今天整理项目\n#待办 明天继续修改\n晚上复盘一下\n\n适合用标签标记段落或任务的用户。';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return '识别正文中的标签';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return '识别句子中间出现的 #标签。\n\n示例：\n今天整理项目 #工作\n\n代码、链接、图片和 URL 中的 #内容 不会被当作标签。';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return '识别纯数字标签';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return '允许纯数字作为标签。\n\n示例：\n#123\n\n适合把编号、日期或序号作为标签的用户；如果不希望 issue 编号、楼层号、计数被识别成标签，可以关闭。';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return '识别层级标签';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return '允许用 / 创建层级标签。\n\n示例：\n#工作/项目\n\n适合用父子分类整理标签的用户；关闭后只识别单段标签。';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return '识别表情和符号标签';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return '允许标签中包含表情或符号。\n\n示例：\n#心情🚀\n\n适合喜欢用表情区分状态或氛围的用户；关闭后标签会更接近普通文字和数字。';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return '合并服务器标签';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return '纳入 Memos 服务器返回的标签，即使当前本地规则没有从正文中识别出来。\n\n适合希望 MemoFlow 与 Memos 服务器标签结果尽量一致的用户；如果希望只以本地识别规则为准，可以关闭。';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return '重建标签数据？';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return '新的标签识别规则已保存。是否现在重建本地 memo 标签映射、搜索索引和统计缓存，让已有 memo 立即按新规则显示？';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return '现在重建';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return '稍后';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return '正在重建标签数据...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return '标签数据已重建';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => '标签数据重建失败：${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return '自定义编辑器工具栏';
 			case 'strings.settings.preferences.editorToolbar.description': return '拖动按钮可以重新排序，或在上排和下排之间移动。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return '拖动排序';
@@ -32382,6 +32894,40 @@ extension on _StringsZhHantTw {
 			case 'strings.settings.preferences.launchAction': return '啟動動作';
 			case 'strings.settings.preferences.quickInputKeyboard': return '快速記錄時自動開啟鍵盤';
 			case 'strings.settings.preferences.confirmExitOnBack': return '退出時確認';
+			case 'strings.settings.preferences.tagRecognition.title': return '標籤識別規則';
+			case 'strings.settings.preferences.tagRecognition.strict': return 'MemoFlow 嚴格';
+			case 'strings.settings.preferences.tagRecognition.strictDescription': return '只有首尾標籤區中的標籤會成為可見標籤。';
+			case 'strings.settings.preferences.tagRecognition.compatible': return 'Memos 相容';
+			case 'strings.settings.preferences.tagRecognition.compatibleDescription': return '識別 Markdown 正文中的 inline #標籤，盡量貼近 Memos 行為。';
+			case 'strings.settings.preferences.tagRecognition.custom': return '自訂';
+			case 'strings.settings.preferences.tagRecognition.customDescription': return '從支援的識別選項組合一套規則。';
+			case 'strings.settings.preferences.tagRecognition.helpTitle': return '標籤識別規則';
+			case 'strings.settings.preferences.tagRecognition.helpMessage': return 'MemoFlow 嚴格會保留目前規則：位於開頭或結尾標籤區的 #生活 會成為標籤，但正文裡的 今天 #生活 不會。Memos 相容會識別 今天 #生活 這樣的正文標籤。自訂可以組合支援的規則。';
+			case 'strings.settings.preferences.tagRecognition.customTitle': return '自訂標籤識別';
+			case 'strings.settings.preferences.tagRecognition.customIntro': return '這些選項會決定哪些 #標籤 會出現在標籤列表、渲染、自動補全、搜尋和本地修復中。規則變更後，舊筆記需要重建標籤資料才會立即按新規則更新。';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLine': return '僅識別頂部標籤';
+			case 'strings.settings.preferences.tagRecognition.strictFirstLineTip': return '只識別筆記第一行開頭的標籤。\n\n範例：\n#工作\n今天整理專案\n\n適合習慣把標籤放在筆記最上方的使用者。';
+			case 'strings.settings.preferences.tagRecognition.strictLastLine': return '僅識別底部標籤';
+			case 'strings.settings.preferences.tagRecognition.strictLastLineTip': return '只識別筆記最後一行開頭的標籤。\n\n範例：\n今天整理專案\n#工作\n\n適合習慣把標籤單獨放在筆記末尾的使用者。';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLine': return '識別每行開頭標籤';
+			case 'strings.settings.preferences.tagRecognition.strictAnyLineTip': return '識別任意一行開頭的標籤。\n\n範例：\n今天整理專案\n#待辦 明天繼續修改\n晚上回顧一下\n\n適合用標籤標記段落或任務的使用者。';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTags': return '識別正文中的標籤';
+			case 'strings.settings.preferences.tagRecognition.inlineBodyTagsTip': return '識別句子中間出現的 #標籤。\n\n範例：\n今天整理專案 #工作\n\n程式碼、連結、圖片和 URL 中的 #內容 不會被當作標籤。';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTags': return '識別純數字標籤';
+			case 'strings.settings.preferences.tagRecognition.numericOnlyTagsTip': return '允許純數字作為標籤。\n\n範例：\n#123\n\n適合把編號、日期或序號作為標籤的使用者；如果不希望 issue 編號、樓層號、計數被識別成標籤，可以關閉。';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTags': return '識別層級標籤';
+			case 'strings.settings.preferences.tagRecognition.hierarchicalTagsTip': return '允許用 / 建立層級標籤。\n\n範例：\n#工作/專案\n\n適合用父子分類整理標籤的使用者；關閉後只識別單段標籤。';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTags': return '識別表情和符號標籤';
+			case 'strings.settings.preferences.tagRecognition.emojiAndSymbolTagsTip': return '允許標籤中包含表情或符號。\n\n範例：\n#心情🚀\n\n適合喜歡用表情區分狀態或氛圍的使用者；關閉後標籤會更接近普通文字和數字。';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTags': return '合併伺服器標籤';
+			case 'strings.settings.preferences.tagRecognition.mergeRemoteTagsTip': return '納入 Memos 伺服器返回的標籤，即使目前本地規則沒有從正文中識別出來。\n\n適合希望 MemoFlow 與 Memos 伺服器標籤結果盡量一致的使用者；如果希望只以本地識別規則為準，可以關閉。';
+			case 'strings.settings.preferences.tagRecognition.recomputeTitle': return '重建標籤資料？';
+			case 'strings.settings.preferences.tagRecognition.recomputeMessage': return '新的標籤識別規則已儲存。是否現在重建本地 memo 標籤映射、搜尋索引和統計快取，讓既有 memo 立即按新規則顯示？';
+			case 'strings.settings.preferences.tagRecognition.recomputeNow': return '現在重建';
+			case 'strings.settings.preferences.tagRecognition.recomputeSkip': return '稍後';
+			case 'strings.settings.preferences.tagRecognition.recomputeInProgress': return '正在重建標籤資料...';
+			case 'strings.settings.preferences.tagRecognition.recomputeSuccess': return '標籤資料已重建';
+			case 'strings.settings.preferences.tagRecognition.recomputeFailed': return ({required Object error}) => '標籤資料重建失敗：${error}';
 			case 'strings.settings.preferences.editorToolbar.title': return '自訂編輯器工具列';
 			case 'strings.settings.preferences.editorToolbar.description': return '拖曳按鈕即可重新排序，或在上排與下排之間移動。';
 			case 'strings.settings.preferences.editorToolbar.dragToSort': return '拖曳排序';

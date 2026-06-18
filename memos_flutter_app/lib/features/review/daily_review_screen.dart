@@ -30,6 +30,7 @@ import '../../state/system/session_provider.dart';
 import '../../state/memos/memos_providers.dart';
 import '../../state/review/ai_analysis_provider.dart';
 import '../../state/sync/sync_coordinator_provider.dart';
+import '../../state/settings/workspace_preferences_provider.dart';
 import '../../state/system/local_library_provider.dart';
 import '../../state/tags/tag_color_lookup.dart';
 import '../../platform/platform_route.dart';
@@ -653,7 +654,12 @@ class _DailyReviewScreenState extends ConsumerState<DailyReviewScreen> {
     );
     if (updated == memo.content) return;
 
-    final tags = extractTags(updated);
+    final tags = extractTags(
+      updated,
+      policy: ref
+          .read(currentWorkspacePreferencesProvider)
+          .tagRecognitionPolicy,
+    );
     await ref
         .read(memoMutationServiceProvider)
         .updateMemoContentForTaskToggle(

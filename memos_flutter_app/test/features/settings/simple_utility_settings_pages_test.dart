@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memos_flutter_app/core/top_toast.dart';
 import 'package:memos_flutter_app/data/models/memo_template_settings.dart';
@@ -31,6 +32,7 @@ void main() {
 
   tearDown(() {
     dismissTopToast();
+    debugDefaultTargetPlatformOverride = null;
     debugPlatformTargetOverride = null;
   });
 
@@ -170,6 +172,41 @@ void main() {
       dismissTopToast();
     },
   );
+
+  testWidgets('widgets page uses iOS widget gallery fallback without pinning', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    const channel = MethodChannel('memoflow/widgets');
+    var nativeCalls = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async {
+        nativeCalls += 1;
+        return true;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(buildSettingsTestApp(home: const WidgetsScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add to Home Screen').first);
+    await tester.pump();
+
+    expect(nativeCalls, 0);
+    expect(
+      find.text('Add MemoFlow widgets from the iOS widget gallery.'),
+      findsOneWidget,
+    );
+    dismissTopToast();
+    debugDefaultTargetPlatformOverride = null;
+  });
 }
 
 class _TestMemoTemplateSettingsController

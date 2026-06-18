@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -23,6 +22,7 @@ import 'app_drawer_model.dart';
 import 'desktop/desktop_navigation_rail.dart';
 import 'desktop/desktop_navigation_sidebar.dart';
 import 'desktop/desktop_overlay_navigation_panel.dart';
+import '../settings/memoflow_bridge_screen.dart';
 import '../settings/quick_qr_action.dart';
 import '../tags/tag_edit_sheet.dart';
 import '../tags/tag_tree.dart';
@@ -322,8 +322,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       ...tagTreeResult.autoExpandedPaths,
       ...collectAncestorTagPaths(selectedTagPath),
     };
-    final showScanAction =
-        kIsWeb || defaultTargetPlatform != TargetPlatform.windows;
+    final showScanAction = supportsMemoFlowQrScannerOnCurrentPlatform();
     final versionDate = DateFormat('yyyy.MM.dd').format(DateTime.now());
 
     AppDrawerModel buildDrawerModel() {

@@ -16,6 +16,7 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(imageCompressionSettingsProvider);
+    final uiPolicy = ref.watch(imageCompressionUiPolicyProvider);
     final notifier = ref.read(imageCompressionSettingsProvider.notifier);
     final showLosslessWarning =
         settings.lossless &&
@@ -29,8 +30,8 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
         SettingsToggleCard(
           label: context.t.strings.legacy.msg_enable_image_compression,
           description: context.t.strings.legacy.msg_image_compression_desc,
-          value: settings.enabled,
-          onChanged: notifier.setEnabled,
+          value: uiPolicy.enabled,
+          onChanged: uiPolicy.available ? notifier.setEnabled : (_) {},
         ),
         if (showLosslessWarning) ...[
           const SizedBox(height: 12),
@@ -55,8 +56,8 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
             ),
             SettingsMenuRow<ImageCompressionOutputFormat>(
               label: context.t.strings.legacy.msg_output_format,
-              value: settings.outputFormat,
-              values: ImageCompressionOutputFormat.values,
+              value: uiPolicy.effectiveOutputFormat(settings.outputFormat),
+              values: uiPolicy.supportedOutputFormats,
               labelFor: (value) => _outputFormatLabel(context, value),
               onChanged: notifier.setOutputFormat,
             ),
@@ -170,6 +171,7 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
         _buildCodecSections(
           context: context,
           settings: settings,
+          uiPolicy: uiPolicy,
           notifier: notifier,
         ),
         const SizedBox(height: 12),
@@ -183,6 +185,7 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
   Widget _buildCodecSections({
     required BuildContext context,
     required ImageCompressionSettings settings,
+    required ImageCompressionUiPolicy uiPolicy,
     required ImageCompressionSettingsController notifier,
   }) {
     return Column(
@@ -247,22 +250,26 @@ class ImageCompressionSettingsScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 12),
-        SettingsSection(
-          header: Text(context.t.strings.legacy.msg_webp),
-          children: [
-            SettingsStepperRow(
-              label: context.t.strings.legacy.msg_quality,
-              value: settings.webp.quality,
-              unit: '%',
-              enabled: !settings.lossless,
-              onDecrease: () =>
-                  notifier.setWebpQuality(settings.webp.quality - _qualityStep),
-              onIncrease: () =>
-                  notifier.setWebpQuality(settings.webp.quality + _qualityStep),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        if (uiPolicy.supportsOutputFormat(ImageCompressionOutputFormat.webp))
+          SettingsSection(
+            header: Text(context.t.strings.legacy.msg_webp),
+            children: [
+              SettingsStepperRow(
+                label: context.t.strings.legacy.msg_quality,
+                value: settings.webp.quality,
+                unit: '%',
+                enabled: !settings.lossless,
+                onDecrease: () => notifier.setWebpQuality(
+                  settings.webp.quality - _qualityStep,
+                ),
+                onIncrease: () => notifier.setWebpQuality(
+                  settings.webp.quality + _qualityStep,
+                ),
+              ),
+            ],
+          ),
+        if (uiPolicy.supportsOutputFormat(ImageCompressionOutputFormat.webp))
+          const SizedBox(height: 12),
         SettingsSection(
           header: Text(context.t.strings.legacy.msg_tiff),
           children: [
