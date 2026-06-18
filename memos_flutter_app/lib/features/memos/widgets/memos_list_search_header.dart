@@ -1,11 +1,16 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/memoflow_palette.dart';
 import '../../../platform/platform_icons.dart';
-import '../../../platform/widgets/platform_controls.dart';
+import '../../../platform/platform_target.dart';
 import '../../../i18n/strings.g.dart';
 import '../memos_list_header_controller.dart';
 import 'memos_list_search_widgets.dart';
+
+const double _topSearchFieldFontSize = 16;
+const double _topSearchFieldLineHeight = 1.25;
+const double _topSearchFieldCursorHeight = 20;
 
 class MemosListSortMenuButton extends StatelessWidget {
   const MemosListSortMenuButton({
@@ -195,12 +200,11 @@ class MemosListTopSearchField extends StatelessWidget {
               : MemoFlowPalette.borderLight,
         ),
       ),
-      child: PlatformTextField(
+      child: _TopSearchTextField(
         controller: controller,
         focusNode: focusNode,
         autofocus: autofocus,
         textInputAction: TextInputAction.search,
-        textAlignVertical: TextAlignVertical.center,
         decoration: InputDecoration(
           hintText: hintText ?? context.t.strings.legacy.msg_search,
           border: InputBorder.none,
@@ -242,6 +246,73 @@ class MemosListTopSearchField extends StatelessWidget {
         ),
         onSubmitted: onSubmitted,
       ),
+    );
+  }
+}
+
+class _TopSearchTextField extends StatelessWidget {
+  const _TopSearchTextField({
+    required this.controller,
+    required this.focusNode,
+    required this.autofocus,
+    required this.textInputAction,
+    required this.decoration,
+    required this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool autofocus;
+  final TextInputAction textInputAction;
+  final InputDecoration decoration;
+  final ValueChanged<String> onSubmitted;
+
+  static const TextStyle _textStyle = TextStyle(
+    fontSize: _topSearchFieldFontSize,
+    height: _topSearchFieldLineHeight,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final target = resolvePlatformTarget(context);
+    if (target == PlatformTarget.iPhone || target == PlatformTarget.iPad) {
+      return CupertinoTextField(
+        controller: controller,
+        focusNode: focusNode,
+        placeholder: decoration.hintText ?? decoration.labelText,
+        placeholderStyle: decoration.hintStyle,
+        prefix: _cupertinoIconSlot(context, decoration.prefixIcon),
+        suffix: _cupertinoIconSlot(context, decoration.suffixIcon),
+        padding: decoration.contentPadding ?? EdgeInsets.zero,
+        decoration: null,
+        autofocus: autofocus,
+        textInputAction: textInputAction,
+        textAlignVertical: TextAlignVertical.center,
+        onSubmitted: onSubmitted,
+      );
+    }
+
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      autofocus: autofocus,
+      textInputAction: textInputAction,
+      textAlignVertical: TextAlignVertical.center,
+      cursorHeight: _topSearchFieldCursorHeight,
+      style: _textStyle,
+      decoration: decoration,
+      onSubmitted: onSubmitted,
+    );
+  }
+
+  Widget? _cupertinoIconSlot(BuildContext context, Widget? icon) {
+    if (icon == null) return null;
+    return IconTheme.merge(
+      data: IconThemeData(
+        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+        size: 20,
+      ),
+      child: icon,
     );
   }
 }
