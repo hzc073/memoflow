@@ -50,6 +50,46 @@ Windows 和 macOS 的桌面设置窗口 SHALL expose a platform-neutral “支�
 - **AND** appreciation copy SHALL NOT promise digital feature unlocks, paid capabilities, premium state, Apple-specific entitlement, badge unlocks, or service access in exchange for appreciation
 - **AND** unsupported or unselected appreciation SHALL NOT block base recording, editing, reading, local library access, or basic import/export
 
+### Requirement: Support page platform display SHALL be policy-driven
+支持页 SHALL use a feature-local public support display policy to decide external-link, generated-QR, and Apple free-safe explanation behavior across supported runtimes.
+
+#### Scenario: Non-Apple mobile or web support is rendered
+- **WHEN** Android phone, Android tablet, web, or equivalent non-Apple mobile-like runtime renders public support
+- **THEN** the support page SHALL show the public project-support shell
+- **AND** it SHALL expose the external support link as the primary public appreciation action
+- **AND** it SHALL NOT show the generated desktop QR code as the primary action
+
+#### Scenario: Non-Apple desktop support is rendered
+- **WHEN** Windows, Linux, or equivalent non-Apple desktop runtime renders public support
+- **THEN** the support page SHALL show the public project-support shell
+- **AND** it SHALL show a generated QR code based on the external support URL
+- **AND** it SHALL NOT show the mobile external-link action as the primary public appreciation action
+
+#### Scenario: Apple public support is rendered
+- **WHEN** iPhone, iPad, or macOS runtime renders public support without a private support contribution
+- **THEN** the support page SHALL show public project-support shell and Apple free-safe explanation
+- **AND** it SHALL NOT show Alipay links, generated QR code, external payment CTA, StoreKit implementation, product ID, price, purchase, restore, or raw entitlement state
+
+#### Scenario: Private Apple support is rendered
+- **WHEN** an approved Apple private support contribution exists
+- **THEN** the support page SHALL keep the shared public hero or project-support shell
+- **AND** it SHALL render the private support contribution inside the unified support surface
+- **AND** it SHALL NOT render the public appreciation fallback CTA on that main private support surface
+
+### Requirement: Apple private support SHALL use a single primary entry
+Apple 私有版 SHALL use “支持 MemoFlow” / `Support MemoFlow` as the primary settings entry for support, with private IAP support rendered through the support-page contribution seam.
+
+#### Scenario: Private overlay contributes Apple support center
+- **WHEN** private overlay provides an Apple support center through `SupportMemoFlowContribution`
+- **THEN** the settings home SHALL still expose the normal unified Support MemoFlow entry
+- **AND** the private overlay SHALL NOT add a duplicate primary `SettingsEntryContribution` for the same Apple support center
+- **AND** the private support center MAY remain reachable inside the unified support page
+
+#### Scenario: Private overlay needs a non-primary debug shortcut
+- **WHEN** a future private overlay adds a separate support-related shortcut
+- **THEN** it SHALL be explicitly documented and tested as non-primary
+- **AND** it SHALL NOT replace or hide the unified Support MemoFlow entry unless a future approved change says so
+
 #### Scenario: Public-good commitment is shown
 - **WHEN** the public appreciation page includes public-good copy
 - **THEN** it MAY state that if the project generates profit, MemoFlow will donate part of it to the Beijing Han Hong Love Charity Foundation and publish records

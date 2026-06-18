@@ -9,10 +9,12 @@ import 'package:memos_flutter_app/access_boundary/app_capability.dart';
 import 'package:memos_flutter_app/data/models/app_preferences.dart';
 import 'package:memos_flutter_app/data/models/device_preferences.dart';
 import 'package:memos_flutter_app/features/settings/settings_ui.dart';
+import 'package:memos_flutter_app/features/settings/support_memoflow_policy.dart';
 import 'package:memos_flutter_app/features/settings/support_memoflow_screen.dart';
 import 'package:memos_flutter_app/i18n/strings.g.dart';
 import 'package:memos_flutter_app/module_boundary/settings_entry_contribution.dart';
 import 'package:memos_flutter_app/module_boundary/support_memo_flow_contribution.dart';
+import 'package:memos_flutter_app/platform/platform_experience.dart';
 import 'package:memos_flutter_app/platform/platform_target.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle.dart';
 import 'package:memos_flutter_app/private_hooks/private_extension_bundle_provider.dart';
@@ -30,6 +32,43 @@ void main() {
     debugPlatformTargetOverride = null;
   });
 
+  test('public support policy maps platform CTAs', () {
+    final android = SupportMemoFlowPublicPolicy.forExperience(
+      platformExperienceForTarget(PlatformTarget.android),
+    );
+    expect(android.showExternalLinkAction, isTrue);
+    expect(android.showDesktopQr, isFalse);
+    expect(android.showAppleExplanation, isFalse);
+
+    final web = SupportMemoFlowPublicPolicy.forExperience(
+      platformExperienceForTarget(PlatformTarget.web),
+    );
+    expect(web.showExternalLinkAction, isTrue);
+    expect(web.showDesktopQr, isFalse);
+    expect(web.showAppleExplanation, isFalse);
+
+    final windows = SupportMemoFlowPublicPolicy.forExperience(
+      platformExperienceForTarget(PlatformTarget.windows),
+    );
+    expect(windows.showExternalLinkAction, isFalse);
+    expect(windows.showDesktopQr, isTrue);
+    expect(windows.showAppleExplanation, isFalse);
+
+    final linux = SupportMemoFlowPublicPolicy.forExperience(
+      platformExperienceForTarget(PlatformTarget.linux),
+    );
+    expect(linux.showExternalLinkAction, isFalse);
+    expect(linux.showDesktopQr, isTrue);
+    expect(linux.showAppleExplanation, isFalse);
+
+    final macOS = SupportMemoFlowPublicPolicy.forExperience(
+      platformExperienceForTarget(PlatformTarget.macOS),
+    );
+    expect(macOS.showExternalLinkAction, isFalse);
+    expect(macOS.showDesktopQr, isFalse);
+    expect(macOS.showAppleExplanation, isTrue);
+  });
+
   testWidgets('mobile public support page opens appreciation link without QR', (
     tester,
   ) async {
@@ -41,7 +80,7 @@ void main() {
     expect(find.text('Support MemoFlow'), findsWidgets);
     expect(find.text('What your support brings'), findsOneWidget);
     expect(find.text('Public-good note'), findsNothing);
-    expect(find.text('Support the developer'), findsOneWidget);
+    expect(find.text('Thanks for supporting MemoFlow'), findsOneWidget);
     expect(find.text('View foundation website'), findsNothing);
     expect(find.text('View public-good records'), findsNothing);
     expect(find.text('Open support link'), findsOneWidget);
@@ -133,7 +172,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
-    expect(find.text('Support the developer'), findsOneWidget);
+    expect(find.text('Thanks for supporting MemoFlow'), findsOneWidget);
     expect(
       find.byKey(
         const ValueKey<String>('supportMemoFlow.publicAppreciationSection'),
@@ -157,6 +196,26 @@ void main() {
     expect(find.text('View public-good records'), findsNothing);
   });
 
+  testWidgets('Linux public support page shows QR instead of link action', (
+    tester,
+  ) async {
+    debugPlatformTargetOverride = TargetPlatform.linux;
+
+    await tester.pumpWidget(_buildApp());
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SupportMemoFlowScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('supportMemoFlow.supportQr')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('supportMemoFlow.openSupportLink')),
+      findsNothing,
+    );
+    expect(find.text('Open support link'), findsNothing);
+  });
+
   testWidgets('private support contribution replaces public fallback', (
     tester,
   ) async {
@@ -175,7 +234,11 @@ void main() {
 
     expect(find.byKey(const ValueKey<String>('privateSupportProbe')), findsOne);
     expect(find.text('Private Apple support contribution'), findsOneWidget);
-    expect(find.text('Support the developer'), findsNothing);
+    expect(
+      find.text('Keep maintenance and platform polish moving forward.'),
+      findsOneWidget,
+    );
+    expect(find.text('Thanks for supporting MemoFlow'), findsNothing);
     expect(find.text('Open support link'), findsNothing);
     expect(find.text('What your support brings'), findsNothing);
   });
@@ -202,7 +265,7 @@ void main() {
         findsNothing,
       );
       expect(find.text('What your support brings'), findsOneWidget);
-      expect(find.text('Support the developer'), findsOneWidget);
+      expect(find.text('Thanks for supporting MemoFlow'), findsOneWidget);
       expect(find.text('Open support link'), findsOneWidget);
     },
   );

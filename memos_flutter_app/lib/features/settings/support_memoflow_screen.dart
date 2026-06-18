@@ -13,6 +13,7 @@ import '../../private_hooks/private_extension_bundle.dart';
 import '../../private_hooks/private_extension_bundle_provider.dart';
 import '../../state/settings/device_preferences_provider.dart';
 import '../../i18n/strings.g.dart';
+import 'support_memoflow_policy.dart';
 import 'settings_ui.dart';
 
 const supportMemoFlowExternalSupportUrl =
@@ -43,9 +44,9 @@ class SupportMemoFlowScreen extends ConsumerWidget {
     final hasPrivateSupport =
         !publicAppreciationOnly && contributions.isNotEmpty;
     final experience = resolvePlatformExperience(context);
-    final publicSupportPolicy = _PublicSupportPolicy.forExperience(experience);
-    final showPublicSupportQr =
-        publicSupportPolicy.allowsExternalSupport && experience.isDesktop;
+    final publicSupportPolicy = SupportMemoFlowPublicPolicy.forExperience(
+      experience,
+    );
 
     void haptic() {
       if (hapticsEnabled) {
@@ -85,7 +86,6 @@ class SupportMemoFlowScreen extends ConsumerWidget {
         if (publicAppreciationOnly) ...[
           _PublicAppreciationSurface(
             policy: publicSupportPolicy,
-            showQr: showPublicSupportQr,
             onOpenSupport: () =>
                 openExternal(supportMemoFlowExternalSupportUrl),
             onOpenPublicGood: () => openExternal(supportMemoFlowPublicGoodUrl),
@@ -109,7 +109,6 @@ class SupportMemoFlowScreen extends ConsumerWidget {
           const SizedBox(height: 14),
           _PublicAppreciationSection(
             policy: publicSupportPolicy,
-            showQr: showPublicSupportQr,
             onOpenSupport: () =>
                 openExternal(supportMemoFlowExternalSupportUrl),
           ),
@@ -137,14 +136,12 @@ class SupportMemoFlowScreen extends ConsumerWidget {
 class _PublicAppreciationSurface extends StatelessWidget {
   const _PublicAppreciationSurface({
     required this.policy,
-    required this.showQr,
     required this.onOpenSupport,
     required this.onOpenPublicGood,
     required this.onOpenCharity,
   });
 
-  final _PublicSupportPolicy policy;
-  final bool showQr;
+  final SupportMemoFlowPublicPolicy policy;
   final VoidCallback onOpenSupport;
   final VoidCallback onOpenPublicGood;
   final VoidCallback onOpenCharity;
@@ -165,21 +162,10 @@ class _PublicAppreciationSurface extends StatelessWidget {
         const SizedBox(height: 14),
         _PublicAppreciationSection(
           policy: policy,
-          showQr: showQr,
           onOpenSupport: onOpenSupport,
         ),
       ],
     );
-  }
-}
-
-class _PublicSupportPolicy {
-  const _PublicSupportPolicy._({required this.allowsExternalSupport});
-
-  final bool allowsExternalSupport;
-
-  factory _PublicSupportPolicy.forExperience(PlatformExperience experience) {
-    return _PublicSupportPolicy._(allowsExternalSupport: !experience.isApple);
   }
 }
 
@@ -211,8 +197,8 @@ class _SupportHero extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 context.tr(
-                  zh: '如果你愿意，可以请开发者喝一杯咖啡',
-                  en: 'If you want, you can buy the developer a coffee.',
+                  zh: '让长期维护和平台体验继续向前',
+                  en: 'Keep maintenance and platform polish moving forward.',
                 ),
                 textAlign: compact ? TextAlign.center : TextAlign.start,
                 style: TextStyle(
@@ -225,8 +211,8 @@ class _SupportHero extends StatelessWidget {
               const SizedBox(height: 18),
               Text(
                 context.tr(
-                  zh: 'MemoFlow 会尽量保持核心体验的完整。你的赞赏会用于项目维护、版本更新，以及未来体验的持续打磨。',
-                  en: 'MemoFlow will keep its core experience intact. Your support helps with maintenance, updates, and steady product refinement.',
+                  zh: 'MemoFlow 的基础记录、查看和本地数据管理会保持完整可用。你的支持会帮助项目维护、版本更新，以及各个平台体验的持续打磨。',
+                  en: 'MemoFlow keeps core capture, reading, and local data workflows intact. Your support helps with maintenance, updates, and steady platform refinement.',
                 ),
                 textAlign: compact ? TextAlign.center : TextAlign.start,
                 style: TextStyle(
@@ -418,12 +404,10 @@ class _PublicGoodLinkRow extends StatelessWidget {
 class _PublicAppreciationSection extends StatelessWidget {
   const _PublicAppreciationSection({
     required this.policy,
-    required this.showQr,
     required this.onOpenSupport,
   });
 
-  final _PublicSupportPolicy policy;
-  final bool showQr;
+  final SupportMemoFlowPublicPolicy policy;
   final VoidCallback onOpenSupport;
 
   @override
@@ -435,7 +419,10 @@ class _PublicAppreciationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            context.tr(zh: '赞赏开发者', en: 'Support the developer'),
+            context.tr(
+              zh: '感谢你愿意支持 MemoFlow',
+              en: 'Thanks for supporting MemoFlow',
+            ),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: tokens.textMain,
@@ -450,11 +437,11 @@ class _PublicAppreciationSection extends StatelessWidget {
             style: TextStyle(height: 1.45, color: tokens.textMuted),
           ),
           const SizedBox(height: 18),
-          if (!policy.allowsExternalSupport)
+          if (policy.showAppleExplanation)
             _AppleSupportExplanation(tokens: tokens)
-          else if (showQr)
+          else if (policy.showDesktopQr)
             const _SupportQrCode(data: supportMemoFlowExternalSupportUrl)
-          else
+          else if (policy.showExternalLinkAction)
             SettingsAction(
               key: const ValueKey<String>('supportMemoFlow.openSupportLink'),
               onPressed: onOpenSupport,
@@ -463,7 +450,9 @@ class _PublicAppreciationSection extends StatelessWidget {
                 context.tr(zh: '打开赞赏链接', en: 'Open support link'),
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
-            ),
+            )
+          else
+            _AppleSupportExplanation(tokens: tokens),
           const SizedBox(height: 14),
           Text(
             _appreciationFootnote(context),
@@ -480,30 +469,30 @@ class _PublicAppreciationSection extends StatelessWidget {
   }
 
   String _appreciationDescription(BuildContext context) {
-    if (!policy.allowsExternalSupport) {
+    if (policy.showAppleExplanation) {
       return context.tr(
-        zh: '在 Apple 平台上，MemoFlow 会通过 App Store 支持中心处理支持。当前页面只保留项目说明，不提供外部赞赏链接。',
-        en: 'On Apple platforms, MemoFlow handles support through the App Store support center. This page keeps project notes without external support links.',
+        zh: '你的心意已经很重要。Apple 版本的支持方式会按照 App Store 流程提供；在准备好之前，这里先保留项目维护说明。',
+        en: 'Your willingness to support MemoFlow already matters. On Apple platforms, support options will follow the App Store flow; until they are ready, this page keeps the project-maintenance notes.',
       );
     }
     return context.tr(
-      zh: showQr ? '使用手机支付宝扫码完成赞赏。' : '点击下方按钮后，将在浏览器中打开赞赏链接。',
-      en: showQr
+      zh: policy.showDesktopQr ? '使用手机支付宝扫码完成自愿支持。' : '点击下方按钮后，将在浏览器中打开赞赏链接。',
+      en: policy.showDesktopQr
           ? 'Scan with Alipay on your phone to support MemoFlow.'
           : 'Tap the button below to open the support link in a browser.',
     );
   }
 
   String _appreciationFootnote(BuildContext context) {
-    if (!policy.allowsExternalSupport) {
+    if (policy.showAppleExplanation) {
       return context.tr(
-        zh: '此处不展示支付宝链接、二维码或其他外部付款入口。',
-        en: 'This page does not show Alipay links, QR codes, or other external support actions.',
+        zh: '这不会影响你继续使用 MemoFlow 的基础记录、查看和本地数据管理。',
+        en: 'This does not affect core capture, reading, or local data workflows.',
       );
     }
     return context.tr(
-      zh: showQr ? '二维码仅用于自愿赞赏。' : '赞赏金额将在打开的页面中完成。',
-      en: showQr
+      zh: policy.showDesktopQr ? '二维码仅用于自愿赞赏。' : '赞赏金额将在打开的页面中完成。',
+      en: policy.showDesktopQr
           ? 'The QR code is only for voluntary support.'
           : 'The support amount is completed on the page that opens.',
     );
@@ -538,8 +527,8 @@ class _AppleSupportExplanation extends StatelessWidget {
             Expanded(
               child: Text(
                 context.tr(
-                  zh: 'Apple 版本不会在这里打开外部赞赏页面。',
-                  en: 'The Apple version does not open an external support page here.',
+                  zh: '当前 Apple 版本暂时没有可用的支持按钮。',
+                  en: 'Support options are not available here yet in the Apple version.',
                 ),
                 style: TextStyle(
                   color: tokens.textMain,

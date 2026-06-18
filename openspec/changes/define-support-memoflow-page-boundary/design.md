@@ -44,6 +44,20 @@ SupportMemoFlowScreen
 └────────────────────────────────────────────┘
 ```
 
+平台展示矩阵：
+
+| Runtime | Primary entry | Main support content | Public fallback CTA |
+| --- | --- | --- | --- |
+| Android phone / tablet | `Support MemoFlow` | public shell + maintenance narrative | external support link |
+| web | `Support MemoFlow` | public shell + maintenance narrative | external support link |
+| Windows desktop | `Support MemoFlow` in desktop settings pane | public shell + maintenance narrative | generated QR from support URL |
+| Linux desktop | `Support MemoFlow` in desktop settings pane | public shell + maintenance narrative | generated QR from support URL |
+| iPhone / iPad public | `Support MemoFlow` | public shell + Apple free-safe explanation | none |
+| macOS public | `Support MemoFlow` in desktop settings pane | public shell + Apple free-safe explanation | none |
+| macOS private / future Apple private | `Support MemoFlow` | public shell + private IAP support center contribution | none inside public fallback |
+
+矩阵中的 public fallback MUST be derived from a feature-local support policy, not from repeated widget-local checks. 该 policy 可以读取 `PlatformExperience`，但不能读取 StoreKit、商品、价格、权益或商业状态。Apple runtime 的外部支付宝 CTA 默认关闭；private IAP contribution 是否存在只影响 private section 是否渲染，不允许 public shell 推断商业状态。
+
 桌面设置窗口应把支持页作为通用 desktop surface，而不是 Windows 专属设置：
 
 ```text
@@ -99,6 +113,8 @@ DesktopSettingsWindowApp
 
    该 seam 返回 UI contribution 或 route intent；公开页面只渲染 contribution，不知道价格、商品 ID、StoreKit 或权益状态。
 
+   Apple 私有版的用户主入口应收敛为设置里的 `Support MemoFlow`。private overlay 可以通过 `SupportMemoFlowContribution` 在统一支持页内注入 IAP 支持中心，但不应再通过 `SettingsEntryContribution` 添加另一个同义主入口。若未来需要开发调试快捷入口，应在 private overlay 内明确标记为非主入口，并单独测试不会与主支持入口冲突。
+
 4. **平台分流应基于“private contribution 是否存在”，而不是公开仓硬编码 Apple 商业分支。**
 
    公开仓可以判断平台用于布局、文案细节、外部链接打开能力或合规提示，但不得写：
@@ -129,6 +145,8 @@ DesktopSettingsWindowApp
    ```
 
    `supportUrl` 是用户确认的外部赞赏链接，`charityUrl` 指向北京韩红爱心慈善基金会官方站点。页面内仍应保留自愿支持说明、维护成本说明和公益公示入口，不展示免费能力承诺说明。若未来面向 Google Play 或其他非 Apple 商店分发，MUST 复核对应渠道规则；Apple runtime 由 `define-apple-iap-support-rules` 收紧为 private IAP 支持中心或 free-safe 说明，不显示公开外部付款 CTA。
+
+   首版独立公益 section 继续隐藏，不作为主体验的一部分。页面可以保留一句轻量公益承诺，例如“项目盈利的一部分会投入公益或公共善意项目”，但不展示基金会外链和公示入口，直到记录页准备好或另一个 change 明确启用。
 
 6. **桌面设置窗口新增通用支持入口，而不是 Windows 专属入口。**
 
@@ -190,6 +208,17 @@ memoflow-macos-private/active_private_extension_bundle.dart
 
 公开 settings feature 可以依赖公开 private hook interface，因为这是既有批准 seam。私有 overlay 替换 `active_private_extension_bundle.dart`。公开仓不得 import private repository 路径、StoreKit 实现或商业模块。
 
+本次展示统一还需要把 public fallback rules 从 screen-local 条件分支中抽成 feature-local policy：
+
+```text
+features/settings/support_memoflow_policy
+        ▲
+        │ uses
+features/settings/support_memoflow_screen
+```
+
+该 policy 只表达展示策略，例如 external link、desktop QR、Apple explanation；它不进入 `core`、`state` 或 `application`，也不暴露商业状态。这样满足 `evolve_modularity` checklist `4` 和 `8`：平台展示规则不再藏在页面局部 widget 分支里，并可被 focused tests 直接覆盖。
+
 ## Risks / Trade-offs
 
 - [Risk] 公开支持页不小心写入价格或“年度支持者”文案，形成商业泄漏。Mitigation: spec 和 guardrail 明确阻止 price / product ID / subscription wording 进入公开 shell；价格放 private overlay。
@@ -199,8 +228,8 @@ memoflow-macos-private/active_private_extension_bundle.dart
 - [Risk] 为了 private contribution seam 修改 `PrivateExtensionBundle` 可能扩大公共接口。Mitigation: seam 只表达 support page contribution，不暴露商业状态；同时增加商业泄漏 guardrail。
 - [Risk] 桌面设置窗口左侧 pane 继续增多，降低扫描效率。Mitigation: “支持 MemoFlow”属于高感知入口，优先作为独立 pane；如果后续桌面设置导航过密，再统一评估分组或排序，而不是把支持页做成 Windows 专属分支。
 
-## Open Questions
+## Resolved Questions
 
-- 公开 Apple 构建没有 private overlay 时，是否展示普通赞赏 fallback，还是展示“Apple 支持者能力准备中”的静态说明？
-- private support contribution 是直接返回完整 section widget，还是返回 route/action model，由公开页面用统一组件渲染？
-- 支持页是否只优先完善中文，还是同步补齐所有现有 locales？
+- 公开 Apple 构建没有 private overlay 时展示 free-safe 静态说明，不展示普通赞赏 fallback。
+- private support contribution 当前继续返回完整 section widget；公开页面只渲染 contribution，不读取商业状态。
+- 支持页文案首轮只打磨中文和英文；其他 locale 不在本 change 范围内。

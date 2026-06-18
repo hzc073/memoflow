@@ -33,6 +33,7 @@ void main() {
     final settingsFiles = <String>[
       'memos_flutter_app/lib/features/settings/settings_screen.dart',
       'memos_flutter_app/lib/features/settings/support_memoflow_screen.dart',
+      'memos_flutter_app/lib/features/settings/support_memoflow_policy.dart',
     ];
 
     const forbiddenTerms = <String>[
@@ -90,9 +91,16 @@ void main() {
     final supportContent = readRepoFile(
       'memos_flutter_app/lib/features/settings/support_memoflow_screen.dart',
     );
+    final policyContent = readRepoFile(
+      'memos_flutter_app/lib/features/settings/support_memoflow_policy.dart',
+    );
 
     expect(
-      supportContent.contains('allowsExternalSupport: !experience.isApple'),
+      policyContent.contains('allowsExternalSupport: !experience.isApple'),
+      isTrue,
+    );
+    expect(
+      policyContent.contains('showAppleExplanation: experience.isApple'),
       isTrue,
     );
     expect(
@@ -109,6 +117,7 @@ void main() {
       'memos_flutter_app/lib/main.dart',
       'memos_flutter_app/lib/features/settings/settings_screen.dart',
       'memos_flutter_app/lib/features/settings/support_memoflow_screen.dart',
+      'memos_flutter_app/lib/features/settings/support_memoflow_policy.dart',
       'memos_flutter_app/lib/module_boundary/settings_entry_contribution.dart',
       'memos_flutter_app/lib/module_boundary/support_memo_flow_contribution.dart',
       'memos_flutter_app/lib/private_hooks/private_extension_bundle.dart',

@@ -328,6 +328,7 @@ void main() {
     const files = [
       'lib/features/settings/settings_screen.dart',
       'lib/features/settings/support_memoflow_screen.dart',
+      'lib/features/settings/support_memoflow_policy.dart',
       'lib/features/settings/preferences_settings_screen.dart',
     ];
     const blocked = [

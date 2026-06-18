@@ -22,6 +22,9 @@
 - 定义 private bundle seam 方向：公开页面可以提供一个支持页贡献区域，但真实商业支持内容必须由 `PrivateExtensionBundle` 或等价批准 seam 贡献。
 - 约束文案：支持是对项目维护和平台优化的帮助，不得把免费能力包装成付费门票，也不得在支持页展示免费能力承诺说明。
 - 约束公益说明：公开页面 MAY 说明“如项目产生盈利，MemoFlow 会将其中一部分捐赠给北京韩红爱心慈善基金会并公示”，并将公益公示入口指向官网占位页或后续正式公益记录页；基金会外部链接 SHOULD 指向官方地址而不是搜索引擎跳转链接。
+- 追加平台展示统一规则：iPhone、iPad、macOS public、macOS private、Android、Windows、Linux、web MUST 共享同一支持页外壳，并通过 feature-local support policy 决定 public fallback 的链接、二维码或 Apple free-safe 说明。
+- 收敛 Apple 私有版入口：`Support MemoFlow` SHALL be the primary support entry；private overlay SHALL inject the IAP support center through `SupportMemoFlowContribution` and SHALL NOT add a duplicate primary settings entry for the same support center.
+- 保持公益区首版隐藏：独立 public-good section 不进入主体验；页面只保留轻量维护和公益承诺文案，避免在记录页未完善前制造过强承诺。
 
 ## Capabilities
 
@@ -69,3 +72,4 @@
 - 不改变现有免费能力范围。
 - 不在本 change 决定后续多渠道支付平台、Google Play 分发版本处理或官网公益记录实现。
 - 不让公开仓根据 `AccessDecision.source`、raw entitlement state、商品 ID 或价格做 UI 可见性、路由或解锁判断。
+- 不启用独立公益区，不新增公益募款流程，不清理历史归档 artifact 中对旧“充电站”或 `DonationDialog` 的记录。

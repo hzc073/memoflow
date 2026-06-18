@@ -35,3 +35,14 @@
 - [x] 4.5 从 `memos_flutter_app` 运行 `flutter analyze` 和相关 focused tests；正式 PR 前运行 `flutter test`。
 - [x] 4.6 检查 diff，确认未触碰 API compatibility 文件、WebDAV 协议、数据库 schema，且公开仓未引入 subscription / billing / entitlement / paywall / StoreKit / price / product ID 逻辑。
 - [x] 4.7 增加 focused widget tests，覆盖 Windows 和 macOS 的桌面设置窗口可以显示并进入 `SupportMemoFlowScreen`，且公开 fallback 不渲染商业购买 UI。
+
+## 5. 平台展示统一跟进
+
+- [x] 5.1 补充支持页平台展示矩阵，明确 iPhone、iPad、macOS public、macOS private、Android、Windows、Linux、web 的 support shell、private contribution 和 public fallback CTA 行为。
+- [x] 5.2 将 public fallback 展示规则抽成 feature-local support policy/helper，直接覆盖 external link、desktop QR 和 Apple free-safe explanation，不把商业状态放进 public interface。
+- [x] 5.3 调整公开支持页 ZH/EN 文案层级，弱化“买咖啡”主叙事，聚焦项目维护、平台体验打磨和核心体验不被支持行为绑架。
+- [x] 5.4 收敛 private overlay 入口：`Support MemoFlow` 作为唯一主入口，Apple IAP 支持中心只通过 `SupportMemoFlowContribution` 注入统一支持页，不再额外贡献同义 settings entry。
+- [x] 5.5 保持独立公益 section 隐藏，只保留轻量公益承诺文案；不新增基金会外链、公示入口或公益募款流程。
+- [x] 5.6 增加 focused tests 覆盖 Android、web、Windows、Linux、iPhone、iPad、macOS public 的 public support policy 和页面 CTA 行为。
+- [x] 5.7 增加 private overlay tests，覆盖统一 `Support MemoFlow` 入口展示 IAP 支持中心、不出现重复 Apple 支持者中心主入口、public appreciation notes 不显示外部支付宝 CTA。
+- [x] 5.8 运行 public focused tests、private overlay focused tests，并检查 diff 未触碰 API compatibility、公开商业逻辑或未关联 dirty files。
