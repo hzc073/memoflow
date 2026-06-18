@@ -1,0 +1,30 @@
+# 禁止出现在公共仓库的路径或关键词
+# 一行一个规则，支持普通文本
+# 空行和 # 开头的行会被忽略
+#
+# 说明：
+# - 路径规则会检查工作区和暂存区路径。
+# - 关键词规则会检查 Git 已跟踪文本和暂存新增内容。
+# - 当前公开仓已有合法治理文档会提到泛化边界词，因此这里优先使用高置信路径、代码符号和商品 ID。
+
+lib/private/
+ios/private/
+ios/Runner/Products.storekit
+ios/Runner/StoreKit/
+ios/Runner/Private/
+Runner-Private.entitlements
+private_entitlements/
+PRIVATE_ENTITLEMENT
+import StoreKit
+SKPaymentQueue
+SKProduct
+Product.products
+purchaseProduct
+restorePurchase(
+restorePurchases(
+purchases_flutter
+in_app_purchase
+store_kit_wrappers
+com.memoflow.pro
+com.memoflow.support
+com.memoflow.tip
