@@ -15,6 +15,9 @@ MemoFlow is a Flutter mobile client for the [memos](https://github.com/usememos/
 > This project is an independent third-party client
 > and has no affiliation with the official Memos project.
 
+## Maintenance Notice
+MemoFlow has been adapted for Apple platforms and now includes in-app purchase (IAP) authorization capabilities. Future feature development and source-code maintenance will move to a private repository. This repository will remain available as a public release channel, and future updates here will only include Release packages and necessary documentation updates, not new application source code.
+
 ## Download
 
 <p align="center">
